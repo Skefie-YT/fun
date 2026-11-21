@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Data Drift</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #0EA5E9;
+            --bg: #0f172a;
+            --tile: #1e293b;
+            --text: #f8fafc;
+        }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body {
+            margin: 0; padding: 0; background: var(--bg);
+            color: var(--text); font-family: 'Outfit', sans-serif;
+            height: 100dvh; overflow: hidden; display: flex; flex-direction: column;
+        }
+        #ui-layer {
+            padding: 10px 20px; display: flex; justify-content: space-between;
+            align-items: center; background: rgba(15, 23, 42, 0.9); z-index: 10;
+        }
+        .back-btn {
+            color: var(--text); text-decoration: none; font-weight: bold; font-size: 0.9rem;
+            padding: 6px 12px; border: 1px solid var(--accent); border-radius: 6px;
+        }
+        .stats { text-align: center; }
+        .stats div { font-size: 0.7rem; text-transform: uppercase; opacity: 0.8; letter-spacing: 1px; }
+        .stats span { font-size: 1.2rem; font-weight: 700; color: var(--accent); }
+        #how-to-btn { cursor: pointer; width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--accent); display: flex; justify-content: center; align-items: center; font-weight: bold; }
+
+        #game-container {
+            flex: 1; display: flex; justify-content: center; align-items: center;
+            position: relative; padding: 20px;
+        }
+        #grid-container {
+            position: relative; width: 320px; height: 320px;
+            background: #1e293b; border-radius: 12px; padding: 8px; box-shadow: 0 0 40px rgba(0,0,0,0.5);
+            display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(4, 1fr); gap: 6px;
+        }
+        .tile {
+            background: #334155; border-radius: 8px; position: relative;
+            display: flex; justify-content: center; align-items: center;
+            cursor: pointer; transition: transform 0.1s, background 0.3s;
+            overflow: hidden;
+        }
+        .tile.active { background: var(--accent); box-shadow: 0 0 15px var(--accent); }
+        .tile-line {
+            position: absolute; background: #64748b; border-radius: 2px;
+        }
+        .tile.active .tile-line { background: #fff; }
+
+        /* Horizontal line */
+        .line-h { width: 100%; height: 6px; }
+        /* Vertical line */
+        .line-v { width: 6px; height: 100%; }
+
+        #timer-bar {
+            position: absolute; bottom: 0; left: 0; height: 6px; background: var(--accent);
+            width: 100%; transition: width 0.1s linear;
+        }
+
+        .overlay {
+            position: absolute; inset: 0; background: rgba(15, 23, 42, 0.95);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 100; padding: 30px; text-align: center;
+        }
+        .hidden { display: none !important; }
+        h1 { margin: 0 0 10px 0; color: var(--accent); }
+        button {
+            background: var(--accent); border: none; color: white; padding: 12px 30px;
+            font-size: 1.1rem; font-weight: 700; border-radius: 8px; cursor: pointer; margin-top: 20px;
+        }
+        .hint { font-size: 0.8rem; opacity: 0.7; margin-top: 15px; }
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <a href="../../" class="back-btn">Back</a>
+        <div class="stats">
+            <div>Score</div><span id="score-val">0</span>
+        </div>
+        <div class="stats">
+            <div>Best</div><span id="best-val">0</span>
+        </div>
+        <div id="how-to-btn">?</div>
+    </div>
+
+    <div id="game-container">
+        <div id="grid-container"></div>
+        <div id="timer-bar"></div>
+
+        <div id="start-screen" class="overlay">
+            <h1>DATA DRIFT</h1>
+            <p>Slide rows and columns to connect a path from the LEFT node to the RIGHT node.</p>
+            <p style="font-size: 0.9rem; opacity: 0.8">Tapping a tile shifts its Row or Column. Form a glowing connection to earn points and reset the clock!</p>
+            <button id="start-btn">INITIALIZE</button>
+            <div class="hint">Touch or Click to shift data lines</div>
+        </div>
+
+        <div id="game-over-screen" class="overlay hidden">
+            <h1>BUFFER OVERFLOW</h1>
+            <p>Connection lost. Data stream terminated.</p>
+            <div class="stats">
+                <div>Final Score</div><span id="final-score">0</span>
+            </div>
+            <button id="restart-btn">RETRY</button>
+        </div>
+
+        <div id="how-to-overlay" class="overlay hidden">
+            <h1>HOW TO PLAY</h1>
+            <ul style="text-align: left; font-size: 0.9rem; line-height: 1.6;">
+                <li>Goal: Create a continuous path from the left edge to the right edge.</li>
+                <li>Controls: Click/Tap a tile to shift its <b>Row</b>. Holding Shift or long-pressing shifts the <b>Column</b>.</li>
+                <li>Bonus: Longer paths yield more points.</li>
+                <li>Speed: The timer gets faster as you level up!</li>
+            </ul>
+            <button id="close-how-to">GOT IT</button>
+        </div>
+    </div>
+
+    <script>
+        const SLUG = 'data-drift';
+        const gridEl = document.getElementById('grid-container');
+        const scoreVal = document.getElementById('score-val');
+        const bestVal = document.getElementById('best-val');
+        const timerBar = document.getElementById('timer-bar');
+        
+        let score = 0;
+        let best = localStorage.getItem('fun_arcade_highscore_' + SLUG) || 0;
+        let timeLeft = 100;
+        let gameActive = false;
+        let grid = [];
+        let gridSize = 4;
+        let timerInterval;
+
+        // Tile types: 0: Horizontal, 1: Vertical, 2: Corner TL, 3: Corner TR, 4: Corner BR, 5: Corner BL
+        // We'll simplify to 0 (H), 1 (V), 2-5 (Corners)
+        const TILE_TYPES = 6;
+
+        bestVal.innerText = best;
+
+        function initGrid() {
+            grid = [];
+            gridEl.innerHTML = '';
+            for (let r = 0; r < gridSize; r++) {
+                grid[r] = [];
+                for (let c = 0; c < gridSize; c++) {
+                    const type = Math.floor(Math.random() * TILE_TYPES);
+                    grid[r][c] = type;
+                    const tile = document.createElement('div');
+                    tile.className = 'tile';
+                    tile.dataset.r = r;
+                    tile.dataset.c = c;
+                    tile.innerHTML = getTileSVG(type);
+                    tile.onclick = (e) => handleTileClick(r, c, e.shiftKey);
+                    gridEl.appendChild(tile);
+                }
+            }
+            checkPath();
+        }
+
+        function getTileSVG(type) {
+            switch(type) {
+                case 0: return '<div class="tile-line line-h"></div>';
+                case 1: return '<div class="tile-line line-v"></div>';
+                case 2: return '<div class="tile-line" style="width:6px; height:50%; top:50%;"></div><div class="tile-line" style="width:50%; height:6px; left:50%;"></div>';
+                case 3: return '<div class="tile-line" style="width:6px; height:50%; top:50%;"></div><div class="tile-line" style="width:50%; height:6px; right:50%;"></div>';
+                case 4: return '<div class="tile-line" style="width:6px; height:50%; bottom:50%;"></div><div class="tile-line" style="width:50%; height:6px; right:50%;"></div>';
+                case 5: return '<div class="tile-line" style="width:6px; height:50%; bottom:50%;"></div><div class="tile-line" style="width:50%; height:6px; left:50%;"></div>';
+            }
+        }
+
+        function handleTileClick(r, c, isShift) {
+            if (!gameActive) return;
+            if (isShift) shiftCol(c); else shiftRow(r);
+            renderGrid();
+            checkPath();
+            playSound(440, 0.05);
+        }
+
+        function shiftRow(r) {
+            const last = grid[r].pop();
+            grid[r].unshift(last);
+        }
+
+        function shiftCol(c) {
+            const last = grid[gridSize-1][c];
+            for(let r = gridSize-1; r > 0; r--) grid[r][c] = grid[r-1][c];
+            grid[0][c] = last;
+        }
+
+        function renderGrid() {
+            const tiles = document.querySelectorAll('.tile');
+            tiles.forEach(t => {
+                const r = t.dataset.r;
+                const c = t.dataset.c;
+                t.innerHTML = getTileSVG(grid[r][c]);
+                t.classList.remove('active');
+            });
+        }
+
+        function getConnections(r, c, type) {
+            // Returns [N, E, S, W] booleans
+            switch(type) {
+                case 0: return [0, 1, 0, 1];
+                case 1: return [1, 0, 1, 0];
+                case 2: return [0, 1, 1, 0];
+                case 3: return [0, 0, 1, 1];
+                case 4: return [1, 0, 0, 1];
+                case 5: return [1, 1, 0, 0];
+            }
+        }
+
+        function checkPath() {
+            let connected = [];
+            let queue = [];
+
+            // Start nodes on the left edge if they have a West connection
+            for(let r=0; r<gridSize; r++) {
+                const conns = getConnections(r, 0, grid[r][0]);
+                if(conns[3]) queue.push({r, c:0});
+            }
+
+            const visited = new Set();
+            let win = false;
+            let winPath = [];
+
+            while(queue.length > 0) {
+                const curr = queue.shift();
+                const key = `${curr.r},${curr.c}`;
+                if(visited.has(key)) continue;
+                visited.add(key);
+                winPath.push(curr);
+
+                const type = grid[curr.r][curr.c];
+                const conns = getConnections(curr.r, curr.c, type);
+
+                // Check if this reached the right edge and has East connection
+                if(curr.c === gridSize - 1 && conns[1]) win = true;
+
+                // Try neighbors: N, E, S, W
+                const dirs = [[-1,0,0,2], [0,1,1,3], [1,0,2,0], [0,-1,3,1]]; // [dr, dc, mySideIndex, neighborSideIndex]
+                dirs.forEach(([dr, dc, myIdx, oppIdx]) => {
+                    const nr = curr.r + dr, nc = curr.c + dc;
+                    if(nr>=0 && nr<gridSize && nc>=0 && nc<gridSize && conns[myIdx]) {
+                        const nType = grid[nr][nc];
+                        const nConns = getConnections(nr, nc, nType);
+                        if(nConns[oppIdx]) queue.push({r: nr, c: nc});
+                    }
+                });
+            }
+
+            if(win) {
+                winPath.forEach(p => {
+                    const el = document.querySelector(`.tile[data-r="${p.r}"][data-c="${p.c}"]`);
+                    if(el) el.classList.add('active');
+                });
+                setTimeout(completeLevel, 300);
+            }
+        }
+
+        function completeLevel() {
+            score += 100 + Math.floor(timeLeft);
+            scoreVal.innerText = score;
+            timeLeft = Math.min(100, timeLeft + 40);
+            playSound(880, 0.1);
+            initGrid();
+        }
+
+        function updateTimer() {
+            if(!gameActive) return;
+            timeLeft -= 0.15 + (score / 2000);
+            timerBar.style.width = timeLeft + '%';
+            if(timeLeft <= 0) endGame();
+            else requestAnimationFrame(updateTimer);
+        }
+
+        function endGame() {
+            gameActive = false;
+            document.getElementById('game-over-screen').classList.remove('hidden');
+            document.getElementById('final-score').innerText = score;
+            if(score > best) {
+                best = score;
+                localStorage.setItem('fun_arcade_highscore_' + SLUG, best);
+                bestVal.innerText = best;
+            }
+        }
+
+        function startGame() {
+            score = 0;
+            timeLeft = 100;
+            scoreVal.innerText = '0';
+            gameActive = true;
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('game-over-screen').classList.add('hidden');
+            initGrid();
+            updateTimer();
+        }
+
+        // Audio
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playSound(freq, duration) {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + duration);
+        }
+
+        // Listeners
+        document.getElementById('start-btn').onclick = startGame;
+        document.getElementById('restart-btn').onclick = startGame;
+        document.getElementById('how-to-btn').onclick = () => document.getElementById('how-to-overlay').classList.remove('hidden');
+        document.getElementById('close-how-to').onclick = () => document.getElementById('how-to-overlay').classList.add('hidden');
+
+        // Touch handling for "Long Press" as Shift
+        let touchTimer;
+        gridEl.addEventListener('touchstart', (e) => {
+            const tile = e.target.closest('.tile');
+            if(!tile || !gameActive) return;
+            const r = parseInt(tile.dataset.r);
+            const c = parseInt(tile.dataset.c);
+            
+            touchTimer = setTimeout(() => {
+                handleTileClick(r, c, true);
+                touchTimer = null;
+            }, 500);
+        });
+        gridEl.addEventListener('touchend', (e) => {
+            if(touchTimer) {
+                clearTimeout(touchTimer);
+                const tile = e.target.closest('.tile');
+                if(tile) handleTileClick(parseInt(tile.dataset.r), parseInt(tile.dataset.c), false);
+            }
+            e.preventDefault();
+        });
+
+    </script>
+</body>
+</html>

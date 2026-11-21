@@ -126,5 +126,13 @@
     "category": "Puzzle",
     "accent": "#EC4899",
     "addedAt": "2026-11-21T19:42:21Z"
+  },
+  {
+    "slug": "data-drift",
+    "title": "Data Drift",
+    "description": "Slide rows and columns to connect energy paths and transmit data packets before the buffer overflows!",
+    "category": "Puzzle",
+    "accent": "#0EA5E9",
+    "addedAt": "2026-11-21T20:33:53Z"
   }
 ]
