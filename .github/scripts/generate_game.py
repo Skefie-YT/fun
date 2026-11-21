@@ -17,7 +17,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 GAMES_JSON = ROOT / "games.json"
 GAMES_DIR = ROOT / "games"
 
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
 API_URL = (
     f"https://generativelanguage.googleapis.com/v1beta/models/"
     f"{GEMINI_MODEL}:generateContent"
