@@ -26,6 +26,9 @@
           <span class="stat-label">Games</span>
           <span class="stat-value" id="game-count">0</span>
         </div>
+        <button type="button" class="btn btn-secondary" id="make-game-btn">
+          + Make Game
+        </button>
         <button type="button" class="btn btn-primary" id="random-game-btn">
           Surprise Me
         </button>
@@ -68,6 +71,52 @@
     <footer class="site-footer">
       <p>Built for <a href="https://github.com/Skefie-YT/fun" target="_blank" rel="noopener noreferrer">Skefie-YT/fun</a>. Scores are saved locally in your browser.</p>
     </footer>
+  </div>
+
+  <div class="modal-backdrop" id="make-game-modal" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="make-game-title">
+      <div class="modal-head">
+        <h2 id="make-game-title">Make a New AI Game</h2>
+        <button type="button" class="modal-close" id="close-make-modal" aria-label="Close">&times;</button>
+      </div>
+      <p class="modal-desc">
+        Trigger the GitHub Actions AI generator right from here. Enter an optional theme or leave it blank for a surprise.
+      </p>
+
+      <form id="make-game-form" class="modal-form">
+        <label class="field-label" for="game-theme-input">Game Idea / Theme (optional)</label>
+        <input
+          type="text"
+          id="game-theme-input"
+          class="modal-input"
+          placeholder="e.g. gravity grappling hook, neon rhythm dodger..."
+          maxlength="120"
+        />
+
+        <label class="field-label" for="gh-token-input">
+          GitHub Token <span class="field-hint">(stored only in your browser)</span>
+        </label>
+        <input
+          type="password"
+          id="gh-token-input"
+          class="modal-input"
+          placeholder="ghp_... or github_pat_... (Actions: Read & Write)"
+          autocomplete="off"
+        />
+
+        <div class="modal-status" id="make-game-status" hidden></div>
+
+        <div class="modal-actions">
+          <button type="submit" class="btn btn-primary" id="trigger-make-btn">Generate Game</button>
+          <a
+            href="https://github.com/Skefie-YT/fun/actions/workflows/hourly-minigame.yml"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="btn btn-secondary"
+          >Run on GitHub</a>
+        </div>
+      </form>
+    </div>
   </div>
 
   <script src="app.js"></script>

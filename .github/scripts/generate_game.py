@@ -212,7 +212,8 @@ def build_prompt(existing_games: list[dict]) -> str:
         for g in existing_games
     ) or "- (none yet)"
 
-    seed = random.choice(GENRE_SEEDS)
+    custom_theme = os.environ.get("GAME_THEME", "").strip()
+    seed = custom_theme if custom_theme else random.choice(GENRE_SEEDS)
     suggested_accent = random.choice(ACCENTS)
 
     return f"""Create a brand-new, super fun, polished, self-contained HTML5 browser mini-game for "Fun Arcade".
