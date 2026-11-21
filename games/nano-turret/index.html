@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Nano Turret</title>
+    <style>
+        :root { --accent: #0EA5E9; --bg: #0f172a; --text: #f8fafc; }
+        * { box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
+        body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; height: 100dvh; display: flex; flex-direction: column; }
+        
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
+        .top-bar { display: flex; justify-content: space-between; align-items: center; padding: 10px 20px; pointer-events: auto; background: rgba(15, 23, 42, 0.8); }
+        .back-btn { color: var(--text); text-decoration: none; font-weight: bold; border: 2px solid var(--accent); padding: 5px 12px; border-radius: 6px; font-size: 14px; transition: 0.2s; }
+        .back-btn:hover { background: var(--accent); }
+        .stats { font-family: monospace; font-size: 18px; color: var(--accent); }
+        .icon-btn { pointer-events: auto; background: none; border: 2px solid var(--accent); color: var(--accent); width: 30px; height: 30px; border-radius: 50%; cursor: pointer; font-weight: bold; }
+
+        #game-canvas { display: block; flex-grow: 1; touch-action: none; }
+
+        .overlay { position: absolute; inset: 0; background: rgba(15, 23, 42, 0.9); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 20; padding: 20px; text-align: center; pointer-events: auto; }
+        .overlay h1 { color: var(--accent); margin-top: 0; font-size: 3rem; text-shadow: 0 0 10px var(--accent); }
+        .overlay p { max-width: 400px; line-height: 1.6; margin-bottom: 25px; }
+        .btn-main { background: var(--accent); border: none; color: white; padding: 15px 40px; font-size: 1.2rem; font-weight: bold; border-radius: 8px; cursor: pointer; transition: transform 0.1s; }
+        .btn-main:active { transform: scale(0.95); }
+        .hidden { display: none !important; }
+        .controls-hint { position: absolute; bottom: 20px; font-size: 0.8rem; opacity: 0.6; }
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <div class="top-bar">
+            <a href="../../" class="back-btn">Back</a>
+            <div class="stats">SCORE: <span id="score-val">0</span></div>
+            <div style="display: flex; gap: 10px;">
+                <button class="icon-btn" onclick="toggleHelp()">?</button>
+                <button id="mute-btn" class="icon-btn">🔊</button>
+            </div>
+        </div>
+    </div>
+
+    <canvas id="game-canvas"></canvas>
+
+    <div id="start-screen" class="overlay">
+        <h1>NANO TURRET</h1>
+        <p>Waves of bots are closing in on the core. Rotate your turret to shoot them down before they breach your shield!</p>
+        <button class="btn-main" onclick="startGame()">INITIALIZE</button>
+        <div class="controls-hint">Mouse/Touch to Aim & Shoot • Keyboard Arrows/WASD supported</div>
+    </div>
+
+    <div id="help-screen" class="overlay hidden">
+        <h1>HOW TO PLAY</h1>
+        <p>1. Move cursor or touch to rotate your turret.<br>2. Turret fires automatically while moving or clicking.<br>3. Don't let enemies reach the center core.<br>4. Gold enemies drop speed boosts!</p>
+        <button class="btn-main" onclick="toggleHelp()">GOT IT</button>
+    </div>
+
+    <div id="game-over" class="overlay hidden">
+        <h1 style="color: #ef4444;">CORE BREACHED</h1>
+        <p>Defense failed. The system has been compromised.</p>
+        <div style="font-size: 24px; margin-bottom: 10px;">Score: <span id="final-score">0</span></div>
+        <div style="font-size: 18px; margin-bottom: 25px; opacity: 0.7;">Best: <span id="best-score">0</span></div>
+        <button class="btn-main" onclick="startGame()">REBOOT</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        const scoreVal = document.getElementById('score-val');
+        const finalScore = document.getElementById('final-score');
+        const bestScore = document.getElementById('best-score');
+        const muteBtn = document.getElementById('mute-btn');
+
+        let score = 0;
+        let isRunning = false;
+        let frames = 0;
+        let lastShot = 0;
+        let enemies = [];
+        let bullets = [];
+        let particles = [];
+        let mouse = { x: 0, y: 0, angle: 0 };
+        let shake = 0;
+        let muted = false;
+
+        // Core settings
+        const coreRadius = 40;
+        const turretLength = 25;
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Controls
+        function updateInput(e) {
+            const x = e.clientX || (e.touches && e.touches[0].clientX);
+            const y = e.clientY || (e.touches && e.touches[0].clientY);
+            if (x && y) {
+                mouse.x = x;
+                mouse.y = y;
+                mouse.angle = Math.atan2(y - canvas.height/2, x - canvas.width/2);
+            }
+        }
+        window.addEventListener('mousemove', updateInput);
+        window.addEventListener('touchstart', updateInput);
+        window.addEventListener('touchmove', updateInput);
+
+        // Audio Synth
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playSound(freq, type, dur, vol) {
+            if (muted) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + dur);
+            osc.start();
+            osc.stop(audioCtx.currentTime + dur);
+        }
+
+        muteBtn.onclick = () => {
+            muted = !muted;
+            muteBtn.innerText = muted ? '🔇' : '🔊';
+        };
+
+        function createParticle(x, y, color) {
+            for(let i=0; i<8; i++) {
+                particles.push({
+                    x, y, 
+                    vx: (Math.random() - 0.5) * 6, 
+                    vy: (Math.random() - 0.5) * 6, 
+                    life: 1, 
+                    color
+                });
+            }
+        }
+
+        function spawnEnemy() {
+            const angle = Math.random() * Math.PI * 2;
+            const dist = Math.max(canvas.width, canvas.height) * 0.6;
+            const isGold = Math.random() > 0.92;
+            enemies.push({
+                x: canvas.width/2 + Math.cos(angle) * dist,
+                y: canvas.height/2 + Math.sin(angle) * dist,
+                hp: isGold ? 3 : 1,
+                speed: (1.5 + (score / 2000)) * (isGold ? 1.5 : 1),
+                isGold: isGold,
+                radius: isGold ? 12 : 10
+            });
+        }
+
+        function startGame() {
+            document.querySelectorAll('.overlay').forEach(el => el.classList.add('hidden'));
+            score = 0;
+            scoreVal.innerText = '0';
+            enemies = [];
+            bullets = [];
+            particles = [];
+            isRunning = true;
+            frames = 0;
+            requestAnimationFrame(gameLoop);
+        }
+
+        function gameOver() {
+            isRunning = false;
+            const slug = 'fun_arcade_highscore_nano-turret';
+            const high = localStorage.getItem(slug) || 0;
+            if (score > high) localStorage.setItem(slug, score);
+            
+            finalScore.innerText = score;
+            bestScore.innerText = Math.max(score, high);
+            document.getElementById('game-over').classList.remove('hidden');
+            playSound(100, 'sawtooth', 0.5, 0.2);
+        }
+
+        function toggleHelp() {
+            document.getElementById('help-screen').classList.toggle('hidden');
+        }
+
+        function gameLoop() {
+            if (!isRunning) return;
+
+            // Clear
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.3)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const cx = canvas.width / 2;
+            const cy = canvas.height / 2;
+
+            // Screen Shake
+            if (shake > 0) {
+                ctx.translate(Math.random()*shake - shake/2, Math.random()*shake - shake/2);
+                shake *= 0.9;
+            }
+
+            // Spawn logic
+            frames++;
+            const spawnRate = Math.max(10, 60 - Math.floor(score / 500));
+            if (frames % spawnRate === 0) spawnEnemy();
+
+            // Auto Shoot
+            if (frames - lastShot > 12) {
+                bullets.push({
+                    x: cx + Math.cos(mouse.angle) * turretLength,
+                    y: cy + Math.sin(mouse.angle) * turretLength,
+                    vx: Math.cos(mouse.angle) * 8,
+                    vy: Math.sin(mouse.angle) * 8
+                });
+                lastShot = frames;
+                playSound(440, 'square', 0.05, 0.05);
+            }
+
+            // Draw Core
+            ctx.beginPath();
+            ctx.arc(cx, cy, coreRadius, 0, Math.PI * 2);
+            ctx.strokeStyle = '#0EA5E9';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.fillStyle = 'rgba(14, 165, 233, 0.1)';
+            ctx.fill();
+
+            // Draw Turret
+            ctx.save();
+            ctx.translate(cx, cy);
+            ctx.rotate(mouse.angle);
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(0, -4, turretLength, 8);
+            ctx.restore();
+
+            // Particles
+            particles.forEach((p, i) => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.02;
+                if (p.life <= 0) particles.splice(i, 1);
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.fillRect(p.x, p.y, 3, 3);
+            });
+            ctx.globalAlpha = 1;
+
+            // Bullets
+            bullets.forEach((b, bi) => {
+                b.x += b.vx;
+                b.y += b.vy;
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, 3, 0, Math.PI*2);
+                ctx.fill();
+
+                if (b.x < 0 || b.x > canvas.width || b.y < 0 || b.y > canvas.height) {
+                    bullets.splice(bi, 1);
+                }
+            });
+
+            // Enemies
+            enemies.forEach((e, ei) => {
+                const dx = cx - e.x;
+                const dy = cy - e.y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+                
+                e.x += (dx / dist) * e.speed;
+                e.y += (dy / dist) * e.speed;
+
+                ctx.fillStyle = e.isGold ? '#fbbf24' : '#ef4444';
+                ctx.beginPath();
+                ctx.arc(e.x, e.y, e.radius, 0, Math.PI*2);
+                ctx.fill();
+                
+                // Glow effect
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = ctx.fillStyle;
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+
+                // Collision with Core
+                if (dist < coreRadius + e.radius) {
+                    shake = 15;
+                    gameOver();
+                }
+
+                // Collision with Bullets
+                bullets.forEach((b, bi) => {
+                    const bdx = b.x - e.x;
+                    const bdy = b.y - e.y;
+                    const bdist = Math.sqrt(bdx*bdx + bdy*bdy);
+                    if (bdist < e.radius + 3) {
+                        bullets.splice(bi, 1);
+                        e.hp--;
+                        if (e.hp <= 0) {
+                            createParticle(e.x, e.y, e.isGold ? '#fbbf24' : '#ef4444');
+                            score += e.isGold ? 250 : 100;
+                            scoreVal.innerText = score;
+                            enemies.splice(ei, 1);
+                            playSound(200 + Math.random()*200, 'sine', 0.1, 0.1);
+                        }
+                    }
+                });
+            });
+
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            requestAnimationFrame(gameLoop);
+        }
+    </script>
+</body>
+</html>
