@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Prism Shifter</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #8B5CF6;
+            --bg: #09090b;
+        }
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100dvh;
+            background: var(--bg);
+            color: white;
+            font-family: 'Outfit', sans-serif;
+            overflow: hidden;
+        }
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            max-width: 500px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+        }
+        canvas {
+            flex: 1;
+            width: 100%;
+            touch-action: none;
+        }
+        .hud {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 10;
+            pointer-events: none;
+        }
+        .hud-group {
+            display: flex;
+            gap: 10px;
+            pointer-events: auto;
+        }
+        .btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            text-decoration: none;
+            font-size: 14px;
+            cursor: pointer;
+            backdrop-filter: blur(5px);
+        }
+        .score-text {
+            font-weight: 700;
+            font-size: 20px;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+        }
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            padding: 40px;
+            text-align: center;
+        }
+        .hidden { display: none !important; }
+        h1 {
+            margin: 0 0 10px 0;
+            color: var(--accent);
+            font-size: 3rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        p { line-height: 1.5; margin-bottom: 25px; color: #ccc; }
+        .big-btn {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .big-btn:active { transform: scale(0.95); }
+        .hint { margin-top: 20px; font-size: 0.8rem; opacity: 0.6; }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div class="hud">
+        <div class="hud-group">
+            <a href="../../" class="btn">Back</a>
+            <button class="btn" id="how-to-btn">?</button>
+        </div>
+        <div class="score-text">
+            <span id="score-display">0</span>
+            <div style="font-size: 10px; opacity: 0.7; text-align: right;">BEST: <span id="best-display">0</span></div>
+        </div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="start-screen" class="overlay">
+        <h1>PRISM SHIFTER</h1>
+        <p>Match your color to the gates. Tap or hit Space to swap colors and survive the light storm.</p>
+        <button class="big-btn" id="start-btn">START ENGINE</button>
+        <div class="hint">Arrows/WASD or Swipe to move &bull; Space or Tap to Switch</div>
+    </div>
+
+    <div id="game-over" class="overlay hidden">
+        <h2 style="font-size: 2.5rem; margin:0">SHATTERED</h2>
+        <p id="final-score-text">Score: 0</p>
+        <button class="big-btn" id="restart-btn">REBOOT</button>
+    </div>
+
+    <div id="how-to-modal" class="overlay hidden">
+        <h2>HOW TO PLAY</h2>
+        <p>1. Move left/right to dodge or enter gates.<br>2. <b>Match your color</b> to the gate to pass through.<br>3. Colliding with the wrong color or side walls ends the run.<br>4. Game speed increases over time!</p>
+        <button class="btn" id="close-how-to">GOT IT</button>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const slug = 'prism-shifter';
+    
+    // Colors
+    const COLORS = ['#8B5CF6', '#EC4899']; // Purple and Pink
+    let score = 0;
+    let bestScore = localStorage.getItem('fun_arcade_highscore_' + slug) || 0;
+    let gameActive = false;
+    let speed = 5;
+    let player = { x: 0, y: 0, size: 25, colorIdx: 0, targetX: 0 };
+    let gates = [];
+    let particles = [];
+    let frame = 0;
+
+    function resize() {
+        canvas.width = canvas.offsetWidth * window.devicePixelRatio;
+        canvas.height = canvas.offsetHeight * window.devicePixelRatio;
+        player.y = canvas.height * 0.8;
+        player.targetX = canvas.width / 2;
+        player.x = player.targetX;
+    }
+
+    window.addEventListener('resize', resize);
+    resize();
+
+    // Audio Mini-Engine
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playTone(freq, type, duration) {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+    }
+
+    function init() {
+        score = 0;
+        speed = 5 * window.devicePixelRatio;
+        gates = [];
+        particles = [];
+        player.colorIdx = 0;
+        updateScore(0);
+        document.getElementById('best-display').innerText = bestScore;
+    }
+
+    function updateScore(n) {
+        score = n;
+        document.getElementById('score-display').innerText = score;
+        if (score > bestScore) {
+            bestScore = score;
+            localStorage.setItem('fun_arcade_highscore_' + slug, bestScore);
+            document.getElementById('best-display').innerText = bestScore;
+        }
+    }
+
+    function spawnGate() {
+        const id = Math.random() < 0.5 ? 0 : 1;
+        const gapWidth = canvas.width * 0.35;
+        const margin = canvas.width * 0.1;
+        const x = margin + Math.random() * (canvas.width - gapWidth - margin * 2);
+        gates.push({ x, y: -50, w: gapWidth, h: 30, colorIdx: id, passed: false });
+    }
+
+    function createParticles(x, y, color) {
+        for(let i=0; i<10; i++) {
+            particles.push({
+                x, y, 
+                vx: (Math.random() - 0.5) * 10,
+                vy: (Math.random() - 0.5) * 10,
+                life: 1.0,
+                color
+            });
+        }
+    }
+
+    function update() {
+        if (!gameActive) return;
+        frame++;
+        
+        // Player movement smoothing
+        player.x += (player.targetX - player.x) * 0.2;
+
+        // Spawn logic
+        if (frame % Math.max(20, Math.floor(80 - speed)) === 0) {
+            spawnGate();
+        }
+
+        // Update gates
+        for (let i = gates.length - 1; i >= 0; i--) {
+            let g = gates[i];
+            g.y += speed;
+
+            // Collision
+            if (!g.passed && g.y + g.h > player.y - player.size && g.y < player.y + player.size) {
+                const inGap = player.x > g.x && player.x < g.x + g.w;
+                if (inGap) {
+                    if (player.colorIdx !== g.colorIdx) {
+                        endGame();
+                    } else if (g.y > player.y) {
+                        g.passed = true;
+                        updateScore(score + 1);
+                        speed += 0.05;
+                        playTone(440 + score * 10, 'sine', 0.1);
+                    }
+                } else {
+                    endGame();
+                }
+            }
+
+            if (g.y > canvas.height) gates.splice(i, 1);
+        }
+
+        // Particles
+        for (let i = particles.length - 1; i >= 0; i--) {
+            let p = particles[i];
+            p.x += p.vx;
+            p.y += p.vy;
+            p.life -= 0.02;
+            if (p.life <= 0) particles.splice(i, 1);
+        }
+
+        draw();
+        requestAnimationFrame(update);
+    }
+
+    function draw() {
+        ctx.fillStyle = '#09090b';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Background Grid
+        ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+        ctx.lineWidth = 1;
+        for(let i=0; i<canvas.width; i+=40) {
+            ctx.beginPath();
+            ctx.moveTo(i, 0); ctx.lineTo(i, canvas.height);
+            ctx.stroke();
+        }
+
+        // Draw Gates
+        gates.forEach(g => {
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = COLORS[g.colorIdx];
+            ctx.fillStyle = COLORS[g.colorIdx];
+            // Side bars
+            ctx.fillRect(0, g.y, g.x, g.h);
+            ctx.fillRect(g.x + g.w, g.y, canvas.width - (g.x + g.w), g.h);
+            ctx.shadowBlur = 0;
+        });
+
+        // Draw Player
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = COLORS[player.colorIdx];
+        ctx.fillStyle = COLORS[player.colorIdx];
+        ctx.beginPath();
+        ctx.arc(player.x, player.y, player.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+
+        // Particles
+        particles.forEach(p => {
+            ctx.globalAlpha = p.life;
+            ctx.fillStyle = p.color;
+            ctx.fillRect(p.x, p.y, 4, 4);
+        });
+        ctx.globalAlpha = 1.0;
+        ctx.shadowBlur = 0;
+    }
+
+    function endGame() {
+        gameActive = false;
+        playTone(150, 'sawtooth', 0.5);
+        createParticles(player.x, player.y, COLORS[player.colorIdx]);
+        document.getElementById('final-score-text').innerText = "Score: " + score;
+        document.getElementById('game-over').classList.remove('hidden');
+    }
+
+    function switchColor() {
+        if (!gameActive) return;
+        player.colorIdx = (player.colorIdx + 1) % COLORS.length;
+        playTone(600, 'square', 0.05);
+    }
+
+    // Controls
+    window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space') switchColor();
+        if (['ArrowLeft', 'KeyA'].includes(e.code)) player.targetX = Math.max(player.size, player.targetX - 50);
+        if (['ArrowRight', 'KeyD'].includes(e.code)) player.targetX = Math.min(canvas.width - player.size, player.targetX + 50);
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        player.targetX = (e.clientX - rect.left) * scaleX;
+    });
+
+    canvas.addEventListener('touchstart', (e) => {
+        if (e.touches.length > 0) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            player.targetX = (e.touches[0].clientX - rect.left) * scaleX;
+        }
+    });
+    
+    canvas.addEventListener('touchmove', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        player.targetX = (e.touches[0].clientX - rect.left) * scaleX;
+        e.preventDefault();
+    }, {passive: false});
+
+    canvas.addEventListener('pointerdown', (e) => {
+        if (gameActive) switchColor();
+    });
+
+    document.getElementById('start-btn').onclick = () => {
+        document.getElementById('start-screen').classList.add('hidden');
+        gameActive = true;
+        init();
+        update();
+    };
+
+    document.getElementById('restart-btn').onclick = () => {
+        document.getElementById('game-over').classList.add('hidden');
+        gameActive = true;
+        init();
+        update();
+    };
+
+    document.getElementById('how-to-btn').onclick = () => {
+        document.getElementById('how-to-modal').classList.remove('hidden');
+    };
+    
+    document.getElementById('close-how-to').onclick = () => {
+        document.getElementById('how-to-modal').classList.add('hidden');
+    };
+</script>
+</body>
+</html>

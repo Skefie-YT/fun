@@ -86,5 +86,13 @@
     "category": "Reflex",
     "accent": "#EF4444",
     "addedAt": "2026-11-21T13:52:52Z"
+  },
+  {
+    "slug": "prism-shifter",
+    "title": "Prism Shifter",
+    "description": "Shift colors and dash through matching energy gates to survive an accelerating light storm.",
+    "category": "Reflex",
+    "accent": "#8B5CF6",
+    "addedAt": "2026-11-21T15:38:11Z"
   }
 ]
