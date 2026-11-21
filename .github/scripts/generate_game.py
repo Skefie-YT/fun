@@ -19,10 +19,8 @@ GAMES_JSON = ROOT / "games.json"
 GAMES_DIR = ROOT / "games"
 
 DEFAULT_MODELS = [
-    os.environ.get("GEMINI_MODEL", "gemini-3.8-flash"),
-    "gemini-3.5-flash",
-    "gemini-3.0-flash",
-    "gemini-2.0-flash",
+    os.environ.get("GEMINI_MODEL", "gemini-4-hydrogen"),
+    "gemini-3.8-flash",
 ]
 PREFERRED_MODELS = list(dict.fromkeys(m for m in DEFAULT_MODELS if m))
 
@@ -104,31 +102,41 @@ def list_available_models(api_key: str) -> list[str]:
 def call_gemini(api_key: str, prompt: str) -> dict:
     available = list_available_models(api_key)
     if available:
+        hydrogen_models = [m for m in available if "hydrogen" in m.lower()]
         flash_models = [m for m in available if "flash" in m and "tts" not in m and "image" not in m and "audio" not in m]
-        models_to_try = [m for m in PREFERRED_MODELS if m in available] + [m for m in flash_models if m not in PREFERRED_MODELS]
+        models_to_try = list(
+            dict.fromkeys(
+                [m for m in PREFERRED_MODELS if m in available]
+                + hydrogen_models
+                + flash_models
+            )
+        )
         if not models_to_try:
-            models_to_try = available[:3]
+            models_to_try = PREFERRED_MODELS
     else:
         models_to_try = PREFERRED_MODELS
 
     base_gen_config = {
         "temperature": 1.0,
-        "maxOutputTokens": 8192,
+        "maxOutputTokens": 16384,
         "responseMimeType": "application/json",
     }
 
     last_error: Exception | None = None
-    use_thinking_budget = True
 
     for model in models_to_try:
         url = (
             f"https://generativelanguage.googleapis.com/v1beta/models/"
             f"{model}:generateContent?key={api_key}"
         )
+        use_thinking_config = True
         for attempt in range(1, 3):
             gen_config = dict(base_gen_config)
-            if use_thinking_budget:
-                gen_config["thinkingConfig"] = {"thinkingBudget": 0}
+            if use_thinking_config:
+                if model.startswith("gemini-4-"):
+                    gen_config["thinkingConfig"] = {"thinkingLevel": "low"}
+                else:
+                    gen_config["thinkingConfig"] = {"thinkingBudget": 0}
             encoded_payload = json.dumps(
                 {
                     "contents": [{"parts": [{"text": prompt}]}],
@@ -144,7 +152,7 @@ def call_gemini(api_key: str, prompt: str) -> dict:
                 method="POST",
             )
             try:
-                with urllib.request.urlopen(req, timeout=90) as resp:
+                with urllib.request.urlopen(req, timeout=120) as resp:
                     body = json.loads(resp.read().decode("utf-8"))
                 candidates = body.get("candidates") or []
                 if not candidates:
@@ -162,9 +170,9 @@ def call_gemini(api_key: str, prompt: str) -> dict:
                     last_error = RuntimeError(
                         f"Gemini API HTTP {exc.code} ({model}): {err_body}"
                     )
-                    if exc.code == 400 and use_thinking_budget and "thinking" in err_body.lower():
+                    if exc.code == 400 and use_thinking_config and "thinking" in err_body.lower():
                         print(f"{model} rejected thinkingConfig, retrying without it...", file=sys.stderr, flush=True)
-                        use_thinking_budget = False
+                        use_thinking_config = False
                         continue
                     if exc.code == 404:
                         print(f"Model {model} unavailable (404), trying next model...", file=sys.stderr, flush=True)
