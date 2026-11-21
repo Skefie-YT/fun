@@ -232,8 +232,8 @@ Requirements for the output JSON fields:
 6. "html": a complete, single-file HTML5 document (`<!DOCTYPE html>...</html>`) with inline `<style>` and `<script>`:
    - Works immediately with zero external JS/CSS libraries (optional Google Fonts link is okay, no local file dependencies).
    - Responsive layout that fits cleanly in `100dvh` on both desktop and mobile (touch + mouse + keyboard controls).
-   - Top bar with a `<a href="../../" class="back-btn">Back</a>` link to return to the arcade menu, plus live Score and Best Score HUD.
-   - Crisp start screen / overlay, active gameplay loop (`requestAnimationFrame` or clean event loop), satisfying visual feedback (particles, screen shake, or Web Audio API synth sound effects with a mute toggle), and a Game Over / Win overlay with Play Again.
+   - Top bar with a `<a href="../../" class="back-btn">Back</a>` link to return to the arcade menu, live Score and Best Score HUD, and a `?` ("How to Play") button that toggles a clean About/How-to-Play overlay explaining the goal, rules, and controls anytime.
+   - Crisp start screen / overlay with a clear 1-2 sentence description of the game, a subtle bottom controls hint bar, active gameplay loop (`requestAnimationFrame` or clean event loop), satisfying visual feedback (particles, screen shake, or Web Audio API synth sound effects with a mute toggle), and a Game Over / Win overlay with Play Again.
    - Saves high score to `localStorage` using key `'fun_arcade_highscore_' + SLUG` (where `SLUG` matches your `slug` field) so the main arcade menu can display the player's best score.
    - Bug-free, fair difficulty curve, and genuinely fun to play!
 """

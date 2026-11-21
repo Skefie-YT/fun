@@ -214,6 +214,12 @@
       font-family: 'JetBrains Mono', monospace;
     }
 
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
     @media (max-width: 540px) {
       .hud-pill {
         padding: 5px 9px;
@@ -242,7 +248,10 @@
         </div>
       </div>
 
-      <button type="button" class="mute-btn" id="mute-btn" aria-pressed="false">Sound: On</button>
+      <div class="top-actions">
+        <button type="button" class="mute-btn" id="info-btn" aria-label="How to play" aria-expanded="false">?</button>
+        <button type="button" class="mute-btn" id="mute-btn" aria-pressed="false">Sound: On</button>
+      </div>
     </header>
 
     <main class="stage-wrap" id="stage-wrap">
@@ -252,6 +261,12 @@
         <h1>Orbit Dash</h1>
         <p>Hop between the three spinning rings. Grab golden starlight to build your combo, and dodge red rogue shards.</p>
         <button type="button" class="start-btn" id="start-btn">Launch</button>
+      </div>
+
+      <div class="overlay" id="info-overlay" hidden>
+        <h1>About Orbit Dash</h1>
+        <p>You pilot an orbital probe circling three concentric rings. Tap, click, or press Space to leap outward or inward between rings, collect golden starlight to stack score multipliers, and dodge red rogue shards as the orbit speeds up.</p>
+        <button type="button" class="start-btn" id="close-info-btn">Got It</button>
       </div>
 
       <div class="overlay" id="gameover-overlay" hidden>
@@ -763,6 +778,19 @@
 
         ctx.restore();
       }
+
+      const infoBtn = document.getElementById('info-btn');
+      const infoOverlay = document.getElementById('info-overlay');
+      const closeInfoBtn = document.getElementById('close-info-btn');
+      infoBtn.addEventListener('click', () => {
+        const open = infoOverlay.hidden;
+        infoOverlay.hidden = !open;
+        infoBtn.setAttribute('aria-expanded', String(open));
+      });
+      closeInfoBtn.addEventListener('click', () => {
+        infoOverlay.hidden = true;
+        infoBtn.setAttribute('aria-expanded', 'false');
+      });
 
       requestAnimationFrame(tick);
     })();

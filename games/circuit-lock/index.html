@@ -227,7 +227,13 @@
       font-family: 'JetBrains Mono', monospace;
     }
 
-    @media (max-width: 560px) {
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    @media (max-width: 580px) {
       .hud-pill {
         padding: 5px 9px;
         font-size: 0.76rem;
@@ -259,7 +265,10 @@
         </div>
       </div>
 
-      <button type="button" class="mute-btn" id="mute-btn" aria-pressed="false">Sound: On</button>
+      <div class="top-actions">
+        <button type="button" class="mute-btn" id="info-btn" aria-label="How to play" aria-expanded="false">?</button>
+        <button type="button" class="mute-btn" id="mute-btn" aria-pressed="false">Sound: On</button>
+      </div>
     </header>
 
     <main class="stage-wrap" id="stage-wrap">
@@ -269,6 +278,12 @@
         <h1>Circuit Lock</h1>
         <p>Click or tap tiles to rotate them 90&deg;. Route power from the glowing core to every node on the board before time runs out.</p>
         <button type="button" class="start-btn" id="start-btn">Power Up</button>
+      </div>
+
+      <div class="overlay" id="info-overlay" hidden>
+        <h1>About Circuit Lock</h1>
+        <p>Each level generates a scrambled power grid. Click, tap, or use Arrow keys + Space to rotate circuit tiles 90&deg; until power flows from the glowing core to every terminal node before the timer hits zero.</p>
+        <button type="button" class="start-btn" id="close-info-btn">Got It</button>
       </div>
 
       <div class="overlay" id="gameover-overlay" hidden>
@@ -931,6 +946,19 @@
         });
         ctx.globalAlpha = 1;
       }
+
+      const infoBtn = document.getElementById('info-btn');
+      const infoOverlay = document.getElementById('info-overlay');
+      const closeInfoBtn = document.getElementById('close-info-btn');
+      infoBtn.addEventListener('click', () => {
+        const open = infoOverlay.hidden;
+        infoOverlay.hidden = !open;
+        infoBtn.setAttribute('aria-expanded', String(open));
+      });
+      closeInfoBtn.addEventListener('click', () => {
+        infoOverlay.hidden = true;
+        infoBtn.setAttribute('aria-expanded', 'false');
+      });
 
       requestAnimationFrame(tick);
     })();

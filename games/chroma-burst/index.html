@@ -99,15 +99,50 @@
         }
         .btn-play:active { transform: scale(0.95); }
         .hidden { display: none !important; }
+        .info-btn {
+            background: rgba(255,255,255,0.12);
+            color: white;
+            border: 1px solid rgba(255,255,255,0.2);
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .controls-hint {
+            padding: 8px 16px 14px;
+            font-size: 0.82rem;
+            color: #94a3b8;
+            text-align: center;
+        }
+        #info-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.94);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 20px;
+            z-index: 20;
+        }
+        #info-overlay p {
+            max-width: 420px;
+            line-height: 1.55;
+            color: #cbd5e1;
+            margin-top: 12px;
+        }
     </style>
 </head>
 <body>
     <div id="ui-layer">
         <a href="../../" class="back-btn">Back</a>
-        <div style="display:flex; gap: 20px">
+        <div style="display:flex; gap: 20px; align-items: center;">
             <div class="stats"><div class="stat-label">Moves</div><div id="moves-val" class="stat-val">0</div></div>
             <div class="stats"><div class="stat-label">Score</div><div id="score-val" class="stat-val">0</div></div>
             <div class="stats"><div class="stat-label">Best</div><div id="best-val" class="stat-val">0</div></div>
+            <button type="button" class="info-btn" onclick="toggleInfo(true)" aria-label="How to play">?</button>
         </div>
     </div>
 
@@ -115,10 +150,16 @@
         <canvas id="gameCanvas"></canvas>
         <div id="overlay">
             <h1 id="overlay-title">CHROMA BURST</h1>
-            <p id="overlay-desc">Chain reaction color matching puzzle.</p>
+            <p id="overlay-desc" style="max-width: 380px; color: #cbd5e1; line-height: 1.5;">Click any cluster of 2+ matching color tiles to burst them, trigger cascades, and rack up combo points before your moves run out.</p>
             <button class="btn-play" onclick="startGame()">PLAY</button>
         </div>
+        <div id="info-overlay" class="hidden">
+            <h1>About Chroma Burst</h1>
+            <p>Tap or click any connected group of 2 or more same-colored tiles to pop them. Larger clusters award exponentially more points and extra moves—plan ahead to chain cascades before you run out of moves!</p>
+            <button class="btn-play" onclick="toggleInfo(false)">GOT IT</button>
+        </div>
     </div>
+    <div class="controls-hint">Click or tap any group of 2+ matching tiles to burst &bull; Bigger clusters earn bonus points</div>
 
     <script>
         const canvas = document.getElementById('gameCanvas');
@@ -161,6 +202,10 @@
                     };
                 }
             }
+        }
+
+        function toggleInfo(show) {
+            document.getElementById('info-overlay').classList.toggle('hidden', !show);
         }
 
         function startGame() {
