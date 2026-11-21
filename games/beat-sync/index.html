@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Beat Sync</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #E85D04;
+            --bg: #0a0a12;
+            --text: #ffffff;
+        }
+        * { box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100dvh; background: var(--bg); color: var(--text); font-family: 'Outfit', sans-serif; overflow: hidden; }
+        
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .hud {
+            position: absolute;
+            top: 0; width: 100%;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 10;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.5), transparent);
+        }
+
+        .back-btn, .help-btn, .mute-btn {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 8px;
+            text-decoration: none;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .stats { display: flex; gap: 20px; font-weight: 700; font-size: 1.2rem; }
+        .score-val { color: var(--accent); }
+
+        canvas { display: block; touch-action: none; }
+
+        .overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(10, 10, 18, 0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .hidden { display: none !important; }
+
+        h1 { font-size: 3rem; margin: 0; color: var(--accent); text-transform: uppercase; letter-spacing: 4px; }
+        p { max-width: 400px; line-height: 1.6; opacity: 0.8; }
+
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            border-radius: 50px;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: transform 0.2s;
+        }
+        .btn-primary:active { transform: scale(0.95); }
+
+        .controls-hint {
+            position: absolute;
+            bottom: 30px;
+            font-size: 0.9rem;
+            opacity: 0.5;
+        }
+
+        .combo-text {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 4rem;
+            font-weight: 900;
+            color: rgba(255,255,255,0.1);
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div class="hud">
+        <a href="../../" class="back-btn">Back</a>
+        <div class="stats">
+            <span>SCORE: <span id="score-display" class="score-val">0</span></span>
+            <span>BEST: <span id="best-display">0</span></span>
+        </div>
+        <div style="display:flex; gap: 10px;">
+            <button class="mute-btn" id="mute-toggle">🔊</button>
+            <button class="help-btn" id="help-toggle">?</button>
+        </div>
+    </div>
+
+    <div class="combo-text" id="combo-display"></div>
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- Screens -->
+    <div id="start-screen" class="overlay">
+        <h1>BEAT SYNC</h1>
+        <p>A pulse-pounding rhythm challenge. Tap the screen or press Space when the shrinking rings hit the target zone!</p>
+        <button class="btn-primary" id="start-btn">START MISSION</button>
+        <div class="controls-hint">Space / Click / Tap to Sync</div>
+    </div>
+
+    <div id="game-over-screen" class="overlay hidden">
+        <h2 style="font-size: 3rem; margin: 0;">DESYNCED</h2>
+        <p id="final-score-text">Final Score: 0</p>
+        <button class="btn-primary" id="restart-btn">RETRY</button>
+    </div>
+
+    <div id="help-overlay" class="overlay hidden">
+        <h2>HOW TO PLAY</h2>
+        <p>1. Rings shrink towards the center.<br>2. Tap when the ring is exactly inside the central glow.<br>3. Don't miss! If the ring collapses or you tap early/late, you lose life.<br>4. High combos boost your score significantly.</p>
+        <button class="btn-primary" onclick="document.getElementById('help-overlay').classList.add('hidden')">GOT IT</button>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreDisplay = document.getElementById('score-display');
+    const bestDisplay = document.getElementById('best-display');
+    const comboDisplay = document.getElementById('combo-display');
+    const SLUG = 'beat-sync';
+
+    let score = 0;
+    let combo = 0;
+    let bestScore = localStorage.getItem('fun_arcade_highscore_' + SLUG) || 0;
+    let isPlaying = false;
+    let rings = [];
+    let lastSpawn = 0;
+    let spawnRate = 2000;
+    let particles = [];
+    let audioCtx = null;
+    let isMuted = false;
+
+    bestDisplay.innerText = bestScore;
+
+    function initAudio() {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+
+    function playTone(freq, type = 'sine', duration = 0.1) {
+        if (isMuted || !audioCtx) return;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+    }
+
+    function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+
+    window.addEventListener('resize', resize);
+    resize();
+
+    class Ring {
+        constructor() {
+            this.radius = Math.max(canvas.width, canvas.height) * 0.6;
+            this.speed = 1.5 + (score / 1000);
+            this.color = '#E85D04';
+            this.targetRadius = 60;
+            this.tolerance = 15;
+            this.hit = false;
+        }
+
+        update() {
+            this.radius -= this.speed;
+            if (this.radius < this.targetRadius - this.tolerance) {
+                return 'miss';
+            }
+            return 'active';
+        }
+
+        draw() {
+            ctx.beginPath();
+            ctx.arc(canvas.width/2, canvas.height/2, this.radius, 0, Math.PI * 2);
+            ctx.strokeStyle = this.color;
+            ctx.lineWidth = 4;
+            ctx.stroke();
+        }
+    }
+
+    class Particle {
+        constructor(x, y, color) {
+            this.x = x; this.y = y;
+            this.vx = (Math.random() - 0.5) * 10;
+            this.vy = (Math.random() - 0.5) * 10;
+            this.life = 1.0;
+            this.color = color;
+        }
+        update() {
+            this.x += this.vx; this.y += this.vy;
+            this.life -= 0.02;
+        }
+        draw() {
+            ctx.globalAlpha = this.life;
+            ctx.fillStyle = this.color;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, 3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1.0;
+        }
+    }
+
+    function createExplosion(x, y, color) {
+        for(let i=0; i<15; i++) particles.push(new Particle(x, y, color));
+    }
+
+    function handleAction() {
+        if (!isPlaying) return;
+        initAudio();
+
+        let hitIndex = -1;
+        for (let i = 0; i < rings.length; i++) {
+            const r = rings[i];
+            const dist = Math.abs(r.radius - r.targetRadius);
+            if (dist < r.tolerance + 10) {
+                hitIndex = i;
+                break;
+            }
+        }
+
+        if (hitIndex !== -1) {
+            const r = rings[hitIndex];
+            const diff = Math.abs(r.radius - r.targetRadius);
+            const quality = diff < 8 ? 2 : 1;
+            
+            combo++;
+            score += (10 * quality) + (combo * 2);
+            createExplosion(canvas.width/2, canvas.height/2, '#E85D04');
+            playTone(200 + (combo * 20), 'square', 0.15);
+            rings.splice(hitIndex, 1);
+            
+            scoreDisplay.innerText = score;
+            comboDisplay.innerText = combo > 1 ? combo + 'x' : '';
+            spawnRate = Math.max(600, 2000 - (score/5));
+        } else {
+            endGame();
+        }
+    }
+
+    function spawnRing() {
+        rings.push(new Ring());
+    }
+
+    function endGame() {
+        isPlaying = false;
+        playTone(100, 'sawtooth', 0.5);
+        if (score > bestScore) {
+            bestScore = score;
+            localStorage.setItem('fun_arcade_highscore_' + SLUG, bestScore);
+            bestDisplay.innerText = bestScore;
+        }
+        document.getElementById('final-score-text').innerText = `Final Score: ${score} (Combo: ${combo})`;
+        document.getElementById('game-over-screen').classList.remove('hidden');
+    }
+
+    function resetGame() {
+        score = 0;
+        combo = 0;
+        rings = [];
+        particles = [];
+        spawnRate = 2000;
+        scoreDisplay.innerText = '0';
+        comboDisplay.innerText = '';
+        document.getElementById('start-screen').classList.add('hidden');
+        document.getElementById('game-over-screen').classList.add('hidden');
+        isPlaying = true;
+        lastSpawn = performance.now();
+    }
+
+    function loop(t) {
+        ctx.fillStyle = 'rgba(10, 10, 18, 0.3)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Draw Target Zone
+        ctx.beginPath();
+        ctx.arc(canvas.width/2, canvas.height/2, 60, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(232, 93, 4, 0.3)';
+        ctx.lineWidth = 10;
+        ctx.stroke();
+
+        if (isPlaying) {
+            if (t - lastSpawn > spawnRate) {
+                spawnRing();
+                lastSpawn = t;
+            }
+
+            for (let i = rings.length - 1; i >= 0; i--) {
+                const status = rings[i].update();
+                if (status === 'miss') {
+                    endGame();
+                    return;
+                }
+                rings[i].draw();
+            }
+        }
+
+        for (let i = particles.length - 1; i >= 0; i--) {
+            particles[i].update();
+            particles[i].draw();
+            if (particles[i].life <= 0) particles.splice(i, 1);
+        }
+
+        requestAnimationFrame(loop);
+    }
+
+    // Event Listeners
+    window.addEventListener('keydown', (e) => { if (e.code === 'Space') { e.preventDefault(); handleAction(); } });
+    canvas.addEventListener('mousedown', (e) => { e.preventDefault(); handleAction(); });
+    canvas.addEventListener('touchstart', (e) => { e.preventDefault(); handleAction(); }, {passive: false});
+    
+    document.getElementById('start-btn').onclick = resetGame;
+    document.getElementById('restart-btn').onclick = resetGame;
+    document.getElementById('help-toggle').onclick = () => document.getElementById('help-overlay').classList.toggle('hidden');
+    document.getElementById('mute-toggle').onclick = () => {
+        isMuted = !isMuted;
+        document.getElementById('mute-toggle').innerText = isMuted ? '🔇' : '🔊';
+    };
+
+    requestAnimationFrame(loop);
+</script>
+</body>
+</html>
