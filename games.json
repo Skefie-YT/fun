@@ -54,5 +54,13 @@
     "category": "Action",
     "accent": "#0EA5E9",
     "addedAt": "2026-11-21T09:42:13Z"
+  },
+  {
+    "slug": "ember-core",
+    "title": "Ember Core",
+    "description": "Drag to move your core, charging nearby towers to blast incoming shadow shards before they breach your perimeter.",
+    "category": "Strategy",
+    "accent": "#E85D04",
+    "addedAt": "2026-11-21T10:41:24Z"
   }
 ]

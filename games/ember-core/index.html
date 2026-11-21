@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Ember Core</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #E85D04;
+            --bg: #121212;
+            --text: #ffffff;
+        }
+        * { box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100dvh; background: var(--bg); color: var(--text); font-family: 'Roboto', sans-serif; overflow: hidden; }
+        canvas { display: block; touch-action: none; }
+
+        #hud {
+            position: absolute;
+            top: 0; left: 0; width: 100%;
+            padding: 15px 20px;
+            display: flex; justify-content: space-between; align-items: center;
+            z-index: 10;
+            pointer-events: none;
+        }
+        .hud-item { pointer-events: auto; font-family: 'Orbitron', sans-serif; font-size: 14px; }
+        .back-btn { color: white; text-decoration: none; border: 1px solid rgba(255,255,255,0.3); padding: 5px 12px; border-radius: 4px; background: rgba(0,0,0,0.5); font-size: 12px; }
+        .help-btn { cursor: pointer; background: rgba(255,255,255,0.1); border: 1px solid #fff; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-weight: bold; }
+
+        .overlay {
+            position: absolute; inset: 0;
+            background: rgba(0,0,0,0.85); display: flex; flex-direction: column;
+            align-items: center; justify-content: center; z-index: 100; text-align: center; padding: 20px;
+        }
+        .hidden { display: none !important; }
+        h1 { font-family: 'Orbitron', sans-serif; color: var(--accent); margin: 0 0 10px 0; text-transform: uppercase; letter-spacing: 2px; }
+        p { max-width: 400px; line-height: 1.6; margin-bottom: 20px; color: #ccc; }
+        .btn { 
+            background: var(--accent); color: white; border: none; padding: 12px 30px; 
+            font-family: 'Orbitron', sans-serif; font-weight: bold; cursor: pointer; 
+            border-radius: 4px; text-transform: uppercase; transition: transform 0.1s; 
+        }
+        .btn:active { transform: scale(0.95); }
+        .stat-line { margin: 10px 0; font-size: 1.2rem; }
+        .controls-hint { position: absolute; bottom: 30px; width: 100%; text-align: center; font-size: 12px; color: #666; }
+    </style>
+</head>
+<body>
+
+    <div id="hud">
+        <a href="../../" class="back-btn">Back</a>
+        <div class="hud-item">SCORE: <span id="score-val">0</span></div>
+        <div class="hud-item">BEST: <span id="best-val">0</span></div>
+        <div class="help-btn hud-item" onclick="toggleHelp()">?</div>
+    </div>
+
+    <div id="start-screen" class="overlay">
+        <h1>Ember Core</h1>
+        <p>Shadow shards are closing in! Drag the glowing Ember Core to power nearby sentry towers. Only powered towers can fire.</p>
+        <button class="btn" onclick="startGame()">Ignite Core</button>
+        <div class="controls-hint">Drag or Move Mouse to reposition the Core</div>
+    </div>
+
+    <div id="help-screen" class="overlay hidden" onclick="toggleHelp()">
+        <h1>How to Play</h1>
+        <p>1. The Core (Center) powers towers in its radius.<br>2. Towers automatically target the nearest enemy.<br>3. Don't let enemies touch the Core!<br>4. Stay close to towers to keep them firing.</p>
+        <button class="btn">Resume</button>
+    </div>
+
+    <div id="game-over-screen" class="overlay hidden">
+        <h1>Core Collapsed</h1>
+        <div class="stat-line">Score: <span id="final-score">0</span></div>
+        <div class="stat-line">Personal Best: <span id="final-best">0</span></div>
+        <button class="btn" onclick="startGame()" style="margin-top:20px">Try Again</button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score-val');
+    const bestEl = document.getElementById('best-val');
+    const finalScoreEl = document.getElementById('final-score');
+    const finalBestEl = document.getElementById('final-best');
+    
+    let score = 0;
+    let best = localStorage.getItem('fun_arcade_highscore_ember-core') || 0;
+    let gameActive = false;
+    let frames = 0;
+
+    const ACCENT = '#E85D04';
+    const SLUG = 'ember-core';
+    bestEl.innerText = best;
+
+    let player = { x: 0, y: 0, radius: 20, powerRadius: 150 };
+    let towers = [];
+    let enemies = [];
+    let projectiles = [];
+    let particles = [];
+
+    function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        player.x = canvas.width / 2;
+        player.y = canvas.height / 2;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function initTowers() {
+        towers = [];
+        const towerCount = 6;
+        const dist = Math.min(canvas.width, canvas.height) * 0.35;
+        for (let i = 0; i < towerCount; i++) {
+            const angle = (i / towerCount) * Math.PI * 2;
+            towers.push({
+                x: canvas.width/2 + Math.cos(angle) * dist,
+                y: canvas.height/2 + Math.sin(angle) * dist,
+                angle: angle,
+                cooldown: 0,
+                active: false
+            });
+        }
+    }
+
+    function startGame() {
+        score = 0;
+        frames = 0;
+        enemies = [];
+        projectiles = [];
+        particles = [];
+        initTowers();
+        gameActive = true;
+        document.querySelectorAll('.overlay').forEach(el => el.classList.add('hidden'));
+        updateScore(0);
+    }
+
+    function gameOver() {
+        gameActive = false;
+        if (score > best) {
+            best = score;
+            localStorage.setItem('fun_arcade_highscore_' + SLUG, best);
+            bestEl.innerText = best;
+        }
+        finalScoreEl.innerText = score;
+        finalBestEl.innerText = best;
+        document.getElementById('game-over-screen').classList.remove('hidden');
+    }
+
+    function toggleHelp() {
+        document.getElementById('help-screen').classList.toggle('hidden');
+    }
+
+    function updateScore(n) {
+        score += n;
+        scoreEl.innerText = score;
+    }
+
+    function spawnEnemy() {
+        const side = Math.floor(Math.random() * 4);
+        let x, y;
+        if (side === 0) { x = -20; y = Math.random() * canvas.height; }
+        else if (side === 1) { x = canvas.width + 20; y = Math.random() * canvas.height; }
+        else if (side === 2) { x = Math.random() * canvas.width; y = -20; }
+        else { x = Math.random() * canvas.width; y = canvas.height + 20; }
+        
+        const speed = 1 + (score / 500);
+        enemies.push({ x, y, speed, hp: 1 + Math.floor(score/1000) });
+    }
+
+    function createParticles(x, y, color, count=8) {
+        for(let i=0; i<count; i++) {
+            particles.push({
+                x, y, 
+                vx: (Math.random()-0.5)*10, 
+                vy: (Math.random()-0.5)*10, 
+                life: 1.0, 
+                color
+            });
+        }
+    }
+
+    // Input handling
+    const handleMove = (e) => {
+        if (!gameActive) return;
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        player.x = clientX;
+        player.y = clientY;
+    };
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('touchmove', handleMove);
+
+    function update() {
+        if (!gameActive) return;
+        frames++;
+
+        if (frames % Math.max(10, 60 - Math.floor(score/100)) === 0) spawnEnemy();
+
+        // Update Enemies
+        enemies.forEach((en, i) => {
+            const dx = player.x - en.x;
+            const dy = player.y - en.y;
+            const angle = Math.atan2(dy, dx);
+            en.x += Math.cos(angle) * en.speed;
+            en.y += Math.sin(angle) * en.speed;
+
+            // Collision with Core
+            const dist = Math.hypot(dx, dy);
+            if (dist < player.radius + 10) {
+                createParticles(player.x, player.y, '#fff', 20);
+                gameOver();
+            }
+        });
+
+        // Update Towers
+        towers.forEach(t => {
+            const distToPlayer = Math.hypot(t.x - player.x, t.y - player.y);
+            t.active = distToPlayer < player.powerRadius;
+            
+            if (t.active && t.cooldown <= 0) {
+                // Find nearest enemy
+                let nearest = null;
+                let minDist = 400;
+                enemies.forEach(en => {
+                    const d = Math.hypot(en.x - t.x, en.y - t.y);
+                    if (d < minDist) {
+                        minDist = d;
+                        nearest = en;
+                    }
+                });
+
+                if (nearest) {
+                    projectiles.push({
+                        x: t.x, y: t.y,
+                        target: nearest,
+                        vx: Math.cos(Math.atan2(nearest.y - t.y, nearest.x - t.x)) * 8,
+                        vy: Math.sin(Math.atan2(nearest.y - t.y, nearest.x - t.x)) * 8
+                    });
+                    t.cooldown = 20;
+                }
+            }
+            if (t.cooldown > 0) t.cooldown--;
+        });
+
+        // Update Projectiles
+        projectiles.forEach((p, pi) => {
+            p.x += p.vx;
+            p.y += p.vy;
+            
+            enemies.forEach((en, ei) => {
+                if (Math.hypot(p.x - en.x, p.y - en.y) < 15) {
+                    en.hp--;
+                    projectiles.splice(pi, 1);
+                    if (en.hp <= 0) {
+                        createParticles(en.x, en.y, '#444');
+                        enemies.splice(ei, 1);
+                        updateScore(10);
+                    }
+                }
+            });
+
+            if (p.x < 0 || p.x > canvas.width || p.y < 0 || p.y > canvas.height) {
+                projectiles.splice(pi, 1);
+            }
+        });
+
+        // Update Particles
+        particles.forEach((p, i) => {
+            p.x += p.vx;
+            p.y += p.vy;
+            p.life -= 0.02;
+            if (p.life <= 0) particles.splice(i, 1);
+        });
+    }
+
+    function draw() {
+        ctx.fillStyle = '#0a0a0a';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Draw Power Field
+        ctx.beginPath();
+        ctx.arc(player.x, player.y, player.powerRadius, 0, Math.PI * 2);
+        ctx.strokeStyle = gameActive ? 'rgba(232, 93, 4, 0.15)' : 'transparent';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Draw Towers & Links
+        towers.forEach(t => {
+            if (t.active) {
+                ctx.beginPath();
+                ctx.moveTo(player.x, player.y);
+                ctx.lineTo(t.x, t.y);
+                ctx.strokeStyle = 'rgba(232, 93, 4, 0.2)';
+                ctx.stroke();
+            }
+
+            ctx.fillStyle = t.active ? ACCENT : '#333';
+            ctx.beginPath();
+            ctx.arc(t.x, t.y, 12, 0, Math.PI * 2);
+            ctx.fill();
+            
+            if (t.active) {
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = ACCENT;
+                ctx.fillStyle = 'white';
+                ctx.beginPath();
+                ctx.arc(t.x, t.y, 4, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+        });
+
+        // Draw Player Core
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = ACCENT;
+        ctx.fillStyle = ACCENT;
+        ctx.beginPath();
+        ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = 'white';
+        ctx.beginPath();
+        ctx.arc(player.x, player.y, player.radius * 0.6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // Draw Enemies
+        ctx.fillStyle = '#ff3333';
+        enemies.forEach(en => {
+            ctx.save();
+            ctx.translate(en.x, en.y);
+            ctx.rotate(frames * 0.05);
+            ctx.fillRect(-8, -8, 16, 16);
+            ctx.restore();
+        });
+
+        // Draw Projectiles
+        ctx.fillStyle = ACCENT;
+        projectiles.forEach(p => {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+            ctx.fill();
+        });
+
+        // Draw Particles
+        particles.forEach(p => {
+            ctx.globalAlpha = p.life;
+            ctx.fillStyle = p.color;
+            ctx.fillRect(p.x, p.y, 3, 3);
+        });
+        ctx.globalAlpha = 1.0;
+
+        update();
+        requestAnimationFrame(draw);
+    }
+
+    requestAnimationFrame(draw);
+</script>
+</body>
+</html>
