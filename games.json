@@ -102,5 +102,13 @@
     "category": "Physics",
     "accent": "#8B5CF6",
     "addedAt": "2026-11-21T16:38:28Z"
+  },
+  {
+    "slug": "kinetic-hook",
+    "title": "Kinetic Hook",
+    "description": "Fling your energy orb between anchors to climb. Use momentum to slingshot past obstacles and reach the highest peaks!",
+    "category": "Physics",
+    "accent": "#14B8A6",
+    "addedAt": "2026-11-21T17:36:00Z"
   }
 ]

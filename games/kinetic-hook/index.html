@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Kinetic Hook</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #14B8A6;
+            --bg: #0f172a;
+            --text: #f8fafc;
+        }
+        * { box-sizing: border-box; touch-action: none; user-select: none; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100dvh; background: var(--bg); color: var(--text); font-family: 'Outfit', sans-serif; overflow: hidden; }
+        
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
+        .hud-bar { display: flex; justify-content: space-between; align-items: center; padding: 10px 20px; pointer-events: auto; }
+        .back-btn { color: var(--text); text-decoration: none; font-weight: bold; background: rgba(255,255,255,0.1); padding: 5px 12px; border-radius: 8px; }
+        .stats { font-size: 1.2rem; font-weight: 700; display: flex; gap: 20px; }
+        .btn-icon { background: rgba(255,255,255,0.1); border: none; color: white; width: 36px; height: 36px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; font-weight: bold; }
+
+        .overlay { position: absolute; inset: 0; background: rgba(15, 23, 42, 0.9); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center; pointer-events: auto; z-index: 20; }
+        .hidden { display: none !important; }
+        
+        h1 { font-size: 3rem; margin: 0; color: var(--accent); }
+        p { max-width: 400px; line-height: 1.6; margin: 15px 0; }
+        .btn-main { background: var(--accent); border: none; color: white; padding: 15px 40px; font-size: 1.2rem; border-radius: 50px; cursor: pointer; font-weight: bold; transition: transform 0.2s; }
+        .btn-main:active { transform: scale(0.95); }
+
+        canvas { display: block; width: 100%; height: 100%; }
+        #hint-bar { position: absolute; bottom: 20px; width: 100%; text-align: center; font-size: 0.9rem; opacity: 0.6; pointer-events: none; }
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <div class="hud-bar">
+            <a href="../../" class="back-btn">Back</a>
+            <div class="stats">
+                <div id="score-display">0m</div>
+                <div id="best-display" style="opacity: 0.7">Best: 0m</div>
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button class="btn-icon" id="mute-btn">🔊</button>
+                <button class="btn-icon" id="help-btn">?</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="start-screen" class="overlay">
+        <h1>KINETIC HOOK</h1>
+        <p>Click and hold to attach your hook to the nearest anchor. Release to slingshot upward using your momentum!</p>
+        <button class="btn-main" id="start-btn">LAUNCH</button>
+    </div>
+
+    <div id="game-over" class="overlay hidden">
+        <h2 id="over-title">FALLEN</h2>
+        <p id="final-score">You climbed 0 meters.</p>
+        <button class="btn-main" id="retry-btn">TRY AGAIN</button>
+    </div>
+
+    <div id="how-to-play" class="overlay hidden">
+        <h2>HOW TO PLAY</h2>
+        <ul style="text-align: left; margin: 20px 0;">
+            <li>Tap/Click and HOLD to hook onto nodes.</li>
+            <li>Swing to gain speed and momentum.</li>
+            <li>RELEASE to fly through the air.</li>
+            <li>Avoid falling off the bottom of the screen!</li>
+        </ul>
+        <button class="btn-main" id="close-help">GOT IT</button>
+    </div>
+
+    <div id="hint-bar">HOLD TO HOOK • RELEASE TO FLING</div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const SLUG = 'kinetic-hook';
+        
+        let width, height, dpr;
+        let state = 'start';
+        let score = 0;
+        let best = localStorage.getItem('fun_arcade_highscore_' + SLUG) || 0;
+        let isMuted = false;
+        let audioCtx;
+
+        // Physics Constants
+        const GRAVITY = 0.25;
+        const HOOK_STRENGTH = 0.12;
+        const FRICTION = 0.995;
+        const DAMPING = 0.98;
+
+        let player = {
+            x: 0, y: 0, vx: 0, vy: 0,
+            radius: 12,
+            hookedTo: null,
+            angle: 0,
+            dist: 0
+        };
+
+        let anchors = [];
+        let particles = [];
+        let cameraY = 0;
+        let inputDown = false;
+
+        function resize() {
+            dpr = window.devicePixelRatio || 1;
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width * dpr;
+            canvas.height = height * dpr;
+            ctx.scale(dpr, dpr);
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        function createAnchor(y) {
+            return {
+                x: 50 + Math.random() * (width - 100),
+                y: y,
+                id: Math.random(),
+                pulse: Math.random() * Math.PI * 2
+            };
+        }
+
+        function initGame() {
+            score = 0;
+            cameraY = 0;
+            player = {
+                x: width / 2,
+                y: height - 150,
+                vx: 0,
+                vy: -5,
+                radius: 12,
+                hookedTo: null
+            };
+            anchors = [];
+            for (let i = 0; i < 8; i++) {
+                anchors.push(createAnchor(height - i * 180));
+            }
+            updateBest();
+        }
+
+        function playTone(freq, duration, type = 'sine') {
+            if (isMuted) return;
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + duration);
+        }
+
+        function update() {
+            if (state !== 'playing') return;
+
+            // Input Logic
+            if (inputDown && !player.hookedTo) {
+                let closest = null;
+                let minDist = 300;
+                anchors.forEach(a => {
+                    const d = Math.hypot(player.x - a.x, player.y - a.y);
+                    if (d < minDist) {
+                        minDist = d;
+                        closest = a;
+                    }
+                });
+                if (closest) {
+                    player.hookedTo = closest;
+                    player.dist = minDist;
+                    playTone(440, 0.1, 'square');
+                }
+            }
+            
+            if (!inputDown) player.hookedTo = null;
+
+            // Movement
+            if (player.hookedTo) {
+                const dx = player.hookedTo.x - player.x;
+                const dy = player.hookedTo.y - player.y;
+                const angle = Math.atan2(dy, dx);
+                const force = (Math.hypot(dx, dy) - 20) * HOOK_STRENGTH;
+                
+                player.vx += Math.cos(angle) * force;
+                player.vy += Math.sin(angle) * force;
+                player.vx *= DAMPING;
+                player.vy *= DAMPING;
+            } else {
+                player.vy += GRAVITY;
+                player.vx *= FRICTION;
+            }
+
+            player.x += player.vx;
+            player.y += player.vy;
+
+            // Camera & Scoring
+            const targetCam = player.y - height * 0.6;
+            if (targetCam < cameraY) {
+                cameraY += (targetCam - cameraY) * 0.1;
+            }
+            
+            const currentScore = Math.floor(Math.abs(Math.min(0, player.y - (height - 150))) / 10);
+            if (currentScore > score) score = currentScore;
+            
+            // Anchor Management
+            if (anchors[anchors.length - 1].y > cameraY - 100) {
+                anchors.push(createAnchor(anchors[anchors.length - 1].y - 200 - Math.random() * 50));
+            }
+            if (anchors[0].y > cameraY + height + 200) {
+                anchors.shift();
+            }
+
+            // Bounds / Game Over
+            if (player.x < 0) { player.x = 0; player.vx *= -0.5; }
+            if (player.x > width) { player.x = width; player.vx *= -0.5; }
+            
+            if (player.y > cameraY + height + 100) {
+                endGame();
+            }
+
+            // HUD
+            document.getElementById('score-display').innerText = score + 'm';
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, width, height);
+            
+            ctx.save();
+            ctx.translate(0, -cameraY);
+
+            // Background Grid
+            ctx.strokeStyle = 'rgba(20, 184, 166, 0.05)';
+            ctx.lineWidth = 1;
+            for(let i = 0; i < 10; i++) {
+                const gx = (i * width / 10);
+                ctx.beginPath();
+                ctx.moveTo(gx, cameraY);
+                ctx.lineTo(gx, cameraY + height);
+                ctx.stroke();
+            }
+
+            // Hook Line
+            if (player.hookedTo && state === 'playing') {
+                ctx.beginPath();
+                ctx.moveTo(player.x, player.y);
+                ctx.lineTo(player.hookedTo.x, player.hookedTo.y);
+                ctx.strokeStyle = '#14B8A6';
+                ctx.lineWidth = 3;
+                ctx.setLineDash([5, 5]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+
+            // Anchors
+            anchors.forEach(a => {
+                a.pulse += 0.05;
+                const s = 6 + Math.sin(a.pulse) * 2;
+                ctx.fillStyle = '#14B8A6';
+                ctx.beginPath();
+                ctx.arc(a.x, a.y, s, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+                ctx.beginPath();
+                ctx.arc(a.x, a.y, s + 10, 0, Math.PI * 2);
+                ctx.stroke();
+            });
+
+            // Player
+            ctx.fillStyle = '#fff';
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#14B8A6';
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            ctx.restore();
+        }
+
+        function loop() {
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        function endGame() {
+            state = 'over';
+            document.getElementById('game-over').classList.remove('hidden');
+            document.getElementById('final-score').innerText = `You climbed ${score} meters.`;
+            if (score > best) {
+                best = score;
+                localStorage.setItem('fun_arcade_highscore_' + SLUG, best);
+                updateBest();
+                document.getElementById('over-title').innerText = 'NEW BEST!';
+            } else {
+                document.getElementById('over-title').innerText = 'FALLEN';
+            }
+            playTone(150, 0.4, 'sawtooth');
+        }
+
+        function updateBest() {
+            document.getElementById('best-display').innerText = 'Best: ' + best + 'm';
+        }
+
+        // Controls
+        const inputStart = (e) => { 
+            if (state === 'playing') inputDown = true; 
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        };
+        const inputEnd = () => { inputDown = false; };
+
+        window.addEventListener('mousedown', inputStart);
+        window.addEventListener('mouseup', inputEnd);
+        window.addEventListener('touchstart', (e) => { e.preventDefault(); inputStart(); }, {passive: false});
+        window.addEventListener('touchend', inputEnd);
+        window.addEventListener('keydown', (e) => { if(e.code === 'Space') inputStart(); });
+        window.addEventListener('keyup', (e) => { if(e.code === 'Space') inputEnd(); });
+
+        document.getElementById('start-btn').onclick = () => {
+            document.getElementById('start-screen').classList.add('hidden');
+            state = 'playing';
+            initGame();
+        };
+
+        document.getElementById('retry-btn').onclick = () => {
+            document.getElementById('game-over').classList.add('hidden');
+            state = 'playing';
+            initGame();
+        };
+
+        document.getElementById('help-btn').onclick = () => {
+            document.getElementById('how-to-play').classList.remove('hidden');
+        };
+
+        document.getElementById('close-help').onclick = () => {
+            document.getElementById('how-to-play').classList.add('hidden');
+        };
+
+        document.getElementById('mute-btn').onclick = () => {
+            isMuted = !isMuted;
+            document.getElementById('mute-btn').innerText = isMuted ? '🔇' : '🔊';
+        };
+
+        // Kickoff
+        updateBest();
+        loop();
+    </script>
+</body>
+</html>
