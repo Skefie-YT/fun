@@ -78,5 +78,13 @@
     "category": "Puzzle",
     "accent": "#F59E0B",
     "addedAt": "2026-11-21T12:43:41Z"
+  },
+  {
+    "slug": "tower-stacker-pro",
+    "title": "Tower Stacker Pro",
+    "description": "Tap to drop blocks and build the tallest tower possible. Align them perfectly to maintain stability!",
+    "category": "Reflex",
+    "accent": "#EF4444",
+    "addedAt": "2026-11-21T13:52:52Z"
   }
 ]
