@@ -62,5 +62,13 @@
     "category": "Strategy",
     "accent": "#E85D04",
     "addedAt": "2026-11-21T10:41:24Z"
+  },
+  {
+    "slug": "tempo-strike",
+    "title": "Tempo Strike",
+    "description": "Defend your core by striking incoming rhythm pulses exactly when they enter the timing zone. Don't miss a beat!",
+    "category": "Reflex",
+    "accent": "#E85D04",
+    "addedAt": "2026-11-21T11:40:22Z"
   }
 ]
