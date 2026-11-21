@@ -70,5 +70,13 @@
     "category": "Reflex",
     "accent": "#E85D04",
     "addedAt": "2026-11-21T11:40:22Z"
+  },
+  {
+    "slug": "flux-link",
+    "title": "Flux Link",
+    "description": "Drag to draw paths through identical energy tiles to trigger massive chain reactions and clear the board.",
+    "category": "Puzzle",
+    "accent": "#F59E0B",
+    "addedAt": "2026-11-21T12:43:41Z"
   }
 ]
