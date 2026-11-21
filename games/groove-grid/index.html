@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Groove Grid</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #10B981;
+            --bg: #0f172a;
+            --tile: #1e293b;
+            --text: #f8fafc;
+        }
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body, html {
+            margin: 0; padding: 0; height: 100%; width: 100%;
+            background: var(--bg); font-family: 'Outfit', sans-serif; color: var(--text); overflow: hidden;
+        }
+        #game-container {
+            display: flex; flex-direction: column; height: 100dvh; max-width: 500px; margin: 0 auto; position: relative;
+        }
+        header {
+            padding: 15px; display: flex; justify-content: space-between; align-items: center; z-index: 10;
+        }
+        .back-btn {
+            color: var(--text); text-decoration: none; font-weight: bold; font-size: 14px;
+            padding: 8px 16px; border-radius: 20px; background: rgba(255,255,255,0.1);
+        }
+        .stats { text-align: center; }
+        .score-val { font-size: 24px; font-weight: 700; color: var(--accent); }
+        .best-val { font-size: 12px; opacity: 0.7; }
+        .help-btn { 
+            width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--text); 
+            display: flex; align-items: center; justify-content: center; cursor: pointer; font-weight: bold;
+        }
+        
+        #grid-container {
+            flex: 1; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); 
+            gap: 12px; padding: 20px; align-content: center;
+        }
+        .tile {
+            background: var(--tile); border-radius: 12px; cursor: pointer; 
+            transition: transform 0.1s, background 0.2s; position: relative; overflow: hidden;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+        }
+        .tile.active { background: var(--accent); transform: scale(0.95); box-shadow: 0 0 20px var(--accent); }
+        .tile.wrong { background: #ef4444; transform: scale(0.9); }
+        .tile.hit { animation: flash 0.3s ease-out; }
+        @keyframes flash {
+            0% { background: var(--accent); }
+            100% { background: var(--tile); }
+        }
+
+        .overlay {
+            position: absolute; inset: 0; background: rgba(15, 23, 42, 0.95); 
+            display: flex; flex-direction: column; align-items: center; justify-content: center; 
+            padding: 30px; text-align: center; z-index: 100; transition: opacity 0.3s;
+        }
+        .overlay.hidden { display: none; }
+        h1 { font-size: 3rem; margin: 0; color: var(--accent); }
+        .btn-play { 
+            background: var(--accent); color: #fff; border: none; padding: 15px 40px; 
+            font-size: 1.2rem; font-weight: 700; border-radius: 30px; cursor: pointer; margin-top: 20px; 
+        }
+        .controls-hint { margin-top: auto; padding: 20px; font-size: 12px; opacity: 0.5; }
+        #timer-bar { height: 4px; background: var(--accent); width: 100%; transition: width 0.1s linear; }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <header>
+        <a href="../../" class="back-btn">Back</a>
+        <div class="stats">
+            <div class="score-val" id="score">0</div>
+            <div class="best-val">BEST: <span id="best">0</span></div>
+        </div>
+        <div class="help-btn" id="btn-help">?</div>
+    </header>
+    
+    <div id="timer-bar"></div>
+
+    <div id="grid-container"></div>
+
+    <div class="controls-hint">WATCH THE SEQUENCE. REPEAT THE PATTERN.</div>
+
+    <!-- Overlays -->
+    <div id="overlay-start" class="overlay">
+        <h1>GROOVE GRID</h1>
+        <p>A sequence will flash on the 3x3 grid. Repeat it perfectly to stay in the groove!</p>
+        <button class="btn-play" id="btn-start">START BEAT</button>
+    </div>
+
+    <div id="overlay-help" class="overlay hidden">
+        <h2>How to Play</h2>
+        <p>1. Watch the tiles light up in order.<br>2. Tap the tiles in the exact same sequence.<br>3. Each successful round adds one tile to the chain.<br>4. Don't miss a beat before the timer runs out!</p>
+        <button class="btn-play" id="btn-close-help">GOT IT</button>
+    </div>
+
+    <div id="overlay-gameover" class="overlay hidden">
+        <h2 id="go-title">OFF BEAT!</h2>
+        <p>You lost the rhythm.</p>
+        <div style="font-size: 24px; margin: 10px 0;">Score: <span id="final-score">0</span></div>
+        <button class="btn-play" id="btn-restart">TRY AGAIN</button>
+    </div>
+</div>
+
+<script>
+    const SLUG = "groove-grid";
+    const grid = document.getElementById('grid-container');
+    const scoreEl = document.getElementById('score');
+    const bestEl = document.getElementById('best');
+    const timerBar = document.getElementById('timer-bar');
+    
+    let sequence = [];
+    let playerIndex = 0;
+    let isWatching = true;
+    let score = 0;
+    let timeLeft = 100;
+    let timerInterval = null;
+
+    // Create Grid
+    for (let i = 0; i < 9; i++) {
+        const tile = document.createElement('div');
+        tile.className = 'tile';
+        tile.dataset.id = i;
+        tile.addEventListener('touchstart', (e) => { e.preventDefault(); handleInput(i); });
+        tile.addEventListener('mousedown', () => handleInput(i));
+        grid.appendChild(tile);
+    }
+
+    const tiles = document.querySelectorAll('.tile');
+
+    // Audio Context for Synth
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    let audioCtx = null;
+    function playNote(freq) {
+        if (!audioCtx) audioCtx = new AudioCtx();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.3);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.3);
+    }
+
+    const freqs = [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88, 523.25, 587.33];
+
+    function updateBest() {
+        const best = localStorage.getItem('fun_arcade_highscore_' + SLUG) || 0;
+        bestEl.innerText = best;
+        if (score > best) {
+            localStorage.setItem('fun_arcade_highscore_' + SLUG, score);
+            bestEl.innerText = score;
+        }
+    }
+    updateBest();
+
+    function startGame() {
+        score = 0;
+        scoreEl.innerText = '0';
+        sequence = [];
+        document.querySelectorAll('.overlay').forEach(el => el.classList.add('hidden'));
+        nextRound();
+    }
+
+    function nextRound() {
+        isWatching = true;
+        playerIndex = 0;
+        sequence.push(Math.floor(Math.random() * 9));
+        playSequence();
+    }
+
+    async function playSequence() {
+        for (let i = 0; i < sequence.length; i++) {
+            await new Promise(r => setTimeout(r, 400 - Math.min(score * 10, 200)));
+            const tileIdx = sequence[i];
+            flashTile(tileIdx);
+        }
+        setTimeout(() => {
+            isWatching = false;
+            startTimer();
+        }, 300);
+    }
+
+    function flashTile(idx) {
+        tiles[idx].classList.add('active');
+        playNote(freqs[idx]);
+        setTimeout(() => tiles[idx].classList.remove('active'), 250);
+    }
+
+    function startTimer() {
+        clearInterval(timerInterval);
+        timeLeft = 100;
+        const duration = Math.max(1000, 5000 - (score * 100));
+        const step = 100 / (duration / 50);
+        timerInterval = setInterval(() => {
+            timeLeft -= step;
+            timerBar.style.width = timeLeft + '%';
+            if (timeLeft <= 0) gameOver();
+        }, 50);
+    }
+
+    function handleInput(idx) {
+        if (isWatching) return;
+        
+        if (idx === sequence[playerIndex]) {
+            tiles[idx].classList.add('hit');
+            playNote(freqs[idx] * 1.5);
+            setTimeout(() => tiles[idx].classList.remove('hit'), 200);
+            playerIndex++;
+            
+            if (playerIndex === sequence.length) {
+                clearInterval(timerInterval);
+                isWatching = true;
+                score++;
+                scoreEl.innerText = score;
+                setTimeout(nextRound, 600);
+            }
+        } else {
+            tiles[idx].classList.add('wrong');
+            setTimeout(() => tiles[idx].classList.remove('wrong'), 300);
+            gameOver();
+        }
+    }
+
+    function gameOver() {
+        clearInterval(timerInterval);
+        document.getElementById('final-score').innerText = score;
+        document.getElementById('overlay-gameover').classList.remove('hidden');
+        updateBest();
+    }
+
+    // Event Listeners
+    document.getElementById('btn-start').onclick = startGame;
+    document.getElementById('btn-restart').onclick = startGame;
+    document.getElementById('btn-help').onclick = () => {
+        document.getElementById('overlay-help').classList.remove('hidden');
+    };
+    document.getElementById('btn-close-help').onclick = () => {
+        document.getElementById('overlay-help').classList.add('hidden');
+    };
+</script>
+</body>
+</html>

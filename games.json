@@ -150,5 +150,13 @@
     "category": "Strategy",
     "accent": "#10B981",
     "addedAt": "2026-11-21T22:32:20Z"
+  },
+  {
+    "slug": "groove-grid",
+    "title": "Groove Grid",
+    "description": "Tap the pulsing tiles in the sequence they light up to maintain the rhythm and build your high score!",
+    "category": "Reflex",
+    "accent": "#10B981",
+    "addedAt": "2026-11-21T23:30:21Z"
   }
 ]
