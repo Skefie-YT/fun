@@ -6,5 +6,13 @@
     "category": "Arcade",
     "accent": "#E85D04",
     "addedAt": "2026-11-20T18:52:00-08:00"
+  },
+  {
+    "slug": "circuit-lock",
+    "title": "Circuit Lock",
+    "description": "Rotate circuit tiles to route power from the core to every terminal before the clock runs out.",
+    "category": "Puzzle",
+    "accent": "#0EA5E9",
+    "addedAt": "2026-11-20T18:59:00-08:00"
   }
 ]
