@@ -19,8 +19,9 @@ GAMES_JSON = ROOT / "games.json"
 GAMES_DIR = ROOT / "games"
 
 DEFAULT_MODELS = [
-    os.environ.get("GEMINI_MODEL", "gemini-3.8-flash-lite"),
-    "gemini-3.8-flash",
+    os.environ.get("GEMINI_MODEL", "gemini-3.8-flash"),
+    "gemini-2.5-flash-lite",
+    "gemini-2.5-flash",
 ]
 MODELS = list(dict.fromkeys(m for m in DEFAULT_MODELS if m))
 
@@ -82,35 +83,33 @@ def strip_code_fences(text: str) -> str:
 
 
 def call_gemini(api_key: str, prompt: str) -> dict:
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "temperature": 1.0,
-            "responseMimeType": "application/json",
-            "responseSchema": {
-                "type": "OBJECT",
-                "properties": {
-                    "slug": {"type": "STRING"},
-                    "title": {"type": "STRING"},
-                    "description": {"type": "STRING"},
-                    "category": {"type": "STRING"},
-                    "accent": {"type": "STRING"},
-                    "html": {"type": "STRING"},
-                },
-                "required": [
-                    "slug",
-                    "title",
-                    "description",
-                    "category",
-                    "accent",
-                    "html",
-                ],
+    base_gen_config = {
+        "temperature": 1.0,
+        "maxOutputTokens": 8192,
+        "responseMimeType": "application/json",
+        "responseSchema": {
+            "type": "OBJECT",
+            "properties": {
+                "slug": {"type": "STRING"},
+                "title": {"type": "STRING"},
+                "description": {"type": "STRING"},
+                "category": {"type": "STRING"},
+                "accent": {"type": "STRING"},
+                "html": {"type": "STRING"},
             },
+            "required": [
+                "slug",
+                "title",
+                "description",
+                "category",
+                "accent",
+                "html",
+            ],
         },
     }
 
-    encoded_payload = json.dumps(payload).encode("utf-8")
     last_error: Exception | None = None
+    use_thinking_budget = True
 
     for model in MODELS:
         url = (
@@ -118,6 +117,16 @@ def call_gemini(api_key: str, prompt: str) -> dict:
             f"{model}:generateContent?key={api_key}"
         )
         for attempt in range(1, 3):
+            gen_config = dict(base_gen_config)
+            if use_thinking_budget:
+                gen_config["thinkingConfig"] = {"thinkingBudget": 0}
+            encoded_payload = json.dumps(
+                {
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": gen_config,
+                }
+            ).encode("utf-8")
+
             print(f"Calling {model} (attempt {attempt})...", flush=True)
             req = urllib.request.Request(
                 url,
@@ -126,7 +135,7 @@ def call_gemini(api_key: str, prompt: str) -> dict:
                 method="POST",
             )
             try:
-                with urllib.request.urlopen(req, timeout=75) as resp:
+                with urllib.request.urlopen(req, timeout=150) as resp:
                     body = json.loads(resp.read().decode("utf-8"))
                 candidates = body.get("candidates") or []
                 if not candidates:
@@ -144,6 +153,10 @@ def call_gemini(api_key: str, prompt: str) -> dict:
                     last_error = RuntimeError(
                         f"Gemini API HTTP {exc.code} ({model}): {err_body}"
                     )
+                    if exc.code == 400 and use_thinking_budget and "thinking" in err_body.lower():
+                        print(f"{model} rejected thinkingConfig, retrying without it...", file=sys.stderr, flush=True)
+                        use_thinking_budget = False
+                        continue
                     if exc.code == 404:
                         print(f"Model {model} unavailable (404), trying next model...", file=sys.stderr, flush=True)
                         break
