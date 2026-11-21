@@ -20,6 +20,9 @@ GAMES_DIR = ROOT / "games"
 
 DEFAULT_MODELS = [
     os.environ.get("GEMINI_MODEL", "gemini-4-hydrogen"),
+    "gemini-flash-latest",
+    "gemini-3-flash-preview",
+    "gemini-3.1-flash-lite-preview",
     "gemini-3.8-flash",
 ]
 PREFERRED_MODELS = list(dict.fromkeys(m for m in DEFAULT_MODELS if m))
@@ -118,7 +121,7 @@ def call_gemini(api_key: str, prompt: str) -> dict:
 
     base_gen_config = {
         "temperature": 1.0,
-        "maxOutputTokens": 16384,
+        "maxOutputTokens": 12288,
         "responseMimeType": "application/json",
     }
 
@@ -152,7 +155,7 @@ def call_gemini(api_key: str, prompt: str) -> dict:
                 method="POST",
             )
             try:
-                with urllib.request.urlopen(req, timeout=120) as resp:
+                with urllib.request.urlopen(req, timeout=60) as resp:
                     body = json.loads(resp.read().decode("utf-8"))
                 candidates = body.get("candidates") or []
                 if not candidates:
@@ -192,6 +195,8 @@ def call_gemini(api_key: str, prompt: str) -> dict:
                     raise last_error from exc
                 last_error = exc
                 print(f"Transient error from {model} (attempt {attempt}): {exc}", file=sys.stderr, flush=True)
+                if isinstance(exc, TimeoutError):
+                    break
                 if attempt < 2:
                     time.sleep(3)
                     continue
