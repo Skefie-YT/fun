@@ -110,5 +110,13 @@
     "category": "Physics",
     "accent": "#14B8A6",
     "addedAt": "2026-11-21T17:36:00Z"
+  },
+  {
+    "slug": "skyline-swing",
+    "title": "Skyline Swing",
+    "description": "Hold to grapple overhead anchors, build momentum, and release to launch across the neon skyline.",
+    "category": "Physics",
+    "accent": "#0EA5E9",
+    "addedAt": "2026-11-21T18:35:16Z"
   }
 ]
