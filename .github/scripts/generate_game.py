@@ -10,6 +10,7 @@ import pathlib
 import random
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -17,11 +18,12 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 GAMES_JSON = ROOT / "games.json"
 GAMES_DIR = ROOT / "games"
 
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
-API_URL = (
-    f"https://generativelanguage.googleapis.com/v1beta/models/"
-    f"{GEMINI_MODEL}:generateContent"
-)
+DEFAULT_MODELS = [
+    os.environ.get("GEMINI_MODEL", "gemini-3.8-flash"),
+    "gemini-3.8-flash-lite",
+    "gemini-3.5-flash",
+]
+MODELS = list(dict.fromkeys(m for m in DEFAULT_MODELS if m))
 
 GENRE_SEEDS = [
     "one-button timing reflex game",
@@ -108,30 +110,56 @@ def call_gemini(api_key: str, prompt: str) -> dict:
         },
     }
 
-    req = urllib.request.Request(
-        f"{API_URL}?key={api_key}",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
+    encoded_payload = json.dumps(payload).encode("utf-8")
+    last_error: Exception | None = None
 
-    try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        err_body = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Gemini API HTTP {exc.code}: {err_body}") from exc
+    for model in MODELS:
+        url = (
+            f"https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{model}:generateContent?key={api_key}"
+        )
+        for attempt in range(1, 4):
+            req = urllib.request.Request(
+                url,
+                data=encoded_payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=120) as resp:
+                    body = json.loads(resp.read().decode("utf-8"))
+                candidates = body.get("candidates") or []
+                if not candidates:
+                    raise RuntimeError(f"Gemini returned no candidates: {body}")
+                parts = candidates[0].get("content", {}).get("parts", [])
+                raw_text = "".join(part.get("text", "") for part in parts)
+                if not raw_text.strip():
+                    raise RuntimeError(f"Gemini returned empty text: {body}")
+                print(f"Generated response using model {model} (attempt {attempt})")
+                return json.loads(strip_code_fences(raw_text))
+            except urllib.error.HTTPError as exc:
+                err_body = exc.read().decode("utf-8", errors="replace")
+                last_error = RuntimeError(
+                    f"Gemini API HTTP {exc.code} ({model}): {err_body}"
+                )
+                if exc.code == 404:
+                    print(f"Model {model} unavailable (404), trying next model...", file=sys.stderr)
+                    break
+                if exc.code in (429, 500, 502, 503, 504) and attempt < 3:
+                    delay = 3 * (2 ** (attempt - 1))
+                    print(
+                        f"Transient HTTP {exc.code} from {model}; retrying in {delay}s...",
+                        file=sys.stderr,
+                    )
+                    time.sleep(delay)
+                    continue
+                if exc.code in (429, 500, 502, 503, 504):
+                    print(f"Model {model} failed with HTTP {exc.code}, trying next model...", file=sys.stderr)
+                    break
+                raise last_error from exc
 
-    candidates = body.get("candidates") or []
-    if not candidates:
-        raise RuntimeError(f"Gemini returned no candidates: {body}")
-
-    parts = candidates[0].get("content", {}).get("parts", [])
-    raw_text = "".join(part.get("text", "") for part in parts)
-    if not raw_text.strip():
-        raise RuntimeError(f"Gemini returned empty text: {body}")
-
-    return json.loads(strip_code_fences(raw_text))
+    assert last_error is not None
+    raise last_error
 
 
 def build_prompt(existing_games: list[dict]) -> str:
