@@ -14,5 +14,13 @@
     "category": "Puzzle",
     "accent": "#0EA5E9",
     "addedAt": "2026-11-20T18:59:00-08:00"
+  },
+  {
+    "slug": "chroma-burst",
+    "title": "Chroma Burst",
+    "description": "Click tiles to trigger chain reactions! Clear the board by matching colors before you run out of clicks.",
+    "category": "Puzzle",
+    "accent": "#8B5CF6",
+    "addedAt": "2026-11-21T03:48:17Z"
   }
 ]

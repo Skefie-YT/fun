@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Chroma Burst</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #8B5CF6;
+            --bg: #0F172A;
+            --text: #F8FAFC;
+        }
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Outfit', sans-serif;
+            height: 100dvh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        #ui-layer {
+            padding: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 10;
+            background: rgba(15, 23, 42, 0.8);
+        }
+        .back-btn {
+            color: var(--text);
+            text-decoration: none;
+            font-weight: bold;
+            font-size: 0.9rem;
+            padding: 0.5rem 1rem;
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 8px;
+        }
+        .stats {
+            text-align: right;
+            line-height: 1.2;
+        }
+        .stat-label { font-size: 0.7rem; opacity: 0.7; text-transform: uppercase; }
+        .stat-val { font-size: 1.2rem; font-weight: 700; }
+
+        #game-container {
+            flex: 1;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 10px;
+        }
+        canvas {
+            background: #1E293B;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            max-width: 100%;
+            max-height: 100%;
+            touch-action: none;
+        }
+
+        #overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+            text-align: center;
+            padding: 2rem;
+        }
+        h1 {
+            margin: 0; font-size: 3rem; color: var(--accent);
+            text-shadow: 0 0 20px rgba(139, 92, 246, 0.5);
+        }
+        .btn-play {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 1rem 3rem;
+            font-size: 1.5rem;
+            border-radius: 50px;
+            cursor: pointer;
+            margin-top: 2rem;
+            font-family: inherit;
+            font-weight: bold;
+            transition: transform 0.2s;
+        }
+        .btn-play:active { transform: scale(0.95); }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+    <div id="ui-layer">
+        <a href="../../" class="back-btn">Back</a>
+        <div style="display:flex; gap: 20px">
+            <div class="stats"><div class="stat-label">Moves</div><div id="moves-val" class="stat-val">0</div></div>
+            <div class="stats"><div class="stat-label">Score</div><div id="score-val" class="stat-val">0</div></div>
+            <div class="stats"><div class="stat-label">Best</div><div id="best-val" class="stat-val">0</div></div>
+        </div>
+    </div>
+
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        <div id="overlay">
+            <h1 id="overlay-title">CHROMA BURST</h1>
+            <p id="overlay-desc">Chain reaction color matching puzzle.</p>
+            <button class="btn-play" onclick="startGame()">PLAY</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const slug = 'chroma-burst';
+        const accentColor = '#8B5CF6';
+        const colors = ['#F43F5E', '#10B981', '#3B82F6', '#F59E0B', '#8B5CF6'];
+        
+        let grid = [];
+        let particles = [];
+        let score = 0;
+        let moves = 15;
+        let gridSize = 6;
+        let tileSize = 0;
+        let isAnimating = false;
+        let bestScore = localStorage.getItem('fun_arcade_highscore_' + slug) || 0;
+
+        document.getElementById('best-val').innerText = bestScore;
+
+        function resize() {
+            const container = document.getElementById('game-container');
+            const size = Math.min(container.clientWidth, container.clientHeight) - 20;
+            canvas.width = size;
+            canvas.height = size;
+            tileSize = size / gridSize;
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        function initGrid() {
+            grid = [];
+            for (let r = 0; r < gridSize; r++) {
+                grid[r] = [];
+                for (let c = 0; c < gridSize; c++) {
+                    grid[r][c] = {
+                        color: colors[Math.floor(Math.random() * colors.length)],
+                        scale: 1,
+                        pop: false
+                    };
+                }
+            }
+        }
+
+        function startGame() {
+            score = 0;
+            moves = 20;
+            document.getElementById('score-val').innerText = score;
+            document.getElementById('moves-val').innerText = moves;
+            document.getElementById('overlay').classList.add('hidden');
+            initGrid();
+            animate();
+        }
+
+        canvas.addEventListener('mousedown', (e) => handleClick(e.clientX, e.clientY));
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            handleClick(e.touches[0].clientX, e.touches[0].clientY);
+        });
+
+        function handleClick(mx, my) {
+            if (isAnimating || moves <= 0) return;
+            
+            const rect = canvas.getBoundingClientRect();
+            const x = mx - rect.left;
+            const y = my - rect.top;
+            
+            const c = Math.floor(x / tileSize);
+            const r = Math.floor(y / tileSize);
+            
+            if (r >= 0 && r < gridSize && c >= 0 && c < gridSize) {
+                moves--;
+                document.getElementById('moves-val').innerText = moves;
+                triggerBurst(r, c, grid[r][c].color);
+            }
+        }
+
+        async function triggerBurst(row, col, targetColor) {
+            isAnimating = true;
+            const queue = [[row, col]];
+            const seen = new Set();
+            seen.add(`${row},${col}`);
+
+            while (queue.length > 0) {
+                const [r, c] = queue.shift();
+                
+                if (grid[r][c].color === targetColor) {
+                    createParticles(c * tileSize + tileSize/2, r * tileSize + tileSize/2, targetColor);
+                    grid[r][c].color = null;
+                    score += 10;
+                    document.getElementById('score-val').innerText = score;
+                    
+                    // Neighbors
+                    const neighbors = [[r-1, c], [r+1, c], [r, c-1], [r, c+1]];
+                    for (let [nr, nc] of neighbors) {
+                        if (nr >= 0 && nr < gridSize && nc >= 0 && nc < gridSize && !seen.has(`${nr},${nc}`)) {
+                            if (grid[nr][nc].color === targetColor) {
+                                seen.add(`${nr},${nc}`);
+                                queue.push([nr, nc]);
+                            }
+                        }
+                    }
+                    await new Promise(r => setTimeout(r, 50));
+                }
+            }
+            
+            fillGaps();
+            checkGameOver();
+            isAnimating = false;
+        }
+
+        function fillGaps() {
+            for (let c = 0; c < gridSize; c++) {
+                let emptySlots = 0;
+                for (let r = gridSize - 1; r >= 0; r--) {
+                    if (grid[r][c].color === null) {
+                        emptySlots++;
+                    } else if (emptySlots > 0) {
+                        grid[r + emptySlots][c].color = grid[r][c].color;
+                        grid[r][c].color = null;
+                    }
+                }
+                for (let r = 0; r < emptySlots; r++) {
+                    grid[r][c].color = colors[Math.floor(Math.random() * colors.length)];
+                }
+            }
+        }
+
+        function createParticles(x, y, color) {
+            for (let i = 0; i < 8; i++) {
+                particles.push({
+                    x, y,
+                    vx: (Math.random() - 0.5) * 10,
+                    vy: (Math.random() - 0.5) * 10,
+                    life: 1.0,
+                    color
+                });
+            }
+        }
+
+        function checkGameOver() {
+            if (moves <= 0) {
+                if (score > bestScore) {
+                    bestScore = score;
+                    localStorage.setItem('fun_arcade_highscore_' + slug, bestScore);
+                    document.getElementById('best-val').innerText = bestScore;
+                }
+                document.getElementById('overlay-title').innerText = "GAME OVER";
+                document.getElementById('overlay-desc').innerText = `Final Score: ${score}`;
+                document.getElementById('overlay').classList.remove('hidden');
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw Grid
+            for (let r = 0; r < gridSize; r++) {
+                for (let c = 0; c < gridSize; c++) {
+                    const cell = grid[r][c];
+                    if (cell.color) {
+                        const padding = 4;
+                        ctx.fillStyle = cell.color;
+                        ctx.beginPath();
+                        ctx.roundRect(
+                            c * tileSize + padding, 
+                            r * tileSize + padding, 
+                            tileSize - padding * 2, 
+                            tileSize - padding * 2, 
+                            8
+                        );
+                        ctx.fill();
+                        
+                        // Gloss
+                        ctx.fillStyle = 'rgba(255,255,255,0.1)';
+                        ctx.fillRect(c * tileSize + padding, r * tileSize + padding, tileSize - padding*2, (tileSize - padding*2)/2);
+                    }
+                }
+            }
+
+            // Particles
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 4 * p.life, 0, Math.PI * 2);
+                ctx.fill();
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.03;
+                if (p.life <= 0) particles.splice(i, 1);
+            }
+            ctx.globalAlpha = 1;
+        }
+
+        function animate() {
+            if (document.getElementById('overlay').classList.contains('hidden')) {
+                draw();
+                requestAnimationFrame(animate);
+            }
+        }
+
+        // Initial view
+        initGrid();
+        draw();
+    </script>
+</body>
+</html>
