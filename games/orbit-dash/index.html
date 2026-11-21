@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Orbit Dash — Fun Arcade</title>
+  <meta name="description" content="Tap or press Space to leap between spinning rings, collect starlight, and dodge rogue shards." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Plus+Jakarta+Sans:wght@400;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #FAF7F2;
+      --surface: #FFFFFF;
+      --ink: #18181B;
+      --ink-soft: #52525B;
+      --accent: #E85D04;
+      --gold: #F59E0B;
+      --danger: #DC2626;
+      --shadow-sm: 2px 2px 0 #18181B;
+      --shadow: 4px 4px 0 #18181B;
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+      overflow: hidden;
+    }
+
+    .game-layout {
+      display: flex;
+      flex-direction: column;
+      height: 100dvh;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 14px 16px 18px;
+      gap: 12px;
+    }
+
+    .top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .back-btn,
+    .mute-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      background: var(--surface);
+      color: var(--ink);
+      border: 2px solid var(--ink);
+      border-radius: 10px;
+      box-shadow: var(--shadow-sm);
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 600;
+      font-size: 0.9rem;
+      text-decoration: none;
+      cursor: pointer;
+      transition: transform 0.12s ease, box-shadow 0.12s ease;
+    }
+
+    .back-btn:hover,
+    .mute-btn:hover {
+      transform: translate(-1px, -1px);
+      box-shadow: 3px 3px 0 var(--ink);
+    }
+
+    .hud {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+    }
+
+    .hud-pill {
+      padding: 6px 12px;
+      background: var(--surface);
+      border: 2px solid var(--ink);
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .hud-label {
+      color: var(--ink-soft);
+      font-size: 0.72rem;
+      text-transform: uppercase;
+    }
+
+    .hud-val {
+      font-weight: 700;
+    }
+
+    .stage-wrap {
+      position: relative;
+      flex: 1;
+      min-height: 0;
+      background: #141419;
+      border: 2px solid var(--ink);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      display: grid;
+      place-items: center;
+      touch-action: manipulation;
+      user-select: none;
+    }
+
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      text-align: center;
+      background: rgba(20, 20, 25, 0.78);
+      backdrop-filter: blur(4px);
+      color: #FFFFFF;
+      transition: opacity 0.2s ease;
+    }
+
+    .overlay[hidden] {
+      display: none;
+    }
+
+    .overlay h1 {
+      margin: 0 0 8px;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: clamp(1.8rem, 4vw, 2.5rem);
+      letter-spacing: -0.03em;
+    }
+
+    .overlay p {
+      margin: 0 0 22px;
+      max-width: 360px;
+      color: #D4D4D8;
+      font-size: 0.96rem;
+      line-height: 1.5;
+    }
+
+    .final-stats {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 22px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .final-box {
+      padding: 10px 16px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1.5px solid rgba(255, 255, 255, 0.22);
+      border-radius: 10px;
+    }
+
+    .final-box span {
+      display: block;
+      font-size: 0.72rem;
+      color: #A1A1AA;
+      text-transform: uppercase;
+    }
+
+    .final-box strong {
+      font-size: 1.25rem;
+      color: #FFFFFF;
+    }
+
+    .start-btn {
+      padding: 12px 26px;
+      background: var(--accent);
+      color: #FFFFFF;
+      border: 2px solid #FFFFFF;
+      border-radius: 12px;
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 700;
+      font-size: 1.05rem;
+      cursor: pointer;
+      box-shadow: 3px 3px 0 #000000;
+      transition: transform 0.12s ease;
+    }
+
+    .start-btn:hover {
+      transform: translate(-1px, -1px);
+    }
+
+    .controls-hint {
+      text-align: center;
+      font-size: 0.82rem;
+      color: var(--ink-soft);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    @media (max-width: 540px) {
+      .hud-pill {
+        padding: 5px 9px;
+        font-size: 0.78rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="game-layout">
+    <header class="top-bar">
+      <a href="../../" class="back-btn">&lt;- All Games</a>
+
+      <div class="hud">
+        <div class="hud-pill">
+          <span class="hud-label">Score</span>
+          <span class="hud-val" id="score-val">0</span>
+        </div>
+        <div class="hud-pill">
+          <span class="hud-label">Combo</span>
+          <span class="hud-val" id="combo-val">x1</span>
+        </div>
+        <div class="hud-pill">
+          <span class="hud-label">Best</span>
+          <span class="hud-val" id="best-val">0</span>
+        </div>
+      </div>
+
+      <button type="button" class="mute-btn" id="mute-btn" aria-pressed="false">Sound: On</button>
+    </header>
+
+    <main class="stage-wrap" id="stage-wrap">
+      <canvas id="game-canvas"></canvas>
+
+      <div class="overlay" id="start-overlay">
+        <h1>Orbit Dash</h1>
+        <p>Hop between the three spinning rings. Grab golden starlight to build your combo, and dodge red rogue shards.</p>
+        <button type="button" class="start-btn" id="start-btn">Launch</button>
+      </div>
+
+      <div class="overlay" id="gameover-overlay" hidden>
+        <h1>Orbit Shattered</h1>
+        <p id="gameover-msg">A rogue shard clipped your hull.</p>
+        <div class="final-stats">
+          <div class="final-box">
+            <span>Score</span>
+            <strong id="final-score">0</strong>
+          </div>
+          <div class="final-box">
+            <span>Best</span>
+            <strong id="final-best">0</strong>
+          </div>
+        </div>
+        <button type="button" class="start-btn" id="retry-btn">Play Again</button>
+      </div>
+    </main>
+
+    <div class="controls-hint">
+      Click / Tap / Space to hop rings &bull; Arrow Up/Down to steer
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const STORAGE_KEY = 'fun_arcade_highscore_orbit-dash';
+      const canvas = document.getElementById('game-canvas');
+      const ctx = canvas.getContext('2d');
+      const stageWrap = document.getElementById('stage-wrap');
+
+      const scoreEl = document.getElementById('score-val');
+      const comboEl = document.getElementById('combo-val');
+      const bestEl = document.getElementById('best-val');
+      const muteBtn = document.getElementById('mute-btn');
+
+      const startOverlay = document.getElementById('start-overlay');
+      const gameoverOverlay = document.getElementById('gameover-overlay');
+      const startBtn = document.getElementById('start-btn');
+      const retryBtn = document.getElementById('retry-btn');
+      const finalScoreEl = document.getElementById('final-score');
+      const finalBestEl = document.getElementById('final-best');
+      const gameoverMsgEl = document.getElementById('gameover-msg');
+
+      let width = 0;
+      let height = 0;
+      let cx = 0;
+      let cy = 0;
+      let ringRadii = [70, 125, 180];
+
+      let muted = false;
+      let audioCtx = null;
+
+      function ensureAudio() {
+        if (muted) return null;
+        if (!audioCtx) {
+          const AC = window.AudioContext || window.webkitAudioContext;
+          if (AC) audioCtx = new AC();
+        }
+        if (audioCtx && audioCtx.state === 'suspended') {
+          audioCtx.resume().catch(() => {});
+        }
+        return audioCtx;
+      }
+
+      function playTone(freq, duration, type = 'sine', gainVal = 0.08) {
+        const ac = ensureAudio();
+        if (!ac) return;
+        const osc = ac.createOscillator();
+        const gain = ac.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, ac.currentTime);
+        gain.gain.setValueAtTime(gainVal, ac.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(ac.destination);
+        osc.start();
+        osc.stop(ac.currentTime + duration);
+      }
+
+      function getBest() {
+        try {
+          return Number(localStorage.getItem(STORAGE_KEY) || 0);
+        } catch {
+          return 0;
+        }
+      }
+
+      function saveBest(val) {
+        try {
+          localStorage.setItem(STORAGE_KEY, String(val));
+        } catch {}
+      }
+
+      let bestScore = getBest();
+      bestEl.textContent = String(bestScore);
+
+      function resize() {
+        const rect = stageWrap.getBoundingClientRect();
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        width = rect.width;
+        height = rect.height;
+        canvas.width = Math.floor(width * dpr);
+        canvas.height = Math.floor(height * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        cx = width / 2;
+        cy = height / 2;
+        const maxR = Math.min(width, height) * 0.41;
+        ringRadii = [maxR * 0.38, maxR * 0.69, maxR];
+      }
+
+      window.addEventListener('resize', resize);
+      resize();
+
+      // Game State
+      let running = false;
+      let score = 0;
+      let combo = 1;
+      let elapsed = 0;
+      let shakeTime = 0;
+
+      const player = {
+        ring: 1,
+        targetRing: 1,
+        radius: ringRadii[1],
+        angle: -Math.PI / 2,
+        hopDir: 1,
+        trail: []
+      };
+
+      let stars = [];
+      let shards = [];
+      let particles = [];
+      let starTimer = 0;
+      let shardTimer = 0;
+
+      function spawnParticles(x, y, color, count = 12) {
+        for (let i = 0; i < count; i++) {
+          const ang = Math.random() * Math.PI * 2;
+          const spd = 60 + Math.random() * 140;
+          particles.push({
+            x,
+            y,
+            vx: Math.cos(ang) * spd,
+            vy: Math.sin(ang) * spd,
+            life: 0.45 + Math.random() * 0.25,
+            maxLife: 0.7,
+            size: 2.5 + Math.random() * 3,
+            color
+          });
+        }
+      }
+
+      function spawnStar() {
+        const ring = Math.floor(Math.random() * 3);
+        const angle = Math.random() * Math.PI * 2;
+        stars.push({
+          ring,
+          angle,
+          pulse: Math.random() * Math.PI * 2,
+          life: 9.0
+        });
+      }
+
+      function spawnShard() {
+        const ring = Math.floor(Math.random() * 3);
+        // Spawn away from player angle
+        const offset = (Math.PI * 0.65) + Math.random() * (Math.PI * 0.7);
+        const angle = player.angle + (Math.random() < 0.5 ? offset : -offset);
+        const speed = -(0.85 + Math.min(elapsed * 0.02, 1.3));
+        shards.push({
+          ring,
+          angle,
+          speed,
+          warmup: 0.85,
+          life: 11.0
+        });
+      }
+
+      function resetGame() {
+        score = 0;
+        combo = 1;
+        elapsed = 0;
+        shakeTime = 0;
+        player.ring = 1;
+        player.targetRing = 1;
+        player.radius = ringRadii[1];
+        player.angle = -Math.PI / 2;
+        player.hopDir = 1;
+        player.trail = [];
+        stars = [];
+        shards = [];
+        particles = [];
+        starTimer = 0.2;
+        shardTimer = 1.2;
+
+        scoreEl.textContent = '0';
+        comboEl.textContent = 'x1';
+        spawnStar();
+        spawnStar();
+      }
+
+      function startGame() {
+        ensureAudio();
+        resetGame();
+        startOverlay.hidden = true;
+        gameoverOverlay.hidden = true;
+        running = true;
+      }
+
+      function endGame() {
+        running = false;
+        shakeTime = 0.35;
+        playTone(130, 0.35, 'sawtooth', 0.11);
+
+        const px = cx + Math.cos(player.angle) * player.radius;
+        const py = cy + Math.sin(player.angle) * player.radius;
+        spawnParticles(px, py, '#EF4444', 24);
+
+        const isNewBest = score > bestScore;
+        if (isNewBest) {
+          bestScore = score;
+          saveBest(bestScore);
+          bestEl.textContent = String(bestScore);
+        }
+
+        finalScoreEl.textContent = String(score);
+        finalBestEl.textContent = String(bestScore);
+        gameoverMsgEl.textContent = isNewBest
+          ? 'New personal best! What a run.'
+          : 'A rogue shard clipped your hull.';
+        gameoverOverlay.hidden = false;
+      }
+
+      function hopRing(explicitDir) {
+        if (!running) return;
+        if (explicitDir === 1 || explicitDir === -1) {
+          const next = player.targetRing + explicitDir;
+          if (next < 0 || next > 2) return;
+          player.targetRing = next;
+        } else {
+          if (player.targetRing === 2) player.hopDir = -1;
+          else if (player.targetRing === 0) player.hopDir = 1;
+          player.targetRing += player.hopDir;
+        }
+        playTone(320 + player.targetRing * 110, 0.09, 'triangle', 0.06);
+      }
+
+      // Input handlers
+      stageWrap.addEventListener('pointerdown', (e) => {
+        if (e.target.closest('button')) return;
+        if (running) {
+          hopRing();
+        }
+      });
+
+      window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space' || e.code === 'Enter') {
+          if (!running && startOverlay.hidden === false) {
+            e.preventDefault();
+            startGame();
+            return;
+          }
+          if (!running && gameoverOverlay.hidden === false) {
+            e.preventDefault();
+            startGame();
+            return;
+          }
+          if (e.code === 'Space') {
+            e.preventDefault();
+            hopRing();
+          }
+        } else if (e.code === 'ArrowUp' || e.code === 'KeyW') {
+          e.preventDefault();
+          hopRing(1);
+        } else if (e.code === 'ArrowDown' || e.code === 'KeyS') {
+          e.preventDefault();
+          hopRing(-1);
+        }
+      });
+
+      startBtn.addEventListener('click', startGame);
+      retryBtn.addEventListener('click', startGame);
+
+      muteBtn.addEventListener('click', () => {
+        muted = !muted;
+        muteBtn.textContent = muted ? 'Sound: Off' : 'Sound: On';
+        muteBtn.setAttribute('aria-pressed', String(muted));
+      });
+
+      function angleDiff(a, b) {
+        let d = (a - b) % (Math.PI * 2);
+        if (d > Math.PI) d -= Math.PI * 2;
+        if (d < -Math.PI) d += Math.PI * 2;
+        return Math.abs(d);
+      }
+
+      let lastTime = performance.now();
+
+      function tick(now) {
+        const dt = Math.min((now - lastTime) / 1000, 0.05);
+        lastTime = now;
+
+        if (running) {
+          elapsed += dt;
+          const speed = 1.75 + Math.min(elapsed * 0.03, 1.8);
+          player.angle += speed * dt;
+
+          const targetR = ringRadii[player.targetRing];
+          player.radius += (targetR - player.radius) * Math.min(1, dt * 16);
+
+          const px = cx + Math.cos(player.angle) * player.radius;
+          const py = cy + Math.sin(player.angle) * player.radius;
+
+          player.trail.push({ x: px, y: py, life: 0.28 });
+          if (player.trail.length > 18) player.trail.shift();
+
+          // Spawners
+          starTimer -= dt;
+          if (starTimer <= 0 && stars.length < 4) {
+            spawnStar();
+            starTimer = Math.max(0.8, 1.8 - elapsed * 0.015);
+          }
+
+          shardTimer -= dt;
+          const maxShards = Math.min(8, 3 + Math.floor(elapsed / 10));
+          if (shardTimer <= 0 && shards.length < maxShards) {
+            spawnShard();
+            shardTimer = Math.max(0.95, 2.3 - elapsed * 0.02);
+          }
+
+          // Update stars
+          for (let i = stars.length - 1; i >= 0; i--) {
+            const s = stars[i];
+            s.pulse += dt * 4;
+            s.life -= dt;
+            if (s.life <= 0) {
+              stars.splice(i, 1);
+              combo = 1;
+              comboEl.textContent = 'x1';
+              continue;
+            }
+            const sr = ringRadii[s.ring];
+            if (Math.abs(player.radius - sr) < 22 && angleDiff(player.angle, s.angle) < 0.24) {
+              const pts = 10 * combo;
+              score += pts;
+              combo = Math.min(5, combo + 1);
+              scoreEl.textContent = String(score);
+              comboEl.textContent = 'x' + combo;
+
+              const sx = cx + Math.cos(s.angle) * sr;
+              const sy = cy + Math.sin(s.angle) * sr;
+              spawnParticles(sx, sy, '#F59E0B', 14);
+              playTone(460 + combo * 90, 0.12, 'sine', 0.09);
+              stars.splice(i, 1);
+            }
+          }
+
+          // Update shards
+          for (let i = shards.length - 1; i >= 0; i--) {
+            const sh = shards[i];
+            if (sh.warmup > 0) {
+              sh.warmup -= dt;
+            } else {
+              sh.angle += sh.speed * dt;
+            }
+            sh.life -= dt;
+            if (sh.life <= 0) {
+              shards.splice(i, 1);
+              continue;
+            }
+            if (sh.warmup <= 0) {
+              const shr = ringRadii[sh.ring];
+              if (Math.abs(player.radius - shr) < 18 && angleDiff(player.angle, sh.angle) < 0.17) {
+                endGame();
+                break;
+              }
+            }
+          }
+        }
+
+        if (shakeTime > 0) {
+          shakeTime = Math.max(0, shakeTime - dt);
+        }
+
+        // Update trail & particles
+        for (let i = player.trail.length - 1; i >= 0; i--) {
+          player.trail[i].life -= dt;
+          if (player.trail[i].life <= 0) player.trail.splice(i, 1);
+        }
+
+        for (let i = particles.length - 1; i >= 0; i--) {
+          const p = particles[i];
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          p.vx *= 0.94;
+          p.vy *= 0.94;
+          p.life -= dt;
+          if (p.life <= 0) particles.splice(i, 1);
+        }
+
+        draw();
+        requestAnimationFrame(tick);
+      }
+
+      function draw() {
+        ctx.save();
+        ctx.clearRect(0, 0, width, height);
+
+        if (shakeTime > 0) {
+          const mag = shakeTime * 18;
+          ctx.translate((Math.random() - 0.5) * mag, (Math.random() - 0.5) * mag);
+        }
+
+        // Center core
+        const coreGrad = ctx.createRadialGradient(cx, cy, 4, cx, cy, 34);
+        coreGrad.addColorStop(0, '#FDBA74');
+        coreGrad.addColorStop(1, '#E85D04');
+        ctx.beginPath();
+        ctx.arc(cx, cy, 22, 0, Math.PI * 2);
+        ctx.fillStyle = coreGrad;
+        ctx.fill();
+
+        // Rings
+        ringRadii.forEach((r, idx) => {
+          ctx.beginPath();
+          ctx.arc(cx, cy, r, 0, Math.PI * 2);
+          ctx.strokeStyle =
+            running && idx === player.targetRing
+              ? 'rgba(255, 255, 255, 0.32)'
+              : 'rgba(255, 255, 255, 0.12)';
+          ctx.lineWidth = running && idx === player.targetRing ? 2.5 : 1.5;
+          ctx.stroke();
+        });
+
+        // Stars
+        stars.forEach((s) => {
+          const r = ringRadii[s.ring];
+          const x = cx + Math.cos(s.angle) * r;
+          const y = cy + Math.sin(s.angle) * r;
+          const scale = 1 + Math.sin(s.pulse) * 0.16;
+
+          ctx.save();
+          ctx.translate(x, y);
+          ctx.scale(scale, scale);
+          ctx.beginPath();
+          for (let i = 0; i < 4; i++) {
+            const ang = (i * Math.PI) / 2;
+            ctx.lineTo(Math.cos(ang) * 11, Math.sin(ang) * 11);
+            ctx.lineTo(Math.cos(ang + Math.PI / 4) * 4.5, Math.sin(ang + Math.PI / 4) * 4.5);
+          }
+          ctx.closePath();
+          ctx.fillStyle = '#FBBF24';
+          ctx.fill();
+          ctx.restore();
+        });
+
+        // Shards
+        shards.forEach((sh) => {
+          const r = ringRadii[sh.ring];
+          const x = cx + Math.cos(sh.angle) * r;
+          const y = cy + Math.sin(sh.angle) * r;
+          ctx.save();
+          ctx.translate(x, y);
+          ctx.rotate(sh.angle + Math.PI / 2);
+          if (sh.warmup > 0) {
+            ctx.globalAlpha = 0.35 + Math.sin(sh.warmup * 22) * 0.25;
+          }
+          ctx.beginPath();
+          ctx.moveTo(0, -11);
+          ctx.lineTo(9, 8);
+          ctx.lineTo(-9, 8);
+          ctx.closePath();
+          ctx.fillStyle = '#EF4444';
+          ctx.fill();
+          ctx.restore();
+        });
+
+        // Player trail
+        player.trail.forEach((t) => {
+          ctx.beginPath();
+          ctx.arc(t.x, t.y, 6 * (t.life / 0.28), 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(232, 93, 4, ${t.life * 2.2})`;
+          ctx.fill();
+        });
+
+        // Player orb
+        if (running || particles.length > 0) {
+          const px = cx + Math.cos(player.angle) * player.radius;
+          const py = cy + Math.sin(player.angle) * player.radius;
+          ctx.beginPath();
+          ctx.arc(px, py, 10, 0, Math.PI * 2);
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fill();
+          ctx.lineWidth = 3;
+          ctx.strokeStyle = '#E85D04';
+          ctx.stroke();
+        }
+
+        // Particles
+        particles.forEach((p) => {
+          ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+          ctx.fillStyle = p.color;
+          ctx.fill();
+        });
+        ctx.globalAlpha = 1;
+
+        ctx.restore();
+      }
+
+      requestAnimationFrame(tick);
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fun Arcade — Browser Mini-Games</title>
+  <meta name="description" content="A growing collection of fast, handcrafted browser mini-games. Pick a game from the menu and play instantly." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="page-shell">
+    <header class="site-header">
+      <div class="brand-block">
+        <a href="./" class="brand-link" aria-label="Fun Arcade Home">
+          <span class="brand-mark" aria-hidden="true">FA</span>
+          <span class="brand-text">Fun Arcade</span>
+        </a>
+        <p class="brand-tagline">Handcrafted browser mini-games. Zero installs, instant play.</p>
+      </div>
+
+      <div class="header-actions">
+        <div class="stat-chip" id="game-count-chip" aria-live="polite">
+          <span class="stat-label">Games</span>
+          <span class="stat-value" id="game-count">0</span>
+        </div>
+        <button type="button" class="btn btn-primary" id="random-game-btn">
+          Surprise Me
+        </button>
+      </div>
+    </header>
+
+    <main>
+      <section class="controls-bar" aria-label="Filter games">
+        <div class="search-wrap">
+          <label for="search-input" class="sr-only">Search games</label>
+          <input
+            type="search"
+            id="search-input"
+            class="search-input"
+            placeholder="Search games..."
+            autocomplete="off"
+          />
+        </div>
+
+        <div class="category-filters" id="category-filters" role="group" aria-label="Game categories">
+          <button type="button" class="filter-chip is-active" data-category="all">All</button>
+        </div>
+      </section>
+
+      <section aria-labelledby="menu-heading">
+        <div class="section-head">
+          <h1 id="menu-heading">Game Menu</h1>
+          <span class="section-note" id="results-note">Loading arcade...</span>
+        </div>
+
+        <div class="games-grid" id="games-grid" aria-live="polite"></div>
+
+        <div class="empty-state" id="empty-state" hidden>
+          <p class="empty-title">No games match that filter.</p>
+          <button type="button" class="btn btn-secondary" id="reset-filters-btn">Show all games</button>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>Built for <a href="https://github.com/Skefie-YT/fun" target="_blank" rel="noopener noreferrer">Skefie-YT/fun</a>. Scores are saved locally in your browser.</p>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
