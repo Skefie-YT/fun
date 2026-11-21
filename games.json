@@ -38,5 +38,13 @@
     "category": "Reflex",
     "accent": "#E85D04",
     "addedAt": "2026-11-21T06:57:17Z"
+  },
+  {
+    "slug": "grapple-glider",
+    "title": "Grapple Glider",
+    "description": "Latch onto floating anchors and use physics to swing upward while avoiding the rising laser floor.",
+    "category": "Physics",
+    "accent": "#EF4444",
+    "addedAt": "2026-11-21T08:06:00Z"
   }
 ]
