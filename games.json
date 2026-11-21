@@ -134,5 +134,13 @@
     "category": "Puzzle",
     "accent": "#0EA5E9",
     "addedAt": "2026-11-21T20:33:53Z"
+  },
+  {
+    "slug": "laser-leap-reflex",
+    "title": "Laser Leap",
+    "description": "Tap to jump over rotating laser beams! Timing is everything as the speed increases and the lasers multiply.",
+    "category": "Reflex",
+    "accent": "#EC4899",
+    "addedAt": "2026-11-21T21:32:31Z"
   }
 ]
