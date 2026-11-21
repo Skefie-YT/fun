@@ -19,9 +19,8 @@ GAMES_JSON = ROOT / "games.json"
 GAMES_DIR = ROOT / "games"
 
 DEFAULT_MODELS = [
-    os.environ.get("GEMINI_MODEL", "gemini-3.8-flash"),
-    "gemini-3.8-flash-lite",
-    "gemini-3.5-flash",
+    os.environ.get("GEMINI_MODEL", "gemini-3.8-flash-lite"),
+    "gemini-3.8-flash",
 ]
 MODELS = list(dict.fromkeys(m for m in DEFAULT_MODELS if m))
 
@@ -118,7 +117,8 @@ def call_gemini(api_key: str, prompt: str) -> dict:
             f"https://generativelanguage.googleapis.com/v1beta/models/"
             f"{model}:generateContent?key={api_key}"
         )
-        for attempt in range(1, 4):
+        for attempt in range(1, 3):
+            print(f"Calling {model} (attempt {attempt})...", flush=True)
             req = urllib.request.Request(
                 url,
                 data=encoded_payload,
@@ -126,7 +126,7 @@ def call_gemini(api_key: str, prompt: str) -> dict:
                 method="POST",
             )
             try:
-                with urllib.request.urlopen(req, timeout=240) as resp:
+                with urllib.request.urlopen(req, timeout=75) as resp:
                     body = json.loads(resp.read().decode("utf-8"))
                 candidates = body.get("candidates") or []
                 if not candidates:
@@ -136,7 +136,7 @@ def call_gemini(api_key: str, prompt: str) -> dict:
                 if not raw_text.strip():
                     raise RuntimeError(f"Gemini returned empty text: {body}")
                 parsed = json.loads(strip_code_fences(raw_text))
-                print(f"Generated response using model {model} (attempt {attempt})")
+                print(f"Generated response using model {model} (attempt {attempt})", flush=True)
                 return parsed
             except (TimeoutError, urllib.error.URLError, json.JSONDecodeError) as exc:
                 if isinstance(exc, urllib.error.HTTPError):
@@ -145,24 +145,25 @@ def call_gemini(api_key: str, prompt: str) -> dict:
                         f"Gemini API HTTP {exc.code} ({model}): {err_body}"
                     )
                     if exc.code == 404:
-                        print(f"Model {model} unavailable (404), trying next model...", file=sys.stderr)
+                        print(f"Model {model} unavailable (404), trying next model...", file=sys.stderr, flush=True)
                         break
-                    if exc.code in (429, 500, 502, 503, 504) and attempt < 3:
-                        delay = 3 * (2 ** (attempt - 1))
+                    if exc.code in (429, 500, 502, 503, 504) and attempt < 2:
+                        delay = 3
                         print(
                             f"Transient HTTP {exc.code} from {model}; retrying in {delay}s...",
                             file=sys.stderr,
+                            flush=True,
                         )
                         time.sleep(delay)
                         continue
                     if exc.code in (429, 500, 502, 503, 504):
-                        print(f"Model {model} failed with HTTP {exc.code}, trying next model...", file=sys.stderr)
+                        print(f"Model {model} failed with HTTP {exc.code}, trying next model...", file=sys.stderr, flush=True)
                         break
                     raise last_error from exc
                 last_error = exc
-                print(f"Transient error from {model} (attempt {attempt}): {exc}", file=sys.stderr)
-                if attempt < 3:
-                    time.sleep(3 * (2 ** (attempt - 1)))
+                print(f"Transient error from {model} (attempt {attempt}): {exc}", file=sys.stderr, flush=True)
+                if attempt < 2:
+                    time.sleep(3)
                     continue
                 break
 
