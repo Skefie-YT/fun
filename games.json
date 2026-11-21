@@ -118,5 +118,13 @@
     "category": "Physics",
     "accent": "#0EA5E9",
     "addedAt": "2026-11-21T18:35:16Z"
+  },
+  {
+    "slug": "grid-phase-tactics",
+    "title": "Grid Phase",
+    "description": "Outsmart patrolling bots by planning your moves on a shifting grid to reach the data core.",
+    "category": "Puzzle",
+    "accent": "#EC4899",
+    "addedAt": "2026-11-21T19:42:21Z"
   }
 ]

@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Grid Phase</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #EC4899;
+            --bg: #0f172a;
+            --panel: #1e293b;
+            --text: #f8fafc;
+        }
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            touch-action: manipulation;
+        }
+        body {
+            margin: 0;
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'JetBrains+Mono', monospace;
+            overflow: hidden;
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+        }
+        #ui-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 20px;
+            background: var(--panel);
+            border-bottom: 2px solid var(--accent);
+            z-index: 100;
+        }
+        .back-btn {
+            color: var(--text);
+            text-decoration: none;
+            font-size: 14px;
+            border: 1px solid var(--accent);
+            padding: 5px 10px;
+            border-radius: 4px;
+            transition: background 0.3s;
+        }
+        .back-btn:hover {
+            background: var(--accent);
+        }
+        .stats {
+            text-align: center;
+        }
+        .stats div {
+            font-size: 12px;
+            opacity: 0.8;
+        }
+        .stats b {
+            font-size: 18px;
+            color: var(--accent);
+            font-family: 'Orbitron', sans-serif;
+        }
+        #game-container {
+            flex-grow: 1;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        canvas {
+            background: #020617;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            max-width: 100%;
+            max-height: 100%;
+        }
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 200;
+            padding: 30px;
+            text-align: center;
+        }
+        .hidden { display: none !important; }
+        h1 { font-family: 'Orbitron', sans-serif; color: var(--accent); margin: 0 0 10px 0; }
+        p { max-width: 400px; line-height: 1.5; margin-bottom: 20px; }
+        button {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            font-size: 18px;
+            font-family: 'Orbitron', sans-serif;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+        button:active { transform: scale(0.95); }
+        .help-btn {
+            background: none;
+            border: 1px solid var(--text);
+            width: 30px; height: 30px;
+            padding: 0; font-size: 16px;
+            border-radius: 50%;
+        }
+        .controls-hint {
+            position: absolute;
+            bottom: 20px;
+            width: 100%;
+            text-align: center;
+            font-size: 12px;
+            opacity: 0.6;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="ui-top">
+        <a href="../../" class="back-btn">Back</a>
+        <div class="stats">
+            <div>LEVEL: <b id="cur-lvl">1</b></div>
+            <div>BEST: <b id="best-lvl">1</b></div>
+        </div>
+        <button class="help-btn" onclick="toggleHelp()">?</button>
+    </div>
+
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+
+        <!-- Screens -->
+        <div id="start-screen" class="overlay">
+            <h1>GRID PHASE</h1>
+            <p>A turn-based tactical puzzle. Navigate to the Golden Core. Enemies move when you move. Don't get caught!</p>
+            <button onclick="startGame()">INITIALIZE</button>
+        </div>
+
+        <div id="game-over-screen" class="overlay hidden">
+            <h1 id="over-title">SYSTEM FAILURE</h1>
+            <p id="over-msg">Caught by a patrol drone.</p>
+            <button onclick="startGame()">REBOOT</button>
+        </div>
+
+        <div id="help-overlay" class="overlay hidden" onclick="toggleHelp()">
+            <h1>HOW TO PLAY</h1>
+            <p>1. Swipe or use Arrow Keys to move.<br>2. Reach the Golden Core to advance.<br>3. Enemies follow fixed paths or chase patterns.<br>4. Plan your moves—one step at a time!</p>
+            <p style="font-size: 12px;">(Click anywhere to close)</p>
+        </div>
+        
+        <div class="controls-hint">Arrows / Swipe to Move</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const slug = 'grid-phase-tactics';
+        
+        let gameState = 'START';
+        let level = 1;
+        let tileSize = 60;
+        let gridW = 7;
+        let gridH = 7;
+        
+        let player = { x: 0, y: 0 };
+        let goal = { x: 6, y: 6 };
+        let enemies = [];
+        let walls = [];
+        let turnActive = false;
+
+        function initGame() {
+            resize();
+            loadLevel(level);
+            updateUI();
+        }
+
+        function loadLevel(l) {
+            player = { x: 1, y: 1 };
+            goal = { x: gridW - 2, y: gridH - 2 };
+            enemies = [];
+            walls = [];
+
+            // Procedural-ish Level Gen
+            const seed = l * 12345;
+            const count = Math.min(2 + Math.floor(l / 2), 6);
+            
+            // Simple random enemies based on level
+            for(let i=0; i<count; i++) {
+                let ex, ey;
+                do {
+                    ex = Math.floor(Math.random() * (gridW-2)) + 1;
+                    ey = Math.floor(Math.random() * (gridH-2)) + 1;
+                } while ((ex === player.x && ey === player.y) || (ex === goal.x && ey === goal.y));
+                
+                enemies.push({
+                    x: ex, y: ey,
+                    type: i % 2 === 0 ? 'pacer' : 'chaser',
+                    dir: Math.random() > 0.5 ? {x:1, y:0} : {x:0, y:1}
+                });
+            }
+        }
+
+        function resize() {
+            const size = Math.min(window.innerWidth - 40, window.innerHeight - 150);
+            canvas.width = size;
+            canvas.height = size;
+            tileSize = size / gridW;
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Grid
+            ctx.strokeStyle = '#1e293b';
+            ctx.lineWidth = 1;
+            for(let i=0; i<=gridW; i++) {
+                ctx.beginPath();
+                ctx.moveTo(i * tileSize, 0); ctx.lineTo(i * tileSize, canvas.height);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(0, i * tileSize); ctx.lineTo(canvas.width, i * tileSize);
+                ctx.stroke();
+            }
+
+            // Goal
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#fbbf24';
+            ctx.fillStyle = '#fbbf24';
+            ctx.beginPath();
+            ctx.arc((goal.x + 0.5) * tileSize, (goal.y + 0.5) * tileSize, tileSize * 0.3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // Enemies
+            enemies.forEach(e => {
+                ctx.fillStyle = e.type === 'chaser' ? '#ef4444' : '#f97316';
+                const padding = tileSize * 0.2;
+                ctx.fillRect(e.x * tileSize + padding, e.y * tileSize + padding, tileSize - padding*2, tileSize - padding*2);
+            });
+
+            // Player
+            ctx.fillStyle = '#EC4899';
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#EC4899';
+            ctx.beginPath();
+            ctx.moveTo((player.x + 0.5) * tileSize, player.y * tileSize + 10);
+            ctx.lineTo(player.x * tileSize + 10, (player.y + 1) * tileSize - 10);
+            ctx.lineTo((player.x + 1) * tileSize - 10, (player.y + 1) * tileSize - 10);
+            ctx.closePath();
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+
+        function movePlayer(dx, dy) {
+            if (gameState !== 'PLAYING' || turnActive) return;
+            
+            let nx = player.x + dx;
+            let ny = player.y + dy;
+
+            if (nx >= 0 && nx < gridW && ny >= 0 && ny < gridH) {
+                player.x = nx;
+                player.y = ny;
+                processTurn();
+            }
+        }
+
+        function processTurn() {
+            turnActive = true;
+            
+            // Check Win
+            if (player.x === goal.x && player.y === goal.y) {
+                level++;
+                playSound(440, 0.1, 'square');
+                setTimeout(() => {
+                    loadLevel(level);
+                    updateUI();
+                    turnActive = false;
+                }, 100);
+                return;
+            }
+
+            // Move Enemies
+            enemies.forEach(e => {
+                if (e.type === 'pacer') {
+                    let nx = e.x + e.dir.x;
+                    let ny = e.y + e.dir.y;
+                    if (nx < 0 || nx >= gridW || ny < 0 || ny >= gridH) {
+                        e.dir.x *= -1;
+                        e.dir.y *= -1;
+                        nx = e.x + e.dir.x;
+                        ny = e.y + e.dir.y;
+                    }
+                    e.x = nx; e.y = ny;
+                } else {
+                    // Chaser logic (simple A* ish)
+                    if (Math.abs(player.x - e.x) > Math.abs(player.y - e.y)) {
+                        e.x += player.x > e.x ? 1 : -1;
+                    } else {
+                        e.y += player.y > e.y ? 1 : -1;
+                    }
+                }
+
+                // Check Death
+                if (e.x === player.x && e.y === player.y) {
+                    gameOver();
+                }
+            });
+
+            turnActive = false;
+            draw();
+        }
+
+        function gameOver() {
+            gameState = 'OVER';
+            document.getElementById('game-over-screen').classList.remove('hidden');
+            const best = localStorage.getItem('fun_arcade_highscore_' + slug) || 1;
+            if (level > best) localStorage.setItem('fun_arcade_highscore_' + slug, level);
+            updateUI();
+            playSound(120, 0.3, 'sawtooth');
+        }
+
+        function startGame() {
+            level = 1;
+            gameState = 'PLAYING';
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('game-over-screen').classList.add('hidden');
+            loadLevel(1);
+            draw();
+        }
+
+        function toggleHelp() {
+            document.getElementById('help-overlay').classList.toggle('hidden');
+        }
+
+        function updateUI() {
+            document.getElementById('cur-lvl').innerText = level;
+            const best = localStorage.getItem('fun_arcade_highscore_' + slug) || 1;
+            document.getElementById('best-lvl').innerText = best;
+        }
+
+        // Touch & Keyboard
+        window.addEventListener('keydown', e => {
+            if (e.key === 'ArrowUp') movePlayer(0, -1);
+            if (e.key === 'ArrowDown') movePlayer(0, 1);
+            if (e.key === 'ArrowLeft') movePlayer(-1, 0);
+            if (e.key === 'ArrowRight') movePlayer(1, 0);
+        });
+
+        let tsX, tsY;
+        canvas.addEventListener('touchstart', e => {
+            tsX = e.touches[0].clientX;
+            tsY = e.touches[0].clientY;
+        }, {passive: false});
+
+        canvas.addEventListener('touchend', e => {
+            if (!tsX || !tsY) return;
+            let dx = e.changedTouches[0].clientX - tsX;
+            let dy = e.changedTouches[0].clientY - tsY;
+            if (Math.abs(dx) > Math.abs(dy)) {
+                if (Math.abs(dx) > 30) movePlayer(dx > 0 ? 1 : -1, 0);
+            } else {
+                if (Math.abs(dy) > 30) movePlayer(0, dy > 0 ? 1 : -1);
+            }
+            tsX = tsY = null;
+        });
+
+        // Audio
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playSound(freq, dur, type) {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + dur);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + dur);
+        }
+
+        window.addEventListener('resize', () => { resize(); draw(); });
+        initGame();
+        draw();
+    </script>
+</body>
+</html>
