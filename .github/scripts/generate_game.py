@@ -20,10 +20,11 @@ GAMES_DIR = ROOT / "games"
 
 DEFAULT_MODELS = [
     os.environ.get("GEMINI_MODEL", "gemini-3.8-flash"),
-    "gemini-2.5-flash-lite",
-    "gemini-2.5-flash",
+    "gemini-3.5-flash",
+    "gemini-3.0-flash",
+    "gemini-2.0-flash",
 ]
-MODELS = list(dict.fromkeys(m for m in DEFAULT_MODELS if m))
+PREFERRED_MODELS = list(dict.fromkeys(m for m in DEFAULT_MODELS if m))
 
 GENRE_SEEDS = [
     "one-button timing reflex game",
@@ -82,36 +83,44 @@ def strip_code_fences(text: str) -> str:
     return text.strip()
 
 
+def list_available_models(api_key: str) -> list[str]:
+    url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+    try:
+        with urllib.request.urlopen(url, timeout=15) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        models = []
+        for m in data.get("models", []):
+            methods = m.get("supportedGenerationMethods", [])
+            name = str(m.get("name", "")).removeprefix("models/")
+            if "generateContent" in methods and name:
+                models.append(name)
+        print(f"Available generateContent models: {', '.join(models[:15])}", flush=True)
+        return models
+    except Exception as exc:
+        print(f"Could not list models: {exc}", file=sys.stderr, flush=True)
+        return []
+
+
 def call_gemini(api_key: str, prompt: str) -> dict:
+    available = list_available_models(api_key)
+    if available:
+        flash_models = [m for m in available if "flash" in m and "tts" not in m and "image" not in m and "audio" not in m]
+        models_to_try = [m for m in PREFERRED_MODELS if m in available] + [m for m in flash_models if m not in PREFERRED_MODELS]
+        if not models_to_try:
+            models_to_try = available[:3]
+    else:
+        models_to_try = PREFERRED_MODELS
+
     base_gen_config = {
         "temperature": 1.0,
         "maxOutputTokens": 8192,
         "responseMimeType": "application/json",
-        "responseSchema": {
-            "type": "OBJECT",
-            "properties": {
-                "slug": {"type": "STRING"},
-                "title": {"type": "STRING"},
-                "description": {"type": "STRING"},
-                "category": {"type": "STRING"},
-                "accent": {"type": "STRING"},
-                "html": {"type": "STRING"},
-            },
-            "required": [
-                "slug",
-                "title",
-                "description",
-                "category",
-                "accent",
-                "html",
-            ],
-        },
     }
 
     last_error: Exception | None = None
     use_thinking_budget = True
 
-    for model in MODELS:
+    for model in models_to_try:
         url = (
             f"https://generativelanguage.googleapis.com/v1beta/models/"
             f"{model}:generateContent?key={api_key}"
@@ -135,7 +144,7 @@ def call_gemini(api_key: str, prompt: str) -> dict:
                 method="POST",
             )
             try:
-                with urllib.request.urlopen(req, timeout=150) as resp:
+                with urllib.request.urlopen(req, timeout=90) as resp:
                     body = json.loads(resp.read().decode("utf-8"))
                 candidates = body.get("candidates") or []
                 if not candidates:
