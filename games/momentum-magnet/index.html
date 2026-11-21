@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Momentum Magnet</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #8B5CF6;
+            --bg: #0f172a;
+            --fg: #f8fafc;
+        }
+        * { box-sizing: border-box; touch-action: none; }
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background: var(--bg); color: var(--fg);
+            font-family: 'Outfit', sans-serif; overflow: hidden;
+        }
+        #game-container {
+            position: relative; width: 100vw; height: 100vh;
+            display: flex; flex-direction: column;
+        }
+        .hud {
+            position: absolute; top: 0; left: 0; width: 100%;
+            padding: 15px 20px; display: flex; justify-content: space-between;
+            align-items: center; z-index: 10; pointer-events: none;
+        }
+        .hud * { pointer-events: auto; }
+        .back-btn {
+            color: white; text-decoration: none; background: rgba(255,255,255,0.1);
+            padding: 6px 12px; border-radius: 8px; font-weight: bold; font-size: 14px;
+            transition: background 0.2s;
+        }
+        .back-btn:hover { background: rgba(255,255,255,0.2); }
+        .score-display { font-size: 20px; font-weight: 700; text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
+        .btn-round {
+            width: 36px; height: 36px; border-radius: 50%; border: none;
+            background: rgba(255,255,255,0.1); color: white;
+            cursor: pointer; font-weight: bold; display: flex; align-items: center; justify-content: center;
+        }
+        canvas { display: block; flex-grow: 1; width: 100%; height: 100%; }
+        
+        .overlay {
+            position: absolute; inset: 0; background: rgba(15, 23, 42, 0.9);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 100; text-align: center; padding: 20px;
+        }
+        .hidden { display: none !important; }
+        h1 { margin: 0 0 10px; color: var(--accent); font-size: 42px; text-transform: uppercase; letter-spacing: 2px; }
+        .btn-main {
+            background: var(--accent); border: none; color: white;
+            padding: 15px 40px; font-size: 20px; border-radius: 50px;
+            cursor: pointer; font-family: inherit; font-weight: bold;
+            box-shadow: 0 0 20px rgba(139, 92, 246, 0.4);
+            transition: transform 0.1s, opacity 0.2s;
+        }
+        .btn-main:active { transform: scale(0.95); }
+        .how-to { max-width: 400px; line-height: 1.6; margin-bottom: 30px; color: #94a3b8; }
+        .controls-hint { position: absolute; bottom: 30px; font-size: 12px; color: #64748b; text-transform: uppercase; }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div class="hud">
+            <a href="../../" class="back-btn">Back</a>
+            <div class="score-display">SCORE: <span id="score-val">0</span></div>
+            <div style="display: flex; gap: 10px;">
+                <button class="btn-round" id="mute-btn">🔊</button>
+                <button class="btn-round" id="help-btn">?</button>
+            </div>
+        </div>
+
+        <canvas id="gameCanvas"></canvas>
+
+        <!-- Screens -->
+        <div id="start-screen" class="overlay">
+            <h1>MOMENTUM MAGNET</h1>
+            <p class="how-to">Press and hold to activate your magnet beam. Anchor to gravity cores to swing forward and build massive velocity.</p>
+            <button class="btn-main" id="start-btn">INITIALIZE</button>
+            <div class="controls-hint">Click / Tap or Spacebar to Grip</div>
+        </div>
+
+        <div id="help-overlay" class="overlay hidden">
+            <h2>How to Play</h2>
+            <p class="how-to">1. Drag or hold your mouse/finger to latch onto the nearest core.<br>2. Use centrifugal force to swing yourself forward.<br>3. Don't fall below the screen or hit the red pulse-walls.<br>4. Travel further to score higher!</p>
+            <button class="btn-main" onclick="document.getElementById('help-overlay').classList.add('hidden')">CLOSE</button>
+        </div>
+
+        <div id="game-over-screen" class="overlay hidden">
+            <h2 id="status-text">CONNECTION LOST</h2>
+            <div style="font-size: 24px; margin-bottom: 20px;">Score: <span id="final-score">0</span></div>
+            <div style="font-size: 16px; margin-bottom: 30px; opacity: 0.8;">Best: <span id="best-score">0</span></div>
+            <button class="btn-main" id="restart-btn">RETRY</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreVal = document.getElementById('score-val');
+        const slug = 'momentum-magnet';
+
+        // State
+        let gameState = 'START';
+        let score = 0;
+        let cameraX = 0;
+        let isMuted = false;
+        let isHolding = false;
+
+        const player = {
+            x: 100, y: 0, vx: 5, vy: 0, radius: 10, 
+            trail: [], anchor: null, angle: 0, armLen: 0
+        };
+
+        let cores = [];
+        let obstacles = [];
+        let particles = [];
+
+        // Audio Context
+        let audioCtx = null;
+        function playSound(freq, type, dur, vol) {
+            if (isMuted || !audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + dur);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + dur);
+        }
+
+        function initAudio() { if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            if(gameState === 'START') player.y = canvas.height / 2;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Input
+        const setHolding = (val) => {
+            if (gameState !== 'PLAYING') return;
+            if (val && !isHolding) {
+                // Try to find nearest core in range
+                const nearest = cores.filter(c => c.x > player.x - 100).sort((a,b) => 
+                    Math.hypot(a.x - player.x, a.y - player.y) - Math.hypot(b.x - player.x, b.y - player.y)
+                )[0];
+                
+                if (nearest && Math.hypot(nearest.x - player.x, nearest.y - player.y) < 300) {
+                    player.anchor = nearest;
+                    player.armLen = Math.hypot(nearest.x - player.x, nearest.y - player.y);
+                    player.angle = Math.atan2(player.y - nearest.y, player.x - nearest.x);
+                    playSound(440, 'sine', 0.1, 0.2);
+                }
+            }
+            if (!val) player.anchor = null;
+            isHolding = val;
+        };
+
+        window.addEventListener('mousedown', () => { initAudio(); setHolding(true); });
+        window.addEventListener('mouseup', () => setHolding(false));
+        window.addEventListener('touchstart', (e) => { e.preventDefault(); initAudio(); setHolding(true); });
+        window.addEventListener('touchend', () => setHolding(false));
+        window.addEventListener('keydown', (e) => { if(e.code === 'Space') setHolding(true); });
+        window.addEventListener('keyup', (e) => { if(e.code === 'Space') setHolding(false); });
+
+        function spawnContent(startX) {
+            for (let i = 0; i < 5; i++) {
+                cores.push({
+                    x: startX + i * 400 + Math.random() * 200,
+                    y: 150 + Math.random() * (canvas.height - 300),
+                    r: 8 + Math.random() * 10
+                });
+                if (Math.random() > 0.6) {
+                    obstacles.push({
+                        x: startX + i * 400 + 200,
+                        y: Math.random() * canvas.height,
+                        w: 20, h: 100 + Math.random() * 200
+                    });
+                }
+            }
+        }
+
+        function reset() {
+            score = 0;
+            cameraX = 0;
+            player.x = 150;
+            player.y = canvas.height / 2;
+            player.vx = 7;
+            player.vy = 0;
+            player.anchor = null;
+            player.trail = [];
+            cores = [];
+            obstacles = [];
+            particles = [];
+            spawnContent(400);
+            scoreVal.innerText = '0';
+        }
+
+        function start() {
+            gameState = 'PLAYING';
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('game-over-screen').classList.add('hidden');
+            reset();
+        }
+
+        function gameOver() {
+            gameState = 'GAMEOVER';
+            playSound(100, 'sawtooth', 0.5, 0.3);
+            const best = localStorage.getItem('fun_arcade_highscore_' + slug) || 0;
+            if (score > best) localStorage.setItem('fun_arcade_highscore_' + slug, score);
+            document.getElementById('final-score').innerText = Math.floor(score);
+            document.getElementById('best-score').innerText = Math.floor(Math.max(score, best));
+            document.getElementById('game-over-screen').classList.remove('hidden');
+        }
+
+        function update() {
+            if (gameState !== 'PLAYING') return;
+
+            // Physics
+            if (player.anchor) {
+                // Constrained Swing
+                let dx = player.x - player.anchor.x;
+                let dy = player.y - player.anchor.y;
+                let dist = Math.hypot(dx, dy);
+                
+                // Angular physics
+                let angle = Math.atan2(dy, dx);
+                let speed = Math.hypot(player.vx, player.vy);
+                
+                // Tangential velocity maintenance
+                player.angle += speed / player.armLen * 0.95; 
+                player.x = player.anchor.x + Math.cos(player.angle) * player.armLen;
+                player.y = player.anchor.y + Math.sin(player.angle) * player.armLen;
+
+                // Calc new velocity based on tangent
+                player.vx = -Math.sin(player.angle) * speed * 1.01; // Tiny speed boost
+                player.vy = Math.cos(player.angle) * speed;
+            } else {
+                // Free fall / glide
+                player.vy += 0.25; // Gravity
+                player.x += player.vx;
+                player.y += player.vy;
+                player.vx *= 0.995; // Drag
+            }
+
+            // Bounds
+            if (player.y > canvas.height + 50 || player.y < -100 || player.vx < 1) {
+                gameOver();
+            }
+
+            // Trail
+            player.trail.push({x: player.x, y: player.y});
+            if (player.trail.length > 20) player.trail.shift();
+
+            // Camera
+            cameraX = player.x - 200;
+
+            // Content Generation
+            if (cores[cores.length - 1].x < cameraX + canvas.width + 500) {
+                spawnContent(cores[cores.length - 1].x + 400);
+            }
+
+            // Collision & Cleanup
+            cores = cores.filter(c => c.x > cameraX - 200);
+            obstacles = obstacles.filter(o => {
+                if (player.x + player.radius > o.x && player.x - player.radius < o.x + o.w &&
+                    player.y + player.radius > o.y && player.y - player.radius < o.y + o.h) {
+                    gameOver();
+                }
+                return o.x > cameraX - 200;
+            });
+
+            score = Math.max(score, (player.x - 150) / 10);
+            scoreVal.innerText = Math.floor(score);
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // BG Grid
+            ctx.strokeStyle = 'rgba(139, 92, 246, 0.05)';
+            ctx.lineWidth = 1;
+            let step = 50;
+            for (let x = -cameraX % step; x < canvas.width; x += step) {
+                ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+            }
+
+            ctx.save();
+            ctx.translate(-cameraX, 0);
+
+            // Draw Magnet Line
+            if (player.anchor) {
+                ctx.beginPath();
+                ctx.moveTo(player.x, player.y);
+                ctx.lineTo(player.anchor.x, player.anchor.y);
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                ctx.setLineDash([5, 5]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+
+            // Cores
+            cores.forEach(c => {
+                ctx.beginPath();
+                ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+                ctx.fillStyle = '#8B5CF6';
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = '#8B5CF6';
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            });
+
+            // Obstacles
+            ctx.fillStyle = '#ef4444';
+            obstacles.forEach(o => {
+                ctx.fillRect(o.x, o.y, o.w, o.h);
+            });
+
+            // Trail
+            if (player.trail.length > 1) {
+                ctx.beginPath();
+                ctx.moveTo(player.trail[0].x, player.trail[0].y);
+                for(let i=1; i<player.trail.length; i++) ctx.lineTo(player.trail[i].x, player.trail[i].y);
+                ctx.strokeStyle = 'rgba(139, 92, 246, 0.4)';
+                ctx.lineWidth = 4;
+                ctx.stroke();
+            }
+
+            // Player
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+            ctx.fillStyle = '#fff';
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        function loop() {
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        document.getElementById('start-btn').addEventListener('click', start);
+        document.getElementById('restart-btn').addEventListener('click', start);
+        document.getElementById('help-btn').addEventListener('click', () => {
+            document.getElementById('help-overlay').classList.toggle('hidden');
+        });
+        document.getElementById('mute-btn').addEventListener('click', (e) => {
+            isMuted = !isMuted;
+            e.target.innerText = isMuted ? '🔇' : '🔊';
+        });
+
+        loop();
+    </script>
+</body>
+</html>

@@ -94,5 +94,13 @@
     "category": "Reflex",
     "accent": "#8B5CF6",
     "addedAt": "2026-11-21T15:38:11Z"
+  },
+  {
+    "slug": "momentum-magnet",
+    "title": "Momentum Magnet",
+    "description": "Click and hold to activate your magnet, swinging around gravity cores to build speed and soar through the tech-void.",
+    "category": "Physics",
+    "accent": "#8B5CF6",
+    "addedAt": "2026-11-21T16:38:28Z"
   }
 ]
