@@ -142,5 +142,13 @@
     "category": "Reflex",
     "accent": "#EC4899",
     "addedAt": "2026-11-21T21:32:31Z"
+  },
+  {
+    "slug": "shield-bot-sentinel",
+    "title": "Shield Bot Sentinel",
+    "description": "Deploy and position mobile shields to protect your energy crystal from waves of relentless digital projectiles.",
+    "category": "Strategy",
+    "accent": "#10B981",
+    "addedAt": "2026-11-21T22:32:20Z"
   }
 ]

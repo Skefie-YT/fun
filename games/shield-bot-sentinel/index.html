@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Shield Bot Sentinel</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #10B981;
+            --bg: #0f172a;
+            --panel: #1e293b;
+            --text: #f8fafc;
+        }
+        * { box-sizing: border-box; touch-action: none; user-select: none; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: var(--bg); color: var(--text); font-family: 'Orbitron', sans-serif; overflow: hidden; }
+        #game-container { position: relative; width: 100%; height: 100dvh; display: flex; flex-direction: column; }
+        canvas { width: 100%; height: 100%; flex-grow: 1; display: block; }
+        
+        .hud { position: absolute; top: 0; left: 0; width: 100%; padding: 15px; display: flex; justify-content: space-between; align-items: center; z-index: 10; pointer-events: none; }
+        .hud-group { display: flex; align-items: center; gap: 15px; pointer-events: auto; }
+        .back-btn { background: rgba(255,255,255,0.1); color: white; text-decoration: none; padding: 8px 16px; border-radius: 4px; font-size: 14px; transition: 0.2s; border: 1px solid rgba(255,255,255,0.2); }
+        .back-btn:hover { background: rgba(255,255,255,0.2); }
+        .stat-box { background: rgba(0,0,0,0.4); padding: 5px 12px; border-radius: 6px; border-left: 3px solid var(--accent); }
+        .stat-label { font-size: 10px; color: #94a3b8; text-transform: uppercase; }
+        .stat-val { font-size: 18px; font-weight: bold; display: block; }
+        
+        .btn-icon { background: rgba(255,255,255,0.1); border: none; color: white; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 20px; }
+
+        .overlay { position: absolute; inset: 0; background: rgba(15, 23, 42, 0.9); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; padding: 20px; text-align: center; }
+        .hidden { display: none !important; }
+        h1 { margin: 0 0 10px 0; color: var(--accent); text-shadow: 0 0 10px var(--accent); }
+        .menu-card { background: var(--panel); padding: 30px; border-radius: 12px; border: 1px solid var(--accent); max-width: 400px; width: 100%; box-shadow: 0 0 30px rgba(16, 185, 129, 0.2); }
+        .btn-main { background: var(--accent); border: none; color: white; padding: 15px 30px; font-family: inherit; font-weight: bold; font-size: 18px; border-radius: 8px; cursor: pointer; margin-top: 20px; width: 100%; transition: transform 0.1s; }
+        .btn-main:active { transform: scale(0.95); }
+        
+        .controls-hint { margin-top: 20px; font-size: 12px; color: #94a3b8; line-height: 1.5; }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div class="hud">
+            <div class="hud-group">
+                <a href="../../" class="back-btn">Back</a>
+                <div class="stat-box">
+                    <span class="stat-label">Score</span>
+                    <span id="score-val" class="stat-val">0</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-label">Best</span>
+                    <span id="best-val" class="stat-val">0</span>
+                </div>
+            </div>
+            <div class="hud-group">
+                <button class="btn-icon" id="mute-btn">🔊</button>
+                <button class="btn-icon" id="how-to-btn">?</button>
+            </div>
+        </div>
+
+        <canvas id="gameCanvas"></canvas>
+
+        <!-- Start Screen -->
+        <div id="start-screen" class="overlay">
+            <div class="menu-card">
+                <h1>SHIELD BOT</h1>
+                <p>Protect the central crystal. Drag bots to block incoming projectiles. Don't let your core take 3 hits!</p>
+                <button class="btn-main" id="start-btn">INITIALIZE</button>
+                <div class="controls-hint">PC: Drag with Mouse | Mobile: Drag with Finger</div>
+            </div>
+        </div>
+
+        <!-- How to Play Overlay -->
+        <div id="how-to-overlay" class="overlay hidden">
+            <div class="menu-card">
+                <h2>How to Play</h2>
+                <p style="text-align: left; font-size: 14px;">
+                    • Waves of red drones will fire at your core.<br>
+                    • <b>Drag your green Shield Bots</b> into the line of fire.<br>
+                    • Each bot absorbs 5 hits before needing a 3s recharge.<br>
+                    • If the core gets hit 3 times, game over!<br>
+                    • Survive waves to earn bots and score points.
+                </p>
+                <button class="btn-main" id="close-how-to">GOT IT</button>
+            </div>
+        </div>
+
+        <!-- Game Over Screen -->
+        <div id="game-over-screen" class="overlay hidden">
+            <div class="menu-card">
+                <h1 style="color: #ef4444;">SYSTEM FAILURE</h1>
+                <p id="final-score-msg">You protected the core for 0 waves.</p>
+                <button class="btn-main" id="restart-btn">REBOOT</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const slug = 'shield-bot-sentinel';
+        
+        let gameState = 'START';
+        let score = 0;
+        let wave = 1;
+        let highscore = localStorage.getItem('fun_arcade_highscore_' + slug) || 0;
+        let lastTime = 0;
+        let muted = false;
+        
+        const core = { x: 0, y: 0, r: 35, hp: 3, maxHp: 3 };
+        let bots = [];
+        let enemies = [];
+        let bullets = [];
+        let particles = [];
+        let dragBot = null;
+
+        // UI Elements
+        const scoreVal = document.getElementById('score-val');
+        const bestVal = document.getElementById('best-val');
+        bestVal.innerText = highscore;
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            core.x = canvas.width / 2;
+            core.y = canvas.height / 2;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Audio Setup
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playSound(freq, type, dur, vol) {
+            if (muted) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + dur);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + dur);
+        }
+
+        function spawnParticle(x, y, color) {
+            for(let i=0; i<8; i++) {
+                particles.push({
+                    x, y,
+                    vx: (Math.random() - 0.5) * 8,
+                    vy: (Math.random() - 0.5) * 8,
+                    life: 1.0,
+                    color
+                });
+            }
+        }
+
+        function initGame() {
+            score = 0;
+            wave = 1;
+            core.hp = core.maxHp;
+            bots = [
+                { x: core.x - 80, y: core.y - 80, r: 20, hp: 5, maxHp: 5, recharge: 0 },
+                { x: core.x + 80, y: core.y + 80, r: 20, hp: 5, maxHp: 5, recharge: 0 }
+            ];
+            enemies = [];
+            bullets = [];
+            particles = [];
+            scoreVal.innerText = "0";
+            gameState = 'PLAYING';
+        }
+
+        function spawnWave() {
+            const count = 3 + Math.floor(wave * 0.8);
+            for(let i=0; i<count; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const dist = Math.max(canvas.width, canvas.height) * 0.6;
+                enemies.push({
+                    x: core.x + Math.cos(angle) * dist,
+                    y: core.y + Math.sin(angle) * dist,
+                    targetX: core.x + Math.cos(angle) * (core.r + 150 + Math.random() * 50),
+                    targetY: core.y + Math.sin(angle) * (core.r + 150 + Math.random() * 50),
+                    shootTimer: 60 + Math.random() * 120,
+                    speed: 0.02 + (Math.random() * 0.02),
+                    hp: 1
+                });
+            }
+            if (wave % 3 === 0 && bots.length < 5) {
+                bots.push({ x: core.x, y: core.y - 120, r: 20, hp: 5, maxHp: 5, recharge: 0 });
+            }
+        }
+
+        function update(dt) {
+            if (gameState !== 'PLAYING') return;
+
+            // Waves
+            if (enemies.length === 0) {
+                wave++;
+                spawnWave();
+            }
+
+            // Enemies
+            enemies.forEach((en, i) => {
+                en.x += (en.targetX - en.x) * en.speed;
+                en.y += (en.targetY - en.y) * en.speed;
+                en.shootTimer--;
+                if (en.shootTimer <= 0) {
+                    const angle = Math.atan2(core.y - en.y, core.x - en.x);
+                    bullets.push({
+                        x: en.x, y: en.y,
+                        vx: Math.cos(angle) * (3 + wave * 0.2),
+                        vy: Math.sin(angle) * (3 + wave * 0.2),
+                        r: 4
+                    });
+                    en.shootTimer = 100 - Math.min(60, wave * 2);
+                    playSound(200, 'sawtooth', 0.1, 0.05);
+                }
+            });
+
+            // Bullets
+            bullets.forEach((b, bi) => {
+                b.x += b.vx;
+                b.y += b.vy;
+
+                // Hit Core
+                const distCore = Math.hypot(b.x - core.x, b.y - core.y);
+                if (distCore < core.r) {
+                    core.hp--;
+                    bullets.splice(bi, 1);
+                    spawnParticle(b.x, b.y, '#f43f5e');
+                    playSound(100, 'square', 0.3, 0.2);
+                    if (core.hp <= 0) gameOver();
+                    return;
+                }
+
+                // Hit Bots
+                bots.forEach(bot => {
+                    if (bot.recharge > 0) return;
+                    const distBot = Math.hypot(b.x - bot.x, b.y - bot.y);
+                    if (distBot < bot.r) {
+                        bot.hp--;
+                        bullets.splice(bi, 1);
+                        spawnParticle(b.x, b.y, '#10B981');
+                        playSound(600, 'sine', 0.05, 0.1);
+                        if (bot.hp <= 0) {
+                            bot.recharge = 180; // 3 seconds
+                            playSound(150, 'sawtooth', 0.4, 0.1);
+                        }
+                        score += 10;
+                        scoreVal.innerText = score;
+                    }
+                });
+
+                // Out of bounds
+                if (b.x < 0 || b.x > canvas.width || b.y < 0 || b.y > canvas.height) {
+                    bullets.splice(bi, 1);
+                }
+            });
+
+            // Bots Recharge
+            bots.forEach(bot => {
+                if (bot.recharge > 0) {
+                    bot.recharge--;
+                    if (bot.recharge === 0) bot.hp = bot.maxHp;
+                }
+            });
+
+            // Particles
+            particles.forEach((p, i) => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.02;
+                if (p.life <= 0) particles.splice(i, 1);
+            });
+        }
+
+        function draw() {
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Grid effect
+            ctx.strokeStyle = 'rgba(16, 185, 129, 0.05)';
+            ctx.lineWidth = 1;
+            for(let x=0; x<canvas.width; x+=50) {
+                ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+            }
+            for(let y=0; y<canvas.height; y+=50) {
+                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+            }
+
+            // Draw Core
+            const corePulse = Math.sin(Date.now() / 200) * 5;
+            const coreGrad = ctx.createRadialGradient(core.x, core.y, 5, core.x, core.y, core.r + corePulse);
+            coreGrad.addColorStop(0, '#60a5fa');
+            coreGrad.addColorStop(1, 'transparent');
+            ctx.fillStyle = coreGrad;
+            ctx.beginPath();
+            ctx.arc(core.x, core.y, core.r + corePulse, 0, Math.PI*2);
+            ctx.fill();
+            
+            ctx.strokeStyle = '#3b82f6';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(core.x, core.y, core.r, 0, Math.PI*2);
+            ctx.stroke();
+
+            // Core HP segments
+            for(let i=0; i<3; i++) {
+                ctx.fillStyle = i < core.hp ? '#3b82f6' : '#1e293b';
+                ctx.fillRect(core.x - 20 + i*15, core.y - 5, 10, 10);
+            }
+
+            // Draw Bots
+            bots.forEach(bot => {
+                if (bot.recharge > 0) {
+                    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+                    ctx.setLineDash([5, 5]);
+                    ctx.beginPath();
+                    ctx.arc(bot.x, bot.y, bot.r, 0, Math.PI*2);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                    
+                    ctx.fillStyle = 'white';
+                    ctx.font = '10px Orbitron';
+                    ctx.textAlign = 'center';
+                    ctx.fillText("RECHARGING", bot.x, bot.y + 5);
+                } else {
+                    ctx.fillStyle = '#10B981';
+                    ctx.beginPath();
+                    ctx.arc(bot.x, bot.y, bot.r, 0, Math.PI*2);
+                    ctx.fill();
+                    
+                    // HP Ring
+                    ctx.strokeStyle = '#064e3b';
+                    ctx.lineWidth = 4;
+                    ctx.beginPath();
+                    ctx.arc(bot.x, bot.y, bot.r - 2, 0, Math.PI*2);
+                    ctx.stroke();
+                    
+                    ctx.strokeStyle = '#34d399';
+                    ctx.beginPath();
+                    ctx.arc(bot.x, bot.y, bot.r - 2, -Math.PI/2, (-Math.PI/2) + (Math.PI*2 * (bot.hp/bot.maxHp)));
+                    ctx.stroke();
+                }
+            });
+
+            // Draw Enemies
+            enemies.forEach(en => {
+                ctx.fillStyle = '#f43f5e';
+                ctx.beginPath();
+                ctx.moveTo(en.x, en.y - 12);
+                ctx.lineTo(en.x + 10, en.y + 8);
+                ctx.lineTo(en.x - 10, en.y + 8);
+                ctx.closePath();
+                ctx.fill();
+                
+                // Glow
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = '#f43f5e';
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+            });
+
+            // Draw Bullets
+            bullets.forEach(b => {
+                ctx.fillStyle = '#fca5a5';
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, b.r, 0, Math.PI*2);
+                ctx.fill();
+            });
+
+            // Draw Particles
+            particles.forEach(p => {
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.fillRect(p.x, p.y, 3, 3);
+            });
+            ctx.globalAlpha = 1;
+        }
+
+        function loop(time) {
+            const dt = time - lastTime;
+            lastTime = time;
+            update(dt);
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        function gameOver() {
+            gameState = 'GAMEOVER';
+            if (score > highscore) {
+                highscore = score;
+                localStorage.setItem('fun_arcade_highscore_' + slug, highscore);
+                bestVal.innerText = highscore;
+            }
+            document.getElementById('final-score-msg').innerText = `You survived to wave ${wave} with ${score} points!`;
+            document.getElementById('game-over-screen').classList.remove('hidden');
+        }
+
+        // Input Handlers
+        function getPos(e) {
+            const t = e.touches ? e.touches[0] : e;
+            const rect = canvas.getBoundingClientRect();
+            return { x: t.clientX - rect.left, y: t.clientY - rect.top };
+        }
+
+        function handleStart(e) {
+            if (gameState !== 'PLAYING') return;
+            const pos = getPos(e);
+            dragBot = bots.find(b => Math.hypot(b.x - pos.x, b.y - pos.y) < b.r * 2);
+        }
+
+        function handleMove(e) {
+            if (dragBot && gameState === 'PLAYING') {
+                const pos = getPos(e);
+                dragBot.x = pos.x;
+                dragBot.y = pos.y;
+            }
+        }
+
+        function handleEnd() {
+            dragBot = null;
+        }
+
+        canvas.addEventListener('mousedown', handleStart);
+        canvas.addEventListener('mousemove', handleMove);
+        window.addEventListener('mouseup', handleEnd);
+        canvas.addEventListener('touchstart', handleStart);
+        canvas.addEventListener('touchmove', handleMove);
+        window.addEventListener('touchend', handleEnd);
+
+        document.getElementById('start-btn').onclick = () => {
+            document.getElementById('start-screen').classList.add('hidden');
+            initGame();
+        };
+
+        document.getElementById('restart-btn').onclick = () => {
+            document.getElementById('game-over-screen').classList.add('hidden');
+            initGame();
+        };
+
+        document.getElementById('how-to-btn').onclick = () => {
+            document.getElementById('how-to-overlay').classList.remove('hidden');
+        };
+
+        document.getElementById('close-how-to').onclick = () => {
+            document.getElementById('how-to-overlay').classList.add('hidden');
+        };
+
+        document.getElementById('mute-btn').onclick = () => {
+            muted = !muted;
+            document.getElementById('mute-btn').innerText = muted ? '🔇' : '🔊';
+        };
+
+        requestAnimationFrame(loop);
+    </script>
+</body>
+</html>
