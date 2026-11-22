@@ -262,5 +262,13 @@
     "category": "Physics",
     "accent": "#EC4899",
     "addedAt": "2026-11-22T13:53:29Z"
+  },
+  {
+    "slug": "tile-reaction-pro",
+    "title": "Tile Reaction Pro",
+    "description": "Click tiles to upgrade them; reach max level to trigger an explosive chain reaction and clear the board!",
+    "category": "Puzzle",
+    "accent": "#F59E0B",
+    "addedAt": "2026-11-22T14:44:29Z"
   }
 ]
