@@ -270,5 +270,13 @@
     "category": "Puzzle",
     "accent": "#F59E0B",
     "addedAt": "2026-11-22T14:44:29Z"
+  },
+  {
+    "slug": "vector-sling",
+    "title": "Vector Sling",
+    "description": "Pull back to slingshot your kinetic orb, bend around gravity wells, and shatter every crystal before running out of shots.",
+    "category": "Physics",
+    "accent": "#8B5CF6",
+    "addedAt": "2026-11-22T15:38:15Z"
   }
 ]
