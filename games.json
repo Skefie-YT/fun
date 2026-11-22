@@ -310,5 +310,13 @@
     "category": "Puzzle",
     "accent": "#EC4899",
     "addedAt": "2026-11-22T19:43:34Z"
+  },
+  {
+    "slug": "spin-snap-pro",
+    "title": "Spin Snap Pro",
+    "description": "Tap or press Space to snap the rotating needle onto the target zone before the timer runs out!",
+    "category": "Reflex",
+    "accent": "#EF4444",
+    "addedAt": "2026-11-22T20:38:50Z"
   }
 ]
