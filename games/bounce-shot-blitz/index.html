@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Bounce Shot Blitz</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #E85D04;
+            --bg: #0a0a0c;
+            --text: #ffffff;
+        }
+        * { box-sizing: border-box; touch-action: none; }
+        body {
+            margin: 0; padding: 0; background: var(--bg); color: var(--text);
+            font-family: 'Orbitron', sans-serif; overflow: hidden; height: 100dvh;
+        }
+        #game-container {
+            position: relative; width: 100%; height: 100dvh; display: flex; flex-direction: column;
+        }
+        .hud {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 10px 20px; background: rgba(255,255,255,0.05); z-index: 10;
+        }
+        .back-btn {
+            color: var(--text); text-decoration: none; border: 1px solid var(--accent); padding: 5px 12px; border-radius: 4px; font-size: 0.8rem;
+        }
+        .stats { display: flex; gap: 20px; }
+        .stat-val { color: var(--accent); font-weight: bold; }
+        canvas { flex-grow: 1; width: 100%; height: 100%; background: radial-gradient(circle, #1a1a20 0%, #0a0a0c 100%); }
+        .overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); display: flex; flex-direction: column;
+            justify-content: center; align-items: center; text-align: center; z-index: 100; padding: 20px;
+        }
+        .hidden { display: none !important; }
+        h1 { color: var(--accent); margin: 0 0 10px 0; font-size: 2.5rem; text-transform: uppercase; letter-spacing: 2px; }
+        .btn { 
+            background: var(--accent); color: white; border: none; padding: 15px 40px;
+            font-size: 1.2rem; cursor: pointer; border-radius: 50px; font-family: inherit;
+            margin-top: 20px; transition: transform 0.2s; 
+        }
+        .btn:hover { transform: scale(1.05); }
+        .help-btn { background: none; border: 1px solid #666; color: #666; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; }
+        .hint { margin-top: 20px; font-size: 0.8rem; color: #888; }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div class="hud">
+            <a href="../../" class="back-btn">Back</a>
+            <div class="stats">
+                <div>SCORE: <span id="score-val" class="stat-val">0</span></div>
+                <div>TIME: <span id="time-val" class="stat-val">30</span></div>
+                <div>BEST: <span id="best-val" class="stat-val">0</span></div>
+            </div>
+            <button class="help-btn" id="help-trigger">?</button>
+        </div>
+
+        <canvas id="gameCanvas"></canvas>
+
+        <div id="start-screen" class="overlay">
+            <h1>BOUNCE SHOT</h1>
+            <p>Sling the kinetic orb to hit target bumpers.<br>Bounces increase your multiplier!</p>
+            <button class="btn" id="start-btn">LAUNCH</button>
+            <p class="hint">Drag back to aim and release to fire.</p>
+        </div>
+
+        <div id="game-over" class="overlay hidden">
+            <h1 id="over-title">TIME UP!</h1>
+            <p>Final Score: <span id="final-score" class="stat-val">0</span></p>
+            <button class="btn" id="restart-btn">RETRY</button>
+        </div>
+
+        <div id="how-to-play" class="overlay hidden">
+            <h1>HOW TO PLAY</h1>
+            <ul style="text-align: left; line-height: 1.6; max-width: 300px;">
+                <li>Drag back to aim, release to sling.</li>
+                <li>Hit targets to earn points & time.</li>
+                <li>Wall bounces increase Multiplier.</li>
+                <li>Missing targets resets Multiplier.</li>
+            </ul>
+            <button class="btn" id="close-help">GOT IT</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score-val');
+        const timeEl = document.getElementById('time-val');
+        const bestEl = document.getElementById('best-val');
+        const startScreen = document.getElementById('start-screen');
+        const gameOverScreen = document.getElementById('game-over');
+        const howToScreen = document.getElementById('how-to-play');
+
+        let score = 0, time = 30, best = 0, active = false, lastTime = 0;
+        let ball = { x: 0, y: 0, vx: 0, vy: 0, r: 12, firing: false };
+        let drag = { startX: 0, startY: 0, curX: 0, curY: 0, active: false };
+        let targets = [];
+        let particles = [];
+        let multiplier = 1;
+        let bounceCount = 0;
+        const STORAGE_KEY = 'fun_arcade_highscore_bounce-shot-blitz';
+
+        function init() {
+            resize();
+            best = localStorage.getItem(STORAGE_KEY) || 0;
+            bestEl.innerText = best;
+            window.addEventListener('resize', resize);
+            canvas.addEventListener('mousedown', startDrag);
+            canvas.addEventListener('mousemove', moveDrag);
+            canvas.addEventListener('mouseup', endDrag);
+            canvas.addEventListener('touchstart', (e) => startDrag(e.touches[0]));
+            canvas.addEventListener('touchmove', (e) => moveDrag(e.touches[0]));
+            canvas.addEventListener('touchend', endDrag);
+            
+            document.getElementById('start-btn').onclick = startGame;
+            document.getElementById('restart-btn').onclick = startGame;
+            document.getElementById('help-trigger').onclick = () => howToScreen.classList.remove('hidden');
+            document.getElementById('close-help').onclick = () => howToScreen.classList.add('hidden');
+            
+            requestAnimationFrame(tick);
+        }
+
+        function resize() {
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+            resetBall();
+            if (targets.length === 0) spawnTargets();
+        }
+
+        function resetBall() {
+            ball.x = canvas.width / 2;
+            ball.y = canvas.height - 100;
+            ball.vx = 0;
+            ball.vy = 0;
+            ball.firing = false;
+            bounceCount = 0;
+        }
+
+        function spawnTargets() {
+            targets = [];
+            for (let i = 0; i < 4; i++) {
+                targets.push({
+                    x: Math.random() * (canvas.width - 100) + 50,
+                    y: Math.random() * (canvas.height * 0.5) + 100,
+                    r: 25 + Math.random() * 15,
+                    rot: 0,
+                    speed: (Math.random() - 0.5) * 0.04
+                });
+            }
+        }
+
+        function startGame() {
+            score = 0;
+            time = 30;
+            multiplier = 1;
+            active = true;
+            resetBall();
+            spawnTargets();
+            startScreen.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+            scoreEl.innerText = score;
+        }
+
+        function startDrag(e) {
+            if (!active || ball.firing) return;
+            const rect = canvas.getBoundingClientRect();
+            drag.startX = e.clientX - rect.left;
+            drag.startY = e.clientY - rect.top;
+            drag.active = true;
+        }
+
+        function moveDrag(e) {
+            if (!drag.active) return;
+            const rect = canvas.getBoundingClientRect();
+            drag.curX = e.clientX - rect.left;
+            drag.curY = e.clientY - rect.top;
+        }
+
+        function endDrag() {
+            if (!drag.active) return;
+            drag.active = false;
+            const dx = drag.startX - drag.curX;
+            const dy = drag.startY - drag.curY;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            if (dist > 10) {
+                const power = Math.min(dist * 0.15, 20);
+                const angle = Math.atan2(dy, dx);
+                ball.vx = Math.cos(angle) * power;
+                ball.vy = Math.sin(angle) * power;
+                ball.firing = true;
+                multiplier = 1;
+            }
+        }
+
+        function createExplosion(x, y, color) {
+            for (let i = 0; i < 12; i++) {
+                particles.push({
+                    x, y, 
+                    vx: (Math.random() - 0.5) * 8,
+                    vy: (Math.random() - 0.5) * 8,
+                    life: 1,
+                    color: color
+                });
+            }
+        }
+
+        function tick(now) {
+            const dt = (now - lastTime) / 16.67 || 1;
+            lastTime = now;
+
+            if (active) {
+                time -= (1 / 60) * dt;
+                if (time <= 0) {
+                    time = 0;
+                    active = false;
+                    gameOver();
+                }
+                timeEl.innerText = Math.ceil(time);
+            }
+
+            update(dt);
+            draw();
+            requestAnimationFrame(tick);
+        }
+
+        function update(dt) {
+            if (ball.firing) {
+                ball.x += ball.vx * dt;
+                ball.y += ball.vy * dt;
+
+                // Wall Bounces
+                if (ball.x < ball.r || ball.x > canvas.width - ball.r) {
+                    ball.vx *= -0.9;
+                    ball.x = ball.x < ball.r ? ball.r : canvas.width - ball.r;
+                    bounceCount++;
+                }
+                if (ball.y < ball.r) {
+                    ball.vy *= -0.9;
+                    ball.y = ball.r;
+                    bounceCount++;
+                }
+
+                // Check Targets
+                targets.forEach((t, index) => {
+                    const dx = ball.x - t.x;
+                    const dy = ball.y - t.y;
+                    const dist = Math.sqrt(dx*dx + dy*dy);
+                    if (dist < ball.r + t.r) {
+                        // Hit!
+                        const points = 10 * (bounceCount + 1);
+                        score += points;
+                        scoreEl.innerText = score;
+                        time += 2;
+                        createExplosion(t.x, t.y, '#E85D04');
+                        resetBall();
+                        spawnTargets();
+                    }
+                });
+
+                // Out of bounds
+                if (ball.y > canvas.height + 100) {
+                    resetBall();
+                }
+            }
+
+            // Particles
+            particles.forEach((p, i) => {
+                p.x += p.vx * dt;
+                p.y += p.vy * dt;
+                p.life -= 0.02 * dt;
+                if (p.life <= 0) particles.splice(i, 1);
+            });
+
+            targets.forEach(t => t.rot += t.speed * dt);
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Aim Line
+            if (drag.active) {
+                const dx = drag.startX - drag.curX;
+                const dy = drag.startY - drag.curY;
+                ctx.beginPath();
+                ctx.moveTo(ball.x, ball.y);
+                ctx.lineTo(ball.x + dx, ball.y + dy);
+                ctx.strokeStyle = 'rgba(232, 93, 4, 0.5)';
+                ctx.setLineDash([5, 5]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+
+            // Targets
+            targets.forEach(t => {
+                ctx.save();
+                ctx.translate(t.x, t.y);
+                ctx.rotate(t.rot);
+                ctx.strokeStyle = '#E85D04';
+                ctx.lineWidth = 3;
+                ctx.strokeRect(-t.r, -t.r, t.r*2, t.r*2);
+                ctx.fillStyle = 'rgba(232, 93, 4, 0.2)';
+                ctx.fillRect(-t.r, -t.r, t.r*2, t.r*2);
+                ctx.restore();
+            });
+
+            // Particles
+            particles.forEach(p => {
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.fillRect(p.x, p.y, 4, 4);
+            });
+            ctx.globalAlpha = 1;
+
+            // Ball
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+            ctx.fillStyle = '#fff';
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#E85D04';
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+
+        function gameOver() {
+            if (score > best) {
+                best = score;
+                localStorage.setItem(STORAGE_KEY, best);
+                bestEl.innerText = best;
+            }
+            document.getElementById('final-score').innerText = score;
+            gameOverScreen.classList.remove('hidden');
+        }
+
+        init();
+    </script>
+</body>
+</html>

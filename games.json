@@ -326,5 +326,13 @@
     "category": "Puzzle",
     "accent": "#10B981",
     "addedAt": "2026-11-22T21:35:22Z"
+  },
+  {
+    "slug": "bounce-shot-blitz",
+    "title": "Bounce Shot Blitz",
+    "description": "Drag to aim and sling your energy orb into the rotating bumper targets. Use wall bounces to multiply your score and keep the timer alive!",
+    "category": "Physics",
+    "accent": "#E85D04",
+    "addedAt": "2026-11-22T22:37:26Z"
   }
 ]
