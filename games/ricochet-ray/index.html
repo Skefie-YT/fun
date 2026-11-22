@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Ricochet Ray</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap');
+        :root { --accent: #EC4899; --bg: #0f172a; }
+        * { box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
+        body { margin: 0; background: var(--bg); color: white; font-family: 'Outfit', sans-serif; overflow: hidden; height: 100dvh; display: flex; flex-direction: column; }
+        #ui-top { height: 60px; display: flex; align-items: center; justify-content: space-between; padding: 0 15px; background: rgba(0,0,0,0.3); z-index: 10; }
+        .back-btn { color: white; text-decoration: none; font-weight: 700; background: rgba(255,255,255,0.1); padding: 6px 12px; border-radius: 6px; }
+        .stats { display: flex; gap: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+        .help-btn { background: var(--accent); border: none; color: white; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; font-weight: bold; }
+        
+        #game-container { position: relative; flex: 1; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+        canvas { background: #1e293b; max-width: 100%; max-height: 100%; box-shadow: 0 0 30px rgba(0,0,0,0.5); }
+
+        .overlay { position: absolute; inset: 0; background: rgba(15, 23, 42, 0.9); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 20; padding: 20px; text-align: center; }
+        .hidden { display: none !important; }
+        h1 { color: var(--accent); margin: 0 0 10px; font-size: 2.5rem; }
+        p { max-width: 400px; line-height: 1.6; margin-bottom: 20px; }
+        .btn { background: var(--accent); border: none; color: white; padding: 12px 32px; font-size: 1.2rem; font-weight: 700; border-radius: 8px; cursor: pointer; transition: transform 0.1s; }
+        .btn:active { transform: scale(0.95); }
+        .controls-hint { position: absolute; bottom: 20px; font-size: 0.8rem; opacity: 0.6; }
+    </style>
+</head>
+<body>
+
+<div id="ui-top">
+    <a href="../../" class="back-btn">Back</a>
+    <div class="stats">
+        <div>Score: <span id="score-val">0</span></div>
+        <div>Best: <span id="best-val">0</span></div>
+    </div>
+    <button class="help-btn" onclick="toggleHelp()">?</button>
+</div>
+
+<div id="game-container">
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- Start Screen -->
+    <div id="start-screen" class="overlay">
+        <h1>RICOCHET RAY</h1>
+        <p>Drag to aim and release to launch your energy orb. Clear all target nodes in as few bounces as possible to score big!</p>
+        <button class="btn" onclick="startGame()">START MISSION</button>
+        <div class="controls-hint">Mouse Drag or Touch to Aim • Release to Launch</div>
+    </div>
+
+    <!-- Game Over Screen -->
+    <div id="game-over" class="overlay hidden">
+        <h1 id="over-title">LEVEL CLEAR!</h1>
+        <p id="over-msg">Energy depleted. Great shooting!</p>
+        <button class="btn" onclick="startGame()">PLAY AGAIN</button>
+    </div>
+
+    <!-- Help Overlay -->
+    <div id="help-overlay" class="overlay hidden" onclick="toggleHelp()">
+        <h1>How to Play</h1>
+        <p>1. Drag back from the blue launcher to aim.<br>2. Release to fire your ray.<br>3. Hit the pink targets to clear them.<br>4. Gravity and walls affect your path!<br>5. Clear levels before running out of energy.</p>
+        <button class="btn">GOT IT</button>
+    </div>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const scoreEl = document.getElementById('score-val');
+const bestEl = document.getElementById('best-val');
+const startScreen = document.getElementById('start-screen');
+const gameOverScreen = document.getElementById('game-over');
+const helpOverlay = document.getElementById('help-overlay');
+
+const SLUG = 'ricochet-ray';
+let score = 0;
+let bestScore = localStorage.getItem('fun_arcade_highscore_' + SLUG) || 0;
+bestEl.textContent = bestScore;
+
+let width, height;
+let ball = { x: 0, y: 0, vx: 0, vy: 0, radius: 10, active: false };
+let targets = [];
+let walls = [];
+let isAiming = false;
+let dragStart = { x: 0, y: 0 };
+let dragCurrent = { x: 0, y: 0 };
+let level = 1;
+let energy = 100;
+let particles = [];
+
+function resize() {
+    const container = document.getElementById('game-container');
+    width = container.clientWidth;
+    height = container.clientHeight;
+    canvas.width = width;
+    canvas.height = height;
+    if(!ball.active) resetBall();
+}
+
+window.addEventListener('resize', resize);
+resize();
+
+function resetBall() {
+    ball.x = 60;
+    ball.y = height / 2;
+    ball.vx = 0;
+    ball.vy = 0;
+    ball.active = false;
+}
+
+function createLevel() {
+    targets = [];
+    const count = Math.min(3 + level, 12);
+    for(let i=0; i<count; i++) {
+        targets.push({
+            x: width * 0.3 + Math.random() * (width * 0.6),
+            y: height * 0.1 + Math.random() * (height * 0.8),
+            radius: 15 + Math.random() * 10,
+            pulse: Math.random() * Math.PI
+        });
+    }
+}
+
+function startGame() {
+    score = 0;
+    level = 1;
+    scoreEl.textContent = score;
+    startScreen.classList.add('hidden');
+    gameOverScreen.classList.add('hidden');
+    resetBall();
+    createLevel();
+    requestAnimationFrame(update);
+}
+
+function toggleHelp() {
+    helpOverlay.classList.toggle('hidden');
+}
+
+// Input Handling
+function getPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    return { x: clientX - rect.left, y: clientY - rect.top };
+}
+
+canvas.addEventListener('mousedown', (e) => {
+    if(ball.active) return;
+    isAiming = true;
+    dragStart = getPos(e);
+    dragCurrent = dragStart;
+});
+
+canvas.addEventListener('mousemove', (e) => {
+    if(isAiming) dragCurrent = getPos(e);
+});
+
+window.addEventListener('mouseup', () => {
+    if(isAiming) {
+        isAiming = false;
+        const dx = dragStart.x - dragCurrent.x;
+        const dy = dragStart.y - dragCurrent.y;
+        ball.vx = dx * 0.15;
+        ball.vy = dy * 0.15;
+        ball.active = true;
+        playSound(200, 'square', 0.1);
+    }
+});
+
+canvas.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    if(ball.active) return;
+    isAiming = true;
+    dragStart = getPos(e);
+    dragCurrent = dragStart;
+}, {passive: false});
+
+canvas.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    if(isAiming) dragCurrent = getPos(e);
+}, {passive: false});
+
+canvas.addEventListener('touchend', () => {
+    if(isAiming) {
+        isAiming = false;
+        const dx = dragStart.x - dragCurrent.x;
+        const dy = dragStart.y - dragCurrent.y;
+        ball.vx = dx * 0.15;
+        ball.vy = dy * 0.15;
+        ball.active = true;
+        playSound(200, 'square', 0.1);
+    }
+});
+
+function createParticles(x, y, color) {
+    for(let i=0; i<8; i++) {
+        particles.push({
+            x, y, 
+            vx: (Math.random()-0.5)*10, 
+            vy: (Math.random()-0.5)*10, 
+            life: 1, 
+            color
+        });
+    }
+}
+
+function playSound(freq, type, dur) {
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, ctx.currentTime);
+        gain.gain.setValueAtTime(0.1, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + dur);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + dur);
+    } catch(e) {}
+}
+
+function update() {
+    if(gameOverScreen.classList.contains('hidden') === false) return;
+
+    ctx.clearRect(0, 0, width, height);
+
+    // Particles
+    particles.forEach((p, i) => {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life -= 0.02;
+        if(p.life <= 0) particles.splice(i, 1);
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = p.life;
+        ctx.fillRect(p.x, p.y, 3, 3);
+    });
+    ctx.globalAlpha = 1;
+
+    // Aiming Visual
+    if(isAiming) {
+        ctx.beginPath();
+        ctx.setLineDash([5, 5]);
+        ctx.moveTo(ball.x, ball.y);
+        ctx.lineTo(ball.x + (dragStart.x - dragCurrent.x), ball.y + (dragStart.y - dragCurrent.y));
+        ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+        ctx.stroke();
+        ctx.setLineDash([]);
+    }
+
+    // Targets
+    targets.forEach((t, i) => {
+        t.pulse += 0.05;
+        const s = Math.sin(t.pulse) * 3;
+        ctx.beginPath();
+        ctx.arc(t.x, t.y, t.radius + s, 0, Math.PI*2);
+        ctx.fillStyle = '#EC4899';
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = '#EC4899';
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // Collision
+        if(ball.active) {
+            const dx = ball.x - t.x;
+            const dy = ball.y - t.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            if(dist < ball.radius + t.radius) {
+                targets.splice(i, 1);
+                score += 100 * level;
+                scoreEl.textContent = score;
+                createParticles(t.x, t.y, '#EC4899');
+                playSound(400 + Math.random()*200, 'sine', 0.2);
+            }
+        }
+    });
+
+    // Physics
+    if(ball.active) {
+        ball.x += ball.vx;
+        ball.y += ball.vy;
+        ball.vy += 0.15; // Gravity
+        ball.vx *= 0.995; // Drag
+
+        // Wall Bouncing
+        if(ball.x - ball.radius < 0 || ball.x + ball.radius > width) {
+            ball.vx *= -0.8;
+            ball.x = ball.x < width/2 ? ball.radius : width - ball.radius;
+            playSound(150, 'triangle', 0.05);
+        }
+        if(ball.y - ball.radius < 0 || ball.y + ball.radius > height) {
+            ball.vy *= -0.7;
+            ball.y = ball.y < height/2 ? ball.radius : height - ball.radius;
+            playSound(150, 'triangle', 0.05);
+        }
+
+        // Stop condition
+        if(Math.abs(ball.vx) < 0.2 && Math.abs(ball.vy) < 0.5 && ball.y > height - ball.radius - 5) {
+            ball.active = false;
+            resetBall();
+            if(targets.length > 0) {
+                // If missed all targets with no speed left, slight penalty or check loss
+            }
+        }
+    }
+
+    // Draw Ball
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI*2);
+    ctx.fillStyle = '#60a5fa';
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = '#60a5fa';
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Win check
+    if(targets.length === 0) {
+        level++;
+        score += 500;
+        scoreEl.textContent = score;
+        createLevel();
+        resetBall();
+    }
+
+    // Loss check (out of bounds logic or limit turns - here we just keep score)
+    // For this arcade version, it's an endless high-score hunter
+
+    if(score > bestScore) {
+        bestScore = score;
+        bestEl.textContent = bestScore;
+        localStorage.setItem('fun_arcade_highscore_' + SLUG, bestScore);
+    }
+
+    requestAnimationFrame(update);
+}
+
+</script>
+</body>
+</html>

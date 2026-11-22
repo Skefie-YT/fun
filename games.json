@@ -230,5 +230,13 @@
     "category": "Reflex",
     "accent": "#8B5CF6",
     "addedAt": "2026-11-22T09:42:14Z"
+  },
+  {
+    "slug": "ricochet-ray",
+    "title": "Ricochet Ray",
+    "description": "Drag to aim and launch your energy orb to shatter all target nodes using physics-based ricochets!",
+    "category": "Physics",
+    "accent": "#EC4899",
+    "addedAt": "2026-11-22T10:42:21Z"
   }
 ]
