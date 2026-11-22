@@ -286,5 +286,13 @@
     "category": "Strategy",
     "accent": "#10B981",
     "addedAt": "2026-11-22T16:40:26Z"
+  },
+  {
+    "slug": "flux-turret-tactics",
+    "title": "Flux Turret Tactics",
+    "description": "Place and upgrade modular turrets to stop waves of viral packets from reaching your data hub in this miniature defense challenge.",
+    "category": "Strategy",
+    "accent": "#10B981",
+    "addedAt": "2026-11-22T17:37:58Z"
   }
 ]
