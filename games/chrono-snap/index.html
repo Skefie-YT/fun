@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Chrono Snap — Fun Arcade</title>
+<style>
+  :root {
+    --bg: #070B14;
+    --surface: #0F172A;
+    --border: rgba(14, 165, 233, 0.25);
+    --accent: #0EA5E9;
+    --accent-glow: rgba(14, 165, 233, 0.55);
+    --gold: #F59E0B;
+    --danger: #EF4444;
+    --text: #F8FAFC;
+    --muted: #94A3B8;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; user-select: none; }
+  html, body {
+    width: 100%; height: 100dvh; overflow: hidden;
+    background: radial-gradient(circle at 50% 45%, #0F172A 0%, #070B14 75%);
+    color: var(--text);
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    display: flex; flex-direction: column;
+  }
+  header {
+    height: 56px; padding: 0 14px;
+    display: flex; align-items: center; justify-content: space-between;
+    background: rgba(15, 23, 42, 0.85);
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(8px);
+    z-index: 20;
+    flex-shrink: 0;
+  }
+  .back-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    color: var(--text); text-decoration: none; font-size: 14px; font-weight: 600;
+    padding: 6px 12px; border-radius: 8px;
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .back-btn:hover { background: rgba(14,165,233,0.18); border-color: var(--accent); }
+  .hud {
+    display: flex; align-items: center; gap: 16px;
+  }
+  .stat { text-align: center; line-height: 1.1; }
+  .stat-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+  .stat-val { font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--text); }
+  .stat-val.accent { color: var(--accent); }
+  .header-actions { display: flex; align-items: center; gap: 8px; }
+  .icon-btn {
+    width: 34px; height: 34px; border-radius: 8px;
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
+    color: var(--text); font-size: 15px; font-weight: 700;
+    cursor: pointer; display: grid; place-items: center;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .icon-btn:hover { background: rgba(14,165,233,0.2); border-color: var(--accent); }
+  main {
+    position: relative; flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; overflow: hidden;
+  }
+  canvas {
+    display: block; width: 100%; height: 100%; touch-action: none; cursor: pointer;
+  }
+  .controls-hint {
+    position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
+    font-size: 12px; color: var(--muted); letter-spacing: 0.04em;
+    background: rgba(15, 23, 42, 0.75); padding: 6px 14px; border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.08); pointer-events: none;
+    white-space: nowrap;
+  }
+  .overlay {
+    position: absolute; inset: 0; z-index: 30;
+    background: rgba(7, 11, 20, 0.84); backdrop-filter: blur(8px);
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+    transition: opacity 0.2s;
+  }
+  .overlay.hidden { opacity: 0; pointer-events: none; }
+  .card {
+    width: 100%; max-width: 380px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 20px; padding: 28px 24px;
+    text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,0.6), 0 0 30px rgba(14,165,233,0.12);
+  }
+  .badge {
+    display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.1em; color: var(--accent); background: rgba(14,165,233,0.14);
+    padding: 4px 10px; border-radius: 999px; margin-bottom: 10px;
+  }
+  h1 { font-size: 30px; font-weight: 900; letter-spacing: -0.02em; margin-bottom: 10px; }
+  .desc { font-size: 14px; line-height: 1.5; color: var(--muted); margin-bottom: 22px; }
+  .btn-primary {
+    width: 100%; padding: 14px 20px; border: none; border-radius: 12px;
+    background: linear-gradient(135deg, #0EA5E9, #0284C7);
+    color: #fff; font-size: 16px; font-weight: 800; letter-spacing: 0.02em;
+    cursor: pointer; box-shadow: 0 8px 24px rgba(14,165,233,0.35);
+    transition: transform 0.12s, box-shadow 0.12s;
+  }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 10px 28px rgba(14,165,233,0.5); }
+  .btn-primary:active { transform: translateY(1px); }
+  .score-summary {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px;
+  }
+  .summary-box {
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px; padding: 12px;
+  }
+  .summary-box .label { font-size: 11px; color: var(--muted); text-transform: uppercase; }
+  .summary-box .val { font-size: 24px; font-weight: 800; margin-top: 2px; }
+  .rules-list {
+    text-align: left; font-size: 13.5px; color: var(--muted); line-height: 1.55;
+    margin-bottom: 20px; padding-left: 18px;
+  }
+  .rules-list li { margin-bottom: 6px; }
+  .rules-list strong { color: var(--text); }
+</style>
+</head>
+<body>
+<header>
+  <a href="../../" class="back-btn">&#8592; Back</a>
+  <div class="hud">
+    <div class="stat">
+      <div class="stat-label">Score</div>
+      <div class="stat-val accent" id="hudScore">0</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Best</div>
+      <div class="stat-val" id="hudBest">0</div>
+    </div>
+  </div>
+  <div class="header-actions">
+    <button class="icon-btn" id="muteBtn" title="Toggle Sound" aria-label="Toggle Sound">&#128266;</button>
+    <button class="icon-btn" id="helpBtn" title="How to Play" aria-label="How to Play">?</button>
+  </div>
+</header>
+
+<main>
+  <canvas id="gameCanvas"></canvas>
+  <div class="controls-hint">Tap / Click / Spacebar to Snap</div>
+
+  <div class="overlay" id="startOverlay">
+    <div class="card">
+      <div class="badge">One-Button Reflex</div>
+      <h1>Chrono Snap</h1>
+      <p class="desc">Tap or press <strong>Space</strong> the exact instant the sweeping needle crosses the glowing target arc. Hit the center for a <strong>Perfect</strong> combo!</p>
+      <button class="btn-primary" id="startBtn">Start Game</button>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="gameOverOverlay">
+    <div class="card">
+      <div class="badge" id="overBadge">Run Complete</div>
+      <h1>System Locked</h1>
+      <div class="score-summary">
+        <div class="summary-box">
+          <div class="label">Score</div>
+          <div class="val" id="finalScore">0</div>
+        </div>
+        <div class="summary-box">
+          <div class="label">Best</div>
+          <div class="val" id="finalBest">0</div>
+        </div>
+      </div>
+      <button class="btn-primary" id="restartBtn">Play Again</button>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="helpOverlay">
+    <div class="card">
+      <div class="badge">How to Play</div>
+      <h1>Chrono Snap</h1>
+      <ul class="rules-list">
+        <li><strong>Goal:</strong> Snap the needle inside the glowing cyan arc to score and reverse direction.</li>
+        <li><strong>Perfect Hit:</strong> Land near the center of the arc for bonus points and combo multipliers.</li>
+        <li><strong>Fever Mode:</strong> Reach a <strong>10x</strong> combo to ignite Fever Mode for double points!</li>
+        <li><strong>Shields:</strong> You have <strong>3 shields</strong>. Missing the arc costs 1 shield and resets your combo.</li>
+        <li><strong>Controls:</strong> Tap anywhere, click, or press <strong>Spacebar</strong> / <strong>Enter</strong>.</li>
+      </ul>
+      <button class="btn-primary" id="closeHelpBtn">Got It</button>
+    </div>
+  </div>
+</main>
+
+<script>
+(() => {
+  const SLUG = 'chrono-snap';
+  const STORAGE_KEY = 'fun_arcade_highscore_' + SLUG;
+
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+  const hudScore = document.getElementById('hudScore');
+  const hudBest = document.getElementById('hudBest');
+  const startOverlay = document.getElementById('startOverlay');
+  const gameOverOverlay = document.getElementById('gameOverOverlay');
+  const helpOverlay = document.getElementById('helpOverlay');
+  const finalScoreEl = document.getElementById('finalScore');
+  const finalBestEl = document.getElementById('finalBest');
+  const overBadge = document.getElementById('overBadge');
+  const muteBtn = document.getElementById('muteBtn');
+  const helpBtn = document.getElementById('helpBtn');
+
+  let bestScore = parseInt(localStorage.getItem(STORAGE_KEY) || '0', 10) || 0;
+  hudBest.textContent = bestScore;
+
+  let muted = false;
+  let audioCtx = null;
+
+  function ensureAudio() {
+    if (!audioCtx && !muted) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) audioCtx = new AC();
+    }
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume().catch(() => {});
+    }
+  }
+
+  function playTone(freq, dur, type = 'sine', vol = 0.14, slide = 0) {
+    if (muted || !audioCtx) return;
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, now);
+    if (slide !== 0) osc.frequency.exponentialRampToValueAtTime(Math.max(40, freq + slide), now + dur);
+    gain.gain.setValueAtTime(vol, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + dur);
+  }
+
+  function sfxHit(perfect, combo) {
+    const base = 420 + Math.min(combo, 15) * 28;
+    playTone(base, 0.11, 'triangle', 0.16, 120);
+    if (perfect) {
+      setTimeout(() => playTone(base * 1.5, 0.14, 'sine', 0.14, 80), 35);
+    }
+  }
+  function sfxMiss() {
+    playTone(170, 0.22, 'sawtooth', 0.15, -90);
+  }
+  function sfxGameOver() {
+    playTone(220, 0.18, 'sawtooth', 0.14, -60);
+    setTimeout(() => playTone(130, 0.35, 'sawtooth', 0.16, -50), 140);
+  }
+
+  muteBtn.addEventListener('click', () => {
+    muted = !muted;
+    muteBtn.innerHTML = muted ? '&#128263;' : '&#128266;';
+  });
+
+  let state = 'start'; // start | playing | paused | gameover
+  let prevState = 'start';
+  let score = 0;
+  let combo = 0;
+  let shields = 3;
+  let needleAngle = -Math.PI / 2;
+  let dir = 1;
+  let speed = 2.1; // rad/sec
+  let targetAngle = 0;
+  let targetWidth = 0.62; // radians
+  let targetDrift = 0;
+  let shake = 0;
+  let flashAlpha = 0;
+  let flashColor = '#0EA5E9';
+  let particles = [];
+  let shockwaves = [];
+  let floatingTexts = [];
+  let lastTime = 0;
+
+  function resize() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const rect = canvas.parentElement.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function normalizeAngle(a) {
+    while (a < 0) a += Math.PI * 2;
+    while (a >= Math.PI * 2) a -= Math.PI * 2;
+    return a;
+  }
+
+  function angleDiff(a, b) {
+    let d = normalizeAngle(a) - normalizeAngle(b);
+    if (d > Math.PI) d -= Math.PI * 2;
+    if (d < -Math.PI) d += Math.PI * 2;
+    return d;
+  }
+
+  function spawnTarget() {
+    const minOffset = 1.15;
+    const maxOffset = Math.PI * 1.55;
+    const offset = minOffset + Math.random() * (maxOffset - minOffset);
+    targetAngle = normalizeAngle(needleAngle + dir * offset);
+    const level = Math.floor(score / 400);
+    targetWidth = Math.max(0.26, 0.64 - level * 0.025);
+    targetDrift = score >= 600 ? (Math.random() < 0.5 ? 1 : -1) * Math.min(0.65, 0.18 + level * 0.03) : 0;
+  }
+
+  function startGame() {
+    ensureAudio();
+    score = 0;
+    combo = 0;
+    shields = 3;
+    needleAngle = -Math.PI / 2;
+    dir = 1;
+    speed = 2.15;
+    shake = 0;
+    particles = [];
+    shockwaves = [];
+    floatingTexts = [];
+    hudScore.textContent = '0';
+    spawnTarget();
+    state = 'playing';
+    startOverlay.classList.add('hidden');
+    gameOverOverlay.classList.add('hidden');
+    helpOverlay.classList.add('hidden');
+  }
+
+  function endGame() {
+    state = 'gameover';
+    sfxGameOver();
+    const isNewBest = score > bestScore;
+    if (isNewBest) {
+      bestScore = score;
+      localStorage.setItem(STORAGE_KEY, String(bestScore));
+      hudBest.textContent = bestScore;
+    }
+    finalScoreEl.textContent = score;
+    finalBestEl.textContent = bestScore;
+    overBadge.textContent = isNewBest && score > 0 ? 'New High Score!' : 'Run Complete';
+    gameOverOverlay.classList.remove('hidden');
+  }
+
+  function addBurst(x, y, color, count) {
+    for (let i = 0; i < count; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 70 + Math.random() * 190;
+      particles.push({
+        x, y,
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd,
+        life: 0.45 + Math.random() * 0.25,
+        maxLife: 0.7,
+        size: 2.5 + Math.random() * 3.5,
+        color
+      });
+    }
+  }
+
+  function handleSnap() {
+    if (state !== 'playing') return;
+    ensureAudio();
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    const cx = w / 2;
+    const cy = h / 2;
+    const radius = Math.min(w, h) * 0.31;
+
+    const diff = Math.abs(angleDiff(needleAngle, targetAngle));
+    const halfW = targetWidth / 2;
+    const tipX = cx + Math.cos(needleAngle) * radius;
+    const tipY = cy + Math.sin(needleAngle) * radius;
+
+    if (diff <= halfW) {
+      const isPerfect = diff <= halfW * 0.35;
+      combo++;
+      const fever = combo >= 10 ? 2 : 1;
+      const pts = (isPerfect ? 100 : 50) * Math.min(combo, 10) * fever;
+      score += pts;
+      hudScore.textContent = score;
+      dir *= -1;
+      speed = Math.min(5.2, 2.15 + combo * 0.08 + Math.floor(score / 1000) * 0.15);
+
+      const hitColor = isPerfect ? '#F59E0B' : '#0EA5E9';
+      flashColor = hitColor;
+      flashAlpha = 0.22;
+      shockwaves.push({ x: cx, y: cy, r: radius, maxR: radius + 55, life: 0.35, maxLife: 0.35, color: hitColor });
+      addBurst(tipX, tipY, hitColor, isPerfect ? 18 : 10);
+      floatingTexts.push({
+        x: cx, y: cy - radius - 22,
+        text: (isPerfect ? 'PERFECT! +' : 'GOOD +') + pts,
+        color: hitColor, life: 0.75, maxLife: 0.75
+      });
+      sfxHit(isPerfect, combo);
+      spawnTarget();
+    } else {
+      shields--;
+      combo = 0;
+      shake = 12;
+      flashColor = '#EF4444';
+      flashAlpha = 0.28;
+      addBurst(tipX, tipY, '#EF4444', 14);
+      floatingTexts.push({
+        x: cx, y: cy - radius - 22,
+        text: 'MISS!', color: '#EF4444', life: 0.65, maxLife: 0.65
+      });
+      sfxMiss();
+      if (shields <= 0) {
+        endGame();
+      }
+    }
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    handleSnap();
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' || e.code === 'Enter') {
+      if (state === 'playing') {
+        e.preventDefault();
+        handleSnap();
+      } else if (state === 'start' && !startOverlay.classList.contains('hidden')) {
+        e.preventDefault();
+        startGame();
+      } else if (state === 'gameover' && !gameOverOverlay.classList.contains('hidden')) {
+        e.preventDefault();
+        startGame();
+      }
+    }
+  });
+
+  document.getElementById('startBtn').addEventListener('click', startGame);
+  document.getElementById('restartBtn').addEventListener('click', startGame);
+  helpBtn.addEventListener('click', () => {
+    if (state === 'playing') { prevState = 'playing'; state = 'paused'; }
+    else prevState = state;
+    helpOverlay.classList.remove('hidden');
+  });
+  document.getElementById('closeHelpBtn').addEventListener('click', () => {
+    helpOverlay.classList.add('hidden');
+    if (prevState === 'playing') state = 'playing';
+  });
+
+  function update(dt) {
+    if (state === 'playing') {
+      needleAngle = normalizeAngle(needleAngle + dir * speed * dt);
+      if (targetDrift !== 0) {
+        targetAngle = normalizeAngle(targetAngle + targetDrift * dt);
+      }
+    }
+    if (shake > 0) shake = Math.max(0, shake - dt * 38);
+    if (flashAlpha > 0) flashAlpha = Math.max(0, flashAlpha - dt * 0.9);
+
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      p.vx *= 0.94; p.vy *= 0.94;
+      p.life -= dt;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+    for (let i = shockwaves.length - 1; i >= 0; i--) {
+      const s = shockwaves[i];
+      s.life -= dt;
+      s.r = s.maxR - (s.maxR - (s.maxR - 55)) * (s.life / s.maxLife);
+      if (s.life <= 0) shockwaves.splice(i, 1);
+    }
+    for (let i = floatingTexts.length - 1; i >= 0; i--) {
+      const t = floatingTexts[i];
+      t.y -= 34 * dt;
+      t.life -= dt;
+      if (t.life <= 0) floatingTexts.splice(i, 1);
+    }
+  }
+
+  function draw() {
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    ctx.clearRect(0, 0, w, h);
+
+    const cx = w / 2 + (shake > 0 ? (Math.random() - 0.5) * shake : 0);
+    const cy = h / 2 + (shake > 0 ? (Math.random() - 0.5) * shake : 0);
+    const radius = Math.min(w, h) * 0.31;
+    const isFever = combo >= 10;
+
+    if (flashAlpha > 0) {
+      ctx.fillStyle = flashColor;
+      ctx.globalAlpha = flashAlpha;
+      ctx.fillRect(0, 0, w, h);
+      ctx.globalAlpha = 1;
+    }
+
+    // Outer dial ring
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.strokeStyle = isFever ? 'rgba(245, 158, 11, 0.35)' : 'rgba(255, 255, 255, 0.1)';
+    ctx.lineWidth = 18;
+    ctx.stroke();
+
+    // Target arc
+    const startA = targetAngle - targetWidth / 2;
+    const endA = targetAngle + targetWidth / 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, startA, endA);
+    ctx.strokeStyle = isFever ? '#F59E0B' : '#0EA5E9';
+    ctx.lineWidth = 18;
+    ctx.lineCap = 'round';
+    ctx.shadowColor = isFever ? '#F59E0B' : '#0EA5E9';
+    ctx.shadowBlur = 18;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.lineCap = 'butt';
+
+    // Perfect center tick
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, targetAngle - 0.04, targetAngle + 0.04);
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 20;
+    ctx.stroke();
+
+    // Shockwaves
+    for (const s of shockwaves) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, s.r, 0, Math.PI * 2);
+      ctx.strokeStyle = s.color;
+      ctx.globalAlpha = Math.max(0, s.life / s.maxLife) * 0.7;
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    // Needle
+    const nx = cx + Math.cos(needleAngle) * (radius + 6);
+    const ny = cy + Math.sin(needleAngle) * (radius + 6);
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(nx, ny);
+    ctx.strokeStyle = '#F8FAFC';
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    ctx.shadowColor = '#FFFFFF';
+    ctx.shadowBlur = 10;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Center hub
+    ctx.beginPath();
+    ctx.arc(cx, cy, 42, 0, Math.PI * 2);
+    ctx.fillStyle = '#0F172A';
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = isFever ? '#F59E0B' : '#0EA5E9';
+    ctx.stroke();
+
+    // Combo in hub
+    ctx.fillStyle = isFever ? '#F59E0B' : '#F8FAFC';
+    ctx.font = '800 22px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(combo > 0 ? combo + 'x' : 'READY', cx, cy - 2);
+    if (isFever) {
+      ctx.fillStyle = '#F59E0B';
+      ctx.font = '700 10px system-ui, sans-serif';
+      ctx.fillText('FEVER 2X', cx, cy + 18);
+    }
+
+    // Shields indicator
+    for (let i = 0; i < 3; i++) {
+      const sx = cx + (i - 1) * 24;
+      const sy = cy + radius + 42;
+      ctx.beginPath();
+      ctx.arc(sx, sy, 6, 0, Math.PI * 2);
+      ctx.fillStyle = i < shields ? '#0EA5E9' : 'rgba(255,255,255,0.12)';
+      ctx.fill();
+    }
+
+    // Particles
+    for (const p of particles) {
+      ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // Floating texts
+    for (const t of floatingTexts) {
+      ctx.globalAlpha = Math.max(0, t.life / t.maxLife);
+      ctx.fillStyle = t.color;
+      ctx.font = '800 16px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(t.text, t.x, t.y);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function loop(ts) {
+    if (!lastTime) lastTime = ts;
+    const dt = Math.min(0.05, (ts - lastTime) / 1000);
+    lastTime = ts;
+    update(dt);
+    draw();
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

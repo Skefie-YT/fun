@@ -206,5 +206,13 @@
     "category": "Strategy",
     "accent": "#14B8A6",
     "addedAt": "2026-11-22T05:51:35Z"
+  },
+  {
+    "slug": "chrono-snap",
+    "title": "Chrono Snap",
+    "description": "Tap or press Space the exact instant the sweeping needle crosses the glowing target arc!",
+    "category": "Reflex",
+    "accent": "#0EA5E9",
+    "addedAt": "2026-11-22T06:55:01Z"
   }
 ]
