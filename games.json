@@ -294,5 +294,13 @@
     "category": "Strategy",
     "accent": "#10B981",
     "addedAt": "2026-11-22T17:37:58Z"
+  },
+  {
+    "slug": "spike-hop-reflex",
+    "title": "Spike Hop Reflex",
+    "description": "Tap to hop between walls and avoid rising spikes in this high-speed, one-button vertical climber.",
+    "category": "Reflex",
+    "accent": "#EF4444",
+    "addedAt": "2026-11-22T18:37:08Z"
   }
 ]

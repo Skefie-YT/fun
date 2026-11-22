@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Spike Hop Reflex</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #EF4444;
+            --bg: #0f172a;
+            --text: #f8fafc;
+        }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-touch-callout: none;
+        }
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Outfit', sans-serif;
+            overflow: hidden;
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+        }
+        #game-header {
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            background: rgba(0,0,0,0.3);
+            z-index: 100;
+        }
+        .back-btn {
+            color: #94a3b8;
+            text-decoration: none;
+            font-weight: 700;
+        }
+        .score-hud {
+            font-size: 1.2rem;
+            font-weight: 700;
+        }
+        #how-to-btn {
+            background: none;
+            border: 2px solid var(--accent);
+            color: var(--accent);
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        canvas {
+            flex-grow: 1;
+            touch-action: none;
+            display: block;
+        }
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+            text-align: center;
+            padding: 20px;
+        }
+        .hidden { display: none !important; }
+        h1 { font-size: 3rem; margin-bottom: 10px; color: var(--accent); }
+        p { margin-bottom: 20px; line-height: 1.5; max-width: 300px; }
+        button.primary-btn {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            font-weight: 700;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+        button.primary-btn:active { transform: scale(0.95); }
+        .best-score-label { margin-top: 10px; color: #94a3b8; }
+    </style>
+</head>
+<body>
+    <header id="game-header">
+        <a href="../../" class="back-btn">Back</a>
+        <div class="score-hud">Score: <span id="current-score">0</span></div>
+        <button id="how-to-btn">?</button>
+    </header>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="start-screen" class="overlay">
+        <h1>SPIKE HOP</h1>
+        <p>Tap to jump from wall to wall. Avoid the spikes on the sides and the rising lava!</p>
+        <button class="primary-btn" id="start-btn">START</button>
+        <div class="best-score-label">Best: <span class="best-val">0</span></div>
+    </div>
+
+    <div id="game-over-screen" class="overlay hidden">
+        <h1 style="color: #ef4444">CRASHED!</h1>
+        <p>You hit the spikes.</p>
+        <button class="primary-btn" id="restart-btn">TRY AGAIN</button>
+        <div class="best-score-label">Best: <span class="best-val">0</span></div>
+    </div>
+
+    <div id="how-to-overlay" class="overlay hidden">
+        <h2>How to Play</h2>
+        <p>1. Tap or Press Space to jump.<br>2. You always jump to the opposite wall.<br>3. Don't touch the red spikes.<br>4. Don't fall into the rising bottom fire.</p>
+        <button class="primary-btn" id="close-how-to">GOT IT</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const slug = 'spike-hop-reflex';
+        const currentScoreEl = document.getElementById('current-score');
+        const bestVals = document.querySelectorAll('.best-val');
+
+        let score = 0;
+        let gameState = 'START';
+        let player = { x: 0, y: 0, w: 30, h: 30, side: 'left', vy: 0, vx: 0 };
+        let spikes = [];
+        let cameraY = 0;
+        let lavaY = 0;
+        let wallWidth = 40;
+        let gameSpeed = 2;
+
+        function init() {
+            resize();
+            const best = localStorage.getItem('fun_arcade_highscore_' + slug) || 0;
+            bestVals.forEach(el => el.textContent = best);
+        }
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight - 60;
+        }
+
+        window.addEventListener('resize', resize);
+
+        function startGame() {
+            score = 0;
+            currentScoreEl.textContent = '0';
+            gameState = 'PLAYING';
+            player = {
+                x: wallWidth,
+                y: canvas.height - 200,
+                w: 30,
+                h: 30,
+                side: 'left',
+                targetX: wallWidth,
+                jumping: false
+            };
+            spikes = [];
+            cameraY = 0;
+            lavaY = canvas.height + 100;
+            gameSpeed = 2;
+            
+            // Initial spikes
+            for(let i = 0; i < 6; i++) {
+                addSpike(canvas.height - 400 - (i * 200));
+            }
+
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('game-over-screen').classList.add('hidden');
+        }
+
+        function addSpike(y) {
+            const side = Math.random() > 0.5 ? 'left' : 'right';
+            spikes.push({ y, side, w: 30, h: 60 });
+        }
+
+        function jump() {
+            if(gameState !== 'PLAYING' || player.jumping) return;
+            player.jumping = true;
+            player.side = player.side === 'left' ? 'right' : 'left';
+            player.targetX = player.side === 'left' ? wallWidth : canvas.width - wallWidth - player.w;
+            
+            // Small upward boost
+            player.y -= 60;
+            score++;
+            currentScoreEl.textContent = score;
+            if(score % 5 === 0) gameSpeed += 0.2;
+            
+            // Add new spike ahead
+            addSpike(spikes[spikes.length-1].y - 200);
+        }
+
+        function update() {
+            if(gameState !== 'PLAYING') return;
+
+            // Player movement (lerp for horizontal jump)
+            const dx = player.targetX - player.x;
+            player.x += dx * 0.25;
+            if(Math.abs(dx) < 1) {
+                player.x = player.targetX;
+                player.jumping = false;
+            }
+
+            // Gravity/Falling
+            player.y += gameSpeed;
+            lavaY -= (gameSpeed * 0.5);
+
+            // Camera follow
+            const targetCam = player.y - canvas.height / 2;
+            cameraY += (targetCam - cameraY) * 0.1;
+
+            // Check Spike Collisions
+            spikes.forEach(s => {
+                const sx = s.side === 'left' ? 0 : canvas.width - s.w;
+                if(player.x < sx + s.w && player.x + player.w > sx && 
+                   player.y < s.y + s.h && player.y + player.h > s.y) {
+                    gameOver();
+                }
+            });
+
+            // Check Lava/Bottom
+            if(player.y > cameraY + canvas.height || player.y > lavaY) {
+                gameOver();
+            }
+
+            // Cleanup old spikes
+            if(spikes.length > 20) spikes.shift();
+        }
+
+        function gameOver() {
+            gameState = 'GAMEOVER';
+            const best = localStorage.getItem('fun_arcade_highscore_' + slug) || 0;
+            if(score > best) {
+                localStorage.setItem('fun_arcade_highscore_' + slug, score);
+                bestVals.forEach(el => el.textContent = score);
+            }
+            document.getElementById('game-over-screen').classList.remove('hidden');
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            ctx.save();
+            ctx.translate(0, -cameraY);
+
+            // Walls
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(0, cameraY, wallWidth, canvas.height);
+            ctx.fillRect(canvas.width - wallWidth, cameraY, wallWidth, canvas.height);
+
+            // Spikes
+            ctx.fillStyle = '#ef4444';
+            spikes.forEach(s => {
+                ctx.beginPath();
+                const sx = s.side === 'left' ? wallWidth : canvas.width - wallWidth;
+                const dir = s.side === 'left' ? 1 : -1;
+                ctx.moveTo(sx, s.y);
+                ctx.lineTo(sx + (s.w * dir), s.y + s.h/2);
+                ctx.lineTo(sx, s.y + s.h);
+                ctx.fill();
+            });
+
+            // Player
+            ctx.fillStyle = '#fbbf24';
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#fbbf24';
+            ctx.fillRect(player.x, player.y, player.w, player.h);
+            ctx.shadowBlur = 0;
+
+            // Lava
+            ctx.fillStyle = 'rgba(239, 68, 68, 0.6)';
+            ctx.fillRect(0, lavaY, canvas.width, 1000);
+
+            ctx.restore();
+
+            requestAnimationFrame(() => {
+                update();
+                draw();
+            });
+        }
+
+        // Controls
+        window.addEventListener('mousedown', jump);
+        window.addEventListener('touchstart', (e) => { e.preventDefault(); jump(); }, {passive: false});
+        window.addEventListener('keydown', (e) => { if(e.code === 'Space') jump(); });
+
+        document.getElementById('start-btn').addEventListener('click', startGame);
+        document.getElementById('restart-btn').addEventListener('click', startGame);
+        
+        const howTo = document.getElementById('how-to-overlay');
+        document.getElementById('how-to-btn').addEventListener('click', () => howTo.classList.remove('hidden'));
+        document.getElementById('close-how-to').addEventListener('click', () => howTo.classList.add('hidden'));
+
+        init();
+        draw();
+    </script>
+</body>
+</html>
