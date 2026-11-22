@@ -190,5 +190,13 @@
     "category": "Physics",
     "accent": "#EF4444",
     "addedAt": "2026-11-22T03:47:18Z"
+  },
+  {
+    "slug": "cascade-core",
+    "title": "Cascade Core",
+    "description": "Swap adjacent energy tiles to trigger massive chain-reaction cascades and charge up Nova Cores before your moves run out.",
+    "category": "Puzzle",
+    "accent": "#F59E0B",
+    "addedAt": "2026-11-22T04:51:46Z"
   }
 ]

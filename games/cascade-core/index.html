@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Cascade Core - Fun Arcade</title>
+<style>
+  :root {
+    --bg: #0b0f19;
+    --panel: #131a2a;
+    --border: rgba(255, 255, 255, 0.1);
+    --accent: #F59E0B;
+    --accent-glow: rgba(245, 158, 11, 0.4);
+    --text: #f8fafc;
+    --muted: #94a3b8;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
+  body {
+    background: radial-gradient(circle at 50% 0%, #1e293b 0%, var(--bg) 70%);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    height: 100dvh;
+    width: 100vw;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+  }
+  header {
+    width: 100%;
+    max-width: 520px;
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    z-index: 10;
+  }
+  .back-btn, .icon-btn {
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 7px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    transition: transform 0.12s, border-color 0.15s, background 0.15s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .back-btn:hover, .icon-btn:hover { border-color: var(--accent); background: #1a2338; }
+  .back-btn:active, .icon-btn:active { transform: scale(0.95); }
+  .hud {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .stat-box {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 4px 10px;
+    text-align: center;
+    min-width: 64px;
+  }
+  .stat-label {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+  }
+  .stat-val {
+    font-size: 15px;
+    font-weight: 800;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+  .stat-val.accent { color: var(--accent); }
+  .controls-group { display: flex; gap: 6px; }
+
+  main {
+    position: relative;
+    flex: 1;
+    width: 100%;
+    max-width: 520px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 12px;
+    min-height: 0;
+  }
+  .status-bar {
+    width: 100%;
+    max-width: 400px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    padding: 0 4px;
+  }
+  .moves-pill {
+    background: rgba(245, 158, 11, 0.15);
+    border: 1px solid rgba(245, 158, 11, 0.4);
+    color: var(--accent);
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .combo-pill {
+    font-size: 13px;
+    font-weight: 800;
+    color: #38bdf8;
+    opacity: 0;
+    transform: scale(0.85);
+    transition: opacity 0.2s, transform 0.2s;
+  }
+  .combo-pill.active { opacity: 1; transform: scale(1); }
+
+  #canvas-wrap {
+    position: relative;
+    width: 100%;
+    max-width: 400px;
+    aspect-ratio: 6 / 7.5;
+    max-height: calc(100dvh - 150px);
+    background: rgba(15, 23, 42, 0.85);
+    border: 2px solid var(--border);
+    border-radius: 16px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5), inset 0 0 24px rgba(245, 158, 11, 0.05);
+    overflow: hidden;
+    touch-action: none;
+  }
+  canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  .hint-bar {
+    width: 100%;
+    max-width: 520px;
+    text-align: center;
+    padding: 8px 12px 12px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(8, 12, 22, 0.86);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    z-index: 50;
+    opacity: 1;
+    transition: opacity 0.2s;
+  }
+  .overlay.hidden { opacity: 0; pointer-events: none; }
+  .modal {
+    background: var(--panel);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 20px;
+    padding: 26px 22px;
+    max-width: 380px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.65);
+  }
+  .modal h1 {
+    font-size: 28px;
+    font-weight: 900;
+    margin-bottom: 8px;
+    background: linear-gradient(135deg, #fbbf24, #f59e0b, #fb7185);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .modal h2 { font-size: 22px; font-weight: 800; margin-bottom: 10px; color: var(--text); }
+  .modal p { font-size: 14px; line-height: 1.5; color: var(--muted); margin-bottom: 16px; }
+  .rules-list {
+    text-align: left;
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 18px;
+    font-size: 13px;
+    line-height: 1.55;
+    color: #cbd5e1;
+  }
+  .rules-list li { margin-left: 16px; margin-bottom: 6px; }
+  .rules-list li:last-child { margin-bottom: 0; }
+  .btn-primary {
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    color: #0b0f19;
+    border: none;
+    border-radius: 12px;
+    padding: 13px 24px;
+    font-size: 16px;
+    font-weight: 800;
+    cursor: pointer;
+    width: 100%;
+    box-shadow: 0 8px 24px var(--accent-glow);
+    transition: transform 0.12s, filter 0.15s;
+  }
+  .btn-primary:hover { filter: brightness(1.08); }
+  .btn-primary:active { transform: scale(0.97); }
+  .final-score {
+    font-size: 40px;
+    font-weight: 900;
+    color: var(--accent);
+    margin: 8px 0 4px;
+  }
+</style>
+</head>
+<body>
+  <header>
+    <a href="../../" class="back-btn">Back</a>
+    <div class="hud">
+      <div class="stat-box">
+        <div class="stat-label">Score</div>
+        <div class="stat-val" id="score-el">0</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Best</div>
+        <div class="stat-val accent" id="best-el">0</div>
+      </div>
+    </div>
+    <div class="controls-group">
+      <button class="icon-btn" id="mute-btn" aria-label="Toggle Sound">🔊</button>
+      <button class="icon-btn" id="help-btn" aria-label="How to Play">?</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="status-bar">
+      <div class="moves-pill" id="moves-el">Moves: 20</div>
+      <div class="combo-pill" id="combo-el">CASCADE x2!</div>
+    </div>
+    <div id="canvas-wrap">
+      <canvas id="game"></canvas>
+    </div>
+  </main>
+
+  <div class="hint-bar">Drag or tap two adjacent tiles to swap • Match 4+ for Nova Cores</div>
+
+  <div class="overlay" id="start-overlay">
+    <div class="modal">
+      <h1>Cascade Core</h1>
+      <p>Swap adjacent energy tiles to match 3 or more, trigger massive gravity cascades, and detonate Nova Cores before your moves run out!</p>
+      <button class="btn-primary" id="start-btn">Play Now</button>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="help-overlay">
+    <div class="modal">
+      <h2>How to Play</h2>
+      <ul class="rules-list">
+        <li><strong>Swap:</strong> Tap a tile then an adjacent tile, or swipe between them.</li>
+        <li><strong>Cascade:</strong> Falling tiles that form new matches multiply your score!</li>
+        <li><strong>Special Cores:</strong> Match 4 in a line for a <em>Cross Blaster</em>; match 5+ for a <em>Nova Core</em> (3×3 blast).</li>
+        <li><strong>Bonus Moves:</strong> Trigger a <strong>x3+ Cascade</strong> to earn +1 extra move!</li>
+      </ul>
+      <button class="btn-primary" id="close-help-btn">Got It</button>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="gameover-overlay">
+    <div class="modal">
+      <h2>Out of Moves!</h2>
+      <div class="final-score" id="final-score-el">0</div>
+      <p id="gameover-msg">Great cascade run!</p>
+      <button class="btn-primary" id="restart-btn">Play Again</button>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const SLUG = 'cascade-core';
+  const HS_KEY = 'fun_arcade_highscore_' + SLUG;
+
+  const COLS = 6;
+  const ROWS = 7;
+  const COLORS = [
+    { fill: '#f59e0b', glow: 'rgba(245,158,11,0.55)', inner: '#fde68a' }, // Amber
+    { fill: '#38bdf8', glow: 'rgba(56,189,248,0.55)', inner: '#bae6fd' }, // Cyan
+    { fill: '#f43f5e', glow: 'rgba(244,63,94,0.55)', inner: '#fecdd3' },  // Rose
+    { fill: '#10b981', glow: 'rgba(16,185,129,0.55)', inner: '#a7f3d0' }, // Emerald
+    { fill: '#a855f7', glow: 'rgba(168,85,247,0.55)', inner: '#e9d5ff' }  // Purple
+  ];
+
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const scoreEl = document.getElementById('score-el');
+  const bestEl = document.getElementById('best-el');
+  const movesEl = document.getElementById('moves-el');
+  const comboEl = document.getElementById('combo-el');
+  const startOverlay = document.getElementById('start-overlay');
+  const helpOverlay = document.getElementById('help-overlay');
+  const gameoverOverlay = document.getElementById('gameover-overlay');
+  const finalScoreEl = document.getElementById('final-score-el');
+  const gameoverMsg = document.getElementById('gameover-msg');
+  const muteBtn = document.getElementById('mute-btn');
+
+  let bestScore = parseInt(localStorage.getItem(HS_KEY) || '0', 10);
+  bestEl.textContent = bestScore;
+
+  let audioCtx = null;
+  let muted = false;
+
+  function playTone(freq, dur = 0.12, type = 'sine', vol = 0.12) {
+    if (muted) return;
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + dur);
+  }
+
+  muteBtn.addEventListener('click', () => {
+    muted = !muted;
+    muteBtn.textContent = muted ? '🔇' : '🔊';
+  });
+
+  // Game State
+  let grid = [];
+  let particles = [];
+  let floatTexts = [];
+  let score = 0;
+  let moves = 20;
+  let selected = null;
+  let dragStart = null;
+  let state = 'IDLE'; // IDLE, SWAPPING, RESOLVING, GAMEOVER
+  let cascadeCount = 0;
+  let shakeTime = 0;
+  let tileSize = 50;
+  let padX = 0;
+  let padY = 0;
+
+  function resize() {
+    const rect = canvas.parentElement.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    tileSize = Math.min((rect.width - 16) / COLS, (rect.height - 16) / ROWS);
+    padX = (rect.width - tileSize * COLS) / 2;
+    padY = (rect.height - tileSize * ROWS) / 2;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function createTile(c, r, color, special = null) {
+    return {
+      color,
+      special, // null | 'cross' | 'nova'
+      x: c,
+      y: r,
+      scale: 1,
+      alpha: 1
+    };
+  }
+
+  function initGrid() {
+    grid = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        let color;
+        do {
+          color = Math.floor(Math.random() * COLORS.length);
+        } while (
+          (c >= 2 && grid[r][c - 1].color === color && grid[r][c - 2].color === color) ||
+          (r >= 2 && grid[r - 1][c].color === color && grid[r - 2][c].color === color)
+        );
+        grid[r][c] = createTile(c, r, color);
+      }
+    }
+  }
+
+  function startGame() {
+    score = 0;
+    moves = 20;
+    cascadeCount = 0;
+    selected = null;
+    particles = [];
+    floatTexts = [];
+    state = 'IDLE';
+    initGrid();
+    updateHUD();
+    startOverlay.classList.add('hidden');
+    gameoverOverlay.classList.add('hidden');
+    playTone(440, 0.15, 'triangle', 0.14);
+  }
+
+  function updateHUD() {
+    scoreEl.textContent = score;
+    movesEl.textContent = 'Moves: ' + moves;
+    if (score > bestScore) {
+      bestScore = score;
+      bestEl.textContent = bestScore;
+      localStorage.setItem(HS_KEY, String(bestScore));
+    }
+  }
+
+  function showCombo(mult) {
+    if (mult >= 2) {
+      comboEl.textContent = 'CASCADE x' + mult + '!';
+      comboEl.classList.add('active');
+    } else {
+      comboEl.classList.remove('active');
+    }
+  }
+
+  function spawnParticles(c, r, colorIdx, count = 10) {
+    const cx = padX + (c + 0.5) * tileSize;
+    const cy = padY + (r + 0.5) * tileSize;
+    const col = COLORS[colorIdx].fill;
+    for (let i = 0; i < count; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 1.5 + Math.random() * 4.5;
+      particles.push({
+        x: cx, y: cy,
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd,
+        r: 2.5 + Math.random() * 3.5,
+        color: col,
+        life: 1
+      });
+    }
+  }
+
+  function addFloatText(c, r, text, color = '#fbbf24') {
+    floatTexts.push({
+      x: padX + (c + 0.5) * tileSize,
+      y: padY + (r + 0.3) * tileSize,
+      text,
+      color,
+      life: 1
+    });
+  }
+
+  function findMatches() {
+    const matched = Array.from({ length: ROWS }, () => Array(COLS).fill(false));
+    const groups = [];
+
+    // Horizontal
+    for (let r = 0; r < ROWS; r++) {
+      let c = 0;
+      while (c < COLS) {
+        const col = grid[r][c]?.color;
+        let len = 1;
+        while (c + len < COLS && grid[r][c + len]?.color === col) len++;
+        if (len >= 3) {
+          const cells = [];
+          for (let k = 0; k < len; k++) {
+            matched[r][c + k] = true;
+            cells.push([r, c + k]);
+          }
+          groups.push({ cells, len });
+        }
+        c += len;
+      }
+    }
+
+    // Vertical
+    for (let c = 0; c < COLS; c++) {
+      let r = 0;
+      while (r < ROWS) {
+        const col = grid[r][c]?.color;
+        let len = 1;
+        while (r + len < ROWS && grid[r + len][c]?.color === col) len++;
+        if (len >= 3) {
+          const cells = [];
+          for (let k = 0; k < len; k++) {
+            matched[r + k][c] = true;
+            cells.push([r + k, c]);
+          }
+          groups.push({ cells, len });
+        }
+        r += len;
+      }
+    }
+
+    return { matched, groups };
+  }
+
+  function triggerSpecial(r, c, toClear) {
+    const tile = grid[r][c];
+    if (!tile || !tile.special) return;
+    if (tile.special === 'cross') {
+      for (let cc = 0; cc < COLS; cc++) toClear[r][cc] = true;
+      for (let rr = 0; rr < ROWS; rr++) toClear[rr][c] = true;
+      shakeTime = 10;
+      playTone(220, 0.25, 'sawtooth', 0.14);
+    } else if (tile.special === 'nova') {
+      for (let rr = Math.max(0, r - 1); rr <= Math.min(ROWS - 1, r + 1); rr++) {
+        for (let cc = Math.max(0, c - 1); cc <= Math.min(COLS - 1, c + 1); cc++) {
+          toClear[rr][cc] = true;
+        }
+      }
+      shakeTime = 14;
+      playTone(160, 0.3, 'square', 0.15);
+    }
+  }
+
+  function resolveBoard() {
+    state = 'RESOLVING';
+    const { matched, groups } = findMatches();
+    if (groups.length === 0) {
+      cascadeCount = 0;
+      showCombo(0);
+      if (moves <= 0) {
+        state = 'GAMEOVER';
+        finalScoreEl.textContent = score;
+        gameoverMsg.textContent = score >= bestScore ? 'New High Score!' : 'Great cascade run!';
+        gameoverOverlay.classList.remove('hidden');
+        playTone(190, 0.35, 'triangle', 0.15);
+      } else {
+        state = 'IDLE';
+      }
+      return;
+    }
+
+    cascadeCount++;
+    showCombo(cascadeCount);
+    playTone(320 + cascadeCount * 75, 0.14, 'sine', 0.13);
+
+    if (cascadeCount === 3) {
+      moves++;
+      addFloatText(COLS / 2 - 0.5, 0.5, '+1 MOVE!', '#38bdf8');
+      updateHUD();
+    }
+
+    const toClear = matched.map(row => [...row]);
+    // Check special spawns
+    const spawns = [];
+    for (const g of groups) {
+      if (g.len === 4) {
+        const [sr, sc] = g.cells[1];
+        spawns.push({ r: sr, c: sc, color: grid[sr][sc].color, special: 'cross' });
+      } else if (g.len >= 5) {
+        const [sr, sc] = g.cells[2];
+        spawns.push({ r: sr, c: sc, color: grid[sr][sc].color, special: 'nova' });
+      }
+    }
+
+    // Trigger existing specials
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        if (toClear[r][c] && grid[r][c]?.special) {
+          triggerSpecial(r, c, toClear);
+        }
+      }
+    }
+
+    let clearedCount = 0;
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        if (toClear[r][c] && grid[r][c]) {
+          spawnParticles(c, r, grid[r][c].color, 8);
+          grid[r][c] = null;
+          clearedCount++;
+        }
+      }
+    }
+
+    for (const sp of spawns) {
+      grid[sp.r][sp.c] = createTile(sp.c, sp.r, sp.color, sp.special);
+      addFloatText(sp.c, sp.r, sp.special === 'nova' ? 'NOVA!' : 'CROSS!', '#fff');
+    }
+
+    const pts = clearedCount * 15 * cascadeCount;
+    score += pts;
+    addFloatText(COLS / 2 - 0.5, ROWS / 2 - 0.5, '+' + pts, '#fbbf24');
+    updateHUD();
+
+    // Gravity
+    setTimeout(() => {
+      for (let c = 0; c < COLS; c++) {
+        let writeR = ROWS - 1;
+        for (let r = ROWS - 1; r >= 0; r--) {
+          if (grid[r][c] !== null) {
+            grid[writeR][c] = grid[r][c];
+            if (writeR !== r) grid[r][c] = null;
+            writeR--;
+          }
+        }
+        for (let r = writeR; r >= 0; r--) {
+          const newTile = createTile(c, r - (writeR + 1), Math.floor(Math.random() * COLORS.length));
+          grid[r][c] = newTile;
+        }
+      }
+      setTimeout(resolveBoard, 220);
+    }, 170);
+  }
+
+  function trySwap(r1, c1, r2, c2) {
+    if (state !== 'IDLE') return;
+    if (r2 < 0 || r2 >= ROWS || c2 < 0 || c2 >= COLS) return;
+    if (Math.abs(r1 - r2) + Math.abs(c1 - c2) !== 1) return;
+
+    state = 'SWAPPING';
+    const t1 = grid[r1][c1];
+    const t2 = grid[r2][c2];
+    grid[r1][c1] = t2;
+    grid[r2][c2] = t1;
+
+    const { groups } = findMatches();
+    if (groups.length === 0) {
+      // Invalid swap, revert
+      playTone(160, 0.1, 'triangle', 0.08);
+      setTimeout(() => {
+        grid[r1][c1] = t1;
+        grid[r2][c2] = t2;
+        state = 'IDLE';
+      }, 150);
+    } else {
+      moves--;
+      updateHUD();
+      selected = null;
+      setTimeout(resolveBoard, 150);
+    }
+  }
+
+  function getCellFromPointer(e) {
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX ?? e.touches?.[0]?.clientX) - rect.left;
+    const y = (e.clientY ?? e.touches?.[0]?.clientY) - rect.top;
+    const c = Math.floor((x - padX) / tileSize);
+    const r = Math.floor((y - padY) / tileSize);
+    if (c >= 0 && c < COLS && r >= 0 && r < ROWS) return { r, c };
+    return null;
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    if (state !== 'IDLE') return;
+    const cell = getCellFromPointer(e);
+    if (!cell) return;
+    dragStart = cell;
+    if (selected) {
+      if (selected.r === cell.r && selected.c === cell.c) {
+        selected = null;
+      } else if (Math.abs(selected.r - cell.r) + Math.abs(selected.c - cell.c) === 1) {
+        trySwap(selected.r, selected.c, cell.r, cell.c);
+        dragStart = null;
+      } else {
+        selected = cell;
+      }
+    } else {
+      selected = cell;
+    }
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    if (!dragStart || state !== 'IDLE') return;
+    const cell = getCellFromPointer(e);
+    if (!cell) return;
+    if (Math.abs(dragStart.r - cell.r) + Math.abs(dragStart.c - cell.c) === 1) {
+      trySwap(dragStart.r, dragStart.c, cell.r, cell.c);
+      dragStart = null;
+    }
+  });
+
+  window.addEventListener('pointerup', () => { dragStart = null; });
+
+  // Modals
+  document.getElementById('start-btn').addEventListener('click', startGame);
+  document.getElementById('restart-btn').addEventListener('click', startGame);
+  document.getElementById('help-btn').addEventListener('click', () => helpOverlay.classList.remove('hidden'));
+  document.getElementById('close-help-btn').addEventListener('click', () => helpOverlay.classList.add('hidden'));
+
+  // Render Loop
+  function draw() {
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    ctx.clearRect(0, 0, w, h);
+
+    ctx.save();
+    if (shakeTime > 0) {
+      ctx.translate((Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6);
+      shakeTime--;
+    }
+
+    // Draw Grid Background
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const x = padX + c * tileSize;
+        const y = padY + r * tileSize;
+        ctx.fillStyle = (r + c) % 2 === 0 ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.015)';
+        ctx.beginPath();
+        ctx.roundRect(x + 2, y + 2, tileSize - 4, tileSize - 4, 8);
+        ctx.fill();
+      }
+    }
+
+    // Draw Tiles
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const t = grid[r]?.[c];
+        if (!t) continue;
+        t.x += (c - t.x) * 0.28;
+        t.y += (r - t.y) * 0.28;
+
+        const x = padX + t.x * tileSize + 4;
+        const y = padY + t.y * tileSize + 4;
+        const s = tileSize - 8;
+        const col = COLORS[t.color];
+
+        ctx.save();
+        ctx.shadowColor = col.glow;
+        ctx.shadowBlur = selected && selected.r === r && selected.c === c ? 16 : 6;
+        ctx.fillStyle = col.fill;
+        ctx.beginPath();
+        ctx.roundRect(x, y, s, s, 10);
+        ctx.fill();
+
+        // Inner highlight
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = col.inner;
+        ctx.globalAlpha = 0.35;
+        ctx.beginPath();
+        ctx.roundRect(x + 4, y + 4, s - 8, s * 0.35, 6);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+
+        // Special icon
+        if (t.special === 'cross') {
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(x + s * 0.25, y + s * 0.5);
+          ctx.lineTo(x + s * 0.75, y + s * 0.5);
+          ctx.moveTo(x + s * 0.5, y + s * 0.25);
+          ctx.lineTo(x + s * 0.5, y + s * 0.75);
+          ctx.stroke();
+        } else if (t.special === 'nova') {
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath();
+          ctx.arc(x + s * 0.5, y + s * 0.5, s * 0.22, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        if (selected && selected.r === r && selected.c === c) {
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.roundRect(x - 1, y - 1, s + 2, s + 2, 11);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+    }
+
+    // Particles
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.life -= 0.035;
+      if (p.life <= 0) { particles.splice(i, 1); continue; }
+      ctx.globalAlpha = p.life;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // Float Texts
+    for (let i = floatTexts.length - 1; i >= 0; i--) {
+      const ft = floatTexts[i];
+      ft.y -= 0.8;
+      ft.life -= 0.022;
+      if (ft.life <= 0) { floatTexts.splice(i, 1); continue; }
+      ctx.globalAlpha = ft.life;
+      ctx.font = '800 15px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = ft.color;
+      ctx.fillText(ft.text, ft.x, ft.y);
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+
+    requestAnimationFrame(draw);
+  }
+
+  initGrid();
+  requestAnimationFrame(draw);
+})();
+</script>
+</body>
+</html>
