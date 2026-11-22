@@ -278,5 +278,13 @@
     "category": "Physics",
     "accent": "#8B5CF6",
     "addedAt": "2026-11-22T15:38:15Z"
+  },
+  {
+    "slug": "nova-bastion",
+    "title": "Nova Bastion",
+    "description": "Deploy pulse towers to defend your starbase against incoming void swarms in this rapid-fire miniature tower defense.",
+    "category": "Strategy",
+    "accent": "#10B981",
+    "addedAt": "2026-11-22T16:40:26Z"
   }
 ]
