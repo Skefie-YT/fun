@@ -182,5 +182,13 @@
     "category": "Strategy",
     "accent": "#EF4444",
     "addedAt": "2026-11-22T02:52:44Z"
+  },
+  {
+    "slug": "pendulum-vault",
+    "title": "Pendulum Vault",
+    "description": "Jump, latch onto overhead grapple nodes, and release at peak momentum to vault across the endless neon chasm.",
+    "category": "Physics",
+    "accent": "#EF4444",
+    "addedAt": "2026-11-22T03:47:18Z"
   }
 ]
