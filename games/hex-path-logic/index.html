@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Hex Path Logic</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #EC4899;
+            --bg: #0f172a;
+            --tile: #1e293b;
+            --active: #f472b6;
+        }
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            background: var(--bg);
+            color: white;
+            font-family: 'Outfit', sans-serif;
+            overflow: hidden;
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+        }
+        .hud {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem;
+            background: rgba(0,0,0,0.3);
+            z-index: 10;
+        }
+        .back-btn {
+            color: white;
+            text-decoration: none;
+            font-weight: bold;
+            padding: 0.5rem 1rem;
+            border: 2px solid var(--accent);
+            border-radius: 8px;
+            transition: 0.2s;
+        }
+        .back-btn:hover { background: var(--accent); }
+        .stats { text-align: center; }
+        .icon-btn {
+            background: none;
+            border: 2px solid #475569;
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        #game-container {
+            flex: 1;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        canvas {
+            max-width: 100%;
+            max-height: 100%;
+            cursor: pointer;
+        }
+        .overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+            padding: 2rem;
+            text-align: center;
+        }
+        .hidden { display: none !important; }
+        h1 { color: var(--accent); margin-bottom: 0.5rem; }
+        button.primary {
+            background: var(--accent);
+            border: none;
+            color: white;
+            padding: 1rem 2rem;
+            font-size: 1.2rem;
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-top: 1rem;
+        }
+        .how-to { font-size: 0.9rem; color: #94a3b8; max-width: 300px; margin-top: 1rem; }
+    </style>
+</head>
+<body>
+    <div class="hud">
+        <a href="../../" class="back-btn">Back</a>
+        <div class="stats">
+            <div>LEVEL: <span id="level-val">1</span></div>
+            <div style="font-size: 0.7rem; opacity: 0.7">BEST: <span id="best-val">0</span></div>
+        </div>
+        <button class="icon-btn" onclick="toggleHelp()">?</button>
+    </div>
+
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+
+        <div id="start-screen" class="overlay">
+            <h1>HEX PATH</h1>
+            <p>Connect the neon power lines from start to finish.</p>
+            <button class="primary" onclick="startGame()">START GAME</button>
+            <p class="how-to">Tap tiles to rotate them. The path glows pink when connected to the energy source.</p>
+        </div>
+
+        <div id="help-overlay" class="overlay hidden">
+            <h2>HOW TO PLAY</h2>
+            <p>1. Start at the <span style="color:#22c55e">Green Hex</span> (Source).<br>
+            2. Tap hexes to rotate them 60 degrees.<br>
+            3. Form a path to the <span style="color:#3b82f6">Blue Hex</span> (Target).<br>
+            4. When the target glows, you win the level!</p>
+            <button class="primary" onclick="toggleHelp()">CLOSE</button>
+        </div>
+
+        <div id="win-screen" class="overlay hidden">
+            <h2 id="win-title">LEVEL COMPLETE!</h2>
+            <p id="win-msg">Path successfully linked.</p>
+            <button class="primary" onclick="nextLevel()">NEXT LEVEL</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const slug = 'hex-path-logic';
+        
+        let level = 1;
+        let tiles = [];
+        let hexRadius = 45;
+        let cols, rows;
+        let sourcePos, targetPos;
+        let isGameActive = false;
+
+        // Hex math constants
+        const a = 2 * Math.PI / 6;
+
+        function initGrid() {
+            const width = window.innerWidth;
+            const height = window.innerHeight - 80;
+            canvas.width = width * window.devicePixelRatio;
+            canvas.height = height * window.devicePixelRatio;
+            ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+            
+            // Adjust grid size based on level
+            cols = Math.min(4 + Math.floor(level / 3), 7);
+            rows = Math.min(4 + Math.floor(level / 3), 8);
+            hexRadius = Math.min(width / (cols * 1.8), height / (rows * 1.6), 50);
+
+            tiles = [];
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    // Connections: 0-5 clockwise from top
+                    // Each tile gets 2 connections
+                    let conn = [Math.floor(Math.random() * 6), Math.floor(Math.random() * 6)];
+                    while(conn[0] === conn[1]) conn[1] = Math.floor(Math.random() * 6);
+
+                    tiles.push({
+                        r, c,
+                        rotation: Math.floor(Math.random() * 6),
+                        conns: conn,
+                        powered: false,
+                        isSource: false,
+                        isTarget: false
+                    });
+                }
+            }
+
+            sourcePos = tiles[0];
+            targetPos = tiles[tiles.length - 1];
+            sourcePos.isSource = true;
+            targetPos.isTarget = true;
+            
+            // Ensure source/target have reasonable lines
+            sourcePos.conns = [0, 3];
+            targetPos.conns = [0, 3];
+            
+            updatePower();
+        }
+
+        function getHexPos(c, r) {
+            const x = hexRadius * 1.5 * c + hexRadius;
+            const y = hexRadius * Math.sqrt(3) * (r + 0.5 * (c % 2)) + hexRadius;
+            return { x, y };
+        }
+
+        function drawHex(tile) {
+            const { x, y } = getHexPos(tile.c, tile.r);
+            
+            // Draw base hex
+            ctx.beginPath();
+            for (let i = 0; i < 6; i++) {
+                ctx.lineTo(x + hexRadius * Math.cos(a * i), y + hexRadius * Math.sin(a * i));
+            }
+            ctx.closePath();
+            ctx.fillStyle = tile.powered ? '#1e293b' : '#0f172a';
+            ctx.fill();
+            ctx.strokeStyle = tile.isSource ? '#22c55e' : (tile.isTarget ? '#3b82f6' : '#334155');
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Draw lines
+            ctx.beginPath();
+            ctx.lineCap = 'round';
+            ctx.strokeStyle = tile.powered ? '#EC4899' : '#475569';
+            ctx.lineWidth = tile.powered ? 6 : 4;
+
+            tile.conns.forEach(dir => {
+                const angle = (dir + tile.rotation) * (Math.PI / 3) - Math.PI/2;
+                ctx.moveTo(x, y);
+                ctx.lineTo(x + hexRadius * 0.8 * Math.cos(angle), y + hexRadius * 0.8 * Math.sin(angle));
+            });
+            ctx.stroke();
+            
+            if (tile.powered) {
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = '#EC4899';
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        function updatePower() {
+            tiles.forEach(t => t.powered = false);
+            let queue = [sourcePos];
+            sourcePos.powered = true;
+
+            let head = 0;
+            while(head < queue.length) {
+                let current = queue[head++];
+                let curExits = current.conns.map(d => (d + current.rotation) % 6);
+
+                // Check 6 neighbors
+                const neighbors = [
+                    {c: 0, r: -1}, {c: 1, r: current.c % 2 === 0 ? -1 : 0}, {c: 1, r: current.c % 2 === 0 ? 0 : 1},
+                    {c: 0, r: 1}, {c: -1, r: current.c % 2 === 0 ? 0 : 1}, {c: -1, r: current.c % 2 === 0 ? -1 : 0}
+                ];
+
+                curExits.forEach(exitDir => {
+                    let nOffset = neighbors[exitDir];
+                    let nc = current.c + nOffset.c;
+                    let nr = current.r + nOffset.r;
+                    let neighbor = tiles.find(t => t.c === nc && t.r === nr);
+
+                    if (neighbor && !neighbor.powered) {
+                        let entryDir = (exitDir + 3) % 6;
+                        let nExits = neighbor.conns.map(d => (d + neighbor.rotation) % 6);
+                        if (nExits.includes(entryDir)) {
+                            neighbor.powered = true;
+                            queue.push(neighbor);
+                        }
+                    }
+                });
+            }
+
+            if (targetPos.powered) {
+                isGameActive = false;
+                setTimeout(showWin, 500);
+            }
+        }
+
+        function render() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // Center grid
+            const totalW = cols * hexRadius * 1.5;
+            const totalH = rows * hexRadius * 1.7;
+            const offsetX = (canvas.width/window.devicePixelRatio - totalW) / 2;
+            const offsetY = (canvas.height/window.devicePixelRatio - totalH) / 2;
+            
+            ctx.save();
+            ctx.translate(offsetX, offsetY);
+            tiles.forEach(drawHex);
+            ctx.restore();
+            requestAnimationFrame(render);
+        }
+
+        function handleInput(e) {
+            if (!isGameActive) return;
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX || e.touches[0].clientX) - rect.left;
+            const y = (e.clientY || e.touches[0].clientY) - rect.top;
+
+            // Offset logic reversal
+            const totalW = cols * hexRadius * 1.5;
+            const totalH = rows * hexRadius * 1.7;
+            const offsetX = (canvas.width/window.devicePixelRatio - totalW) / 2;
+            const offsetY = (canvas.height/window.devicePixelRatio - totalH) / 2;
+            
+            const tx = x - offsetX;
+            const ty = y - offsetY;
+
+            tiles.forEach(tile => {
+                const pos = getHexPos(tile.c, tile.r);
+                const dist = Math.hypot(pos.x - tx, pos.y - ty);
+                if (dist < hexRadius) {
+                    tile.rotation = (tile.rotation + 1) % 6;
+                    playTick();
+                    updatePower();
+                }
+            });
+        }
+
+        function startGame() {
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('win-screen').classList.add('hidden');
+            isGameActive = true;
+            level = 1;
+            document.getElementById('level-val').textContent = level;
+            initGrid();
+        }
+
+        function nextLevel() {
+            level++;
+            document.getElementById('level-val').textContent = level;
+            const best = localStorage.getItem('fun_arcade_highscore_' + slug) || 0;
+            if (level > best) {
+                localStorage.setItem('fun_arcade_highscore_' + slug, level);
+                document.getElementById('best-val').textContent = level;
+            }
+            document.getElementById('win-screen').classList.add('hidden');
+            initGrid();
+            isGameActive = true;
+        }
+
+        function showWin() {
+            document.getElementById('win-screen').classList.remove('hidden');
+            playWin();
+        }
+
+        function toggleHelp() {
+            document.getElementById('help-overlay').classList.toggle('hidden');
+        }
+
+        // Audio
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playTick() {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(440, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.1);
+        }
+
+        function playWin() {
+            const notes = [523.25, 659.25, 783.99, 1046.50];
+            notes.forEach((f, i) => {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.frequency.setValueAtTime(f, audioCtx.currentTime + i * 0.1);
+                gain.gain.setValueAtTime(0.1, audioCtx.currentTime + i * 0.1);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + i * 0.1 + 0.3);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(audioCtx.currentTime + i * 0.1);
+                osc.stop(audioCtx.currentTime + i * 0.1 + 0.3);
+            });
+        }
+
+        window.addEventListener('mousedown', handleInput);
+        window.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            handleInput(e);
+        }, { passive: false });
+        
+        window.addEventListener('resize', () => {
+            if(isGameActive) initGrid();
+        });
+
+        document.getElementById('best-val').textContent = localStorage.getItem('fun_arcade_highscore_' + slug) || 0;
+        render();
+    </script>
+</body>
+</html>

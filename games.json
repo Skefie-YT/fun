@@ -302,5 +302,13 @@
     "category": "Reflex",
     "accent": "#EF4444",
     "addedAt": "2026-11-22T18:37:08Z"
+  },
+  {
+    "slug": "hex-path-logic",
+    "title": "Hex Path Logic",
+    "description": "Rotate hexagonal tiles to create a continuous glowing path from the source to the target terminal.",
+    "category": "Puzzle",
+    "accent": "#EC4899",
+    "addedAt": "2026-11-22T19:43:34Z"
   }
 ]
