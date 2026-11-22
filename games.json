@@ -238,5 +238,13 @@
     "category": "Physics",
     "accent": "#EC4899",
     "addedAt": "2026-11-22T10:42:21Z"
+  },
+  {
+    "slug": "barrier-bash-td",
+    "title": "Barrier Bash",
+    "description": "Drag to place kinetic barriers that redirect energy pulses into invading cores before they breach your firewall.",
+    "category": "Strategy",
+    "accent": "#F59E0B",
+    "addedAt": "2026-11-22T11:39:43Z"
   }
 ]
