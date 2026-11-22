@@ -166,5 +166,13 @@
     "category": "Puzzle",
     "accent": "#14B8A6",
     "addedAt": "2026-11-22T00:42:43Z"
+  },
+  {
+    "slug": "echo-pulse-duel",
+    "title": "Echo Pulse Duel",
+    "description": "Watch the sequence, repeat the rhythm, and survive the accelerating light-speed memory duel!",
+    "category": "Reflex",
+    "accent": "#10B981",
+    "addedAt": "2026-11-22T02:00:22Z"
   }
 ]

@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Echo Pulse Duel</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #10B981;
+            --bg: #0f172a;
+            --surface: #1e293b;
+            --text: #f8fafc;
+        }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100dvh; 
+            background: var(--bg); font-family: 'Outfit', sans-serif; color: var(--text); overflow: hidden;
+        }
+        #game-container {
+            position: relative; width: 100%; height: 100%; max-width: 600px; margin: 0 auto; overflow: hidden;
+            display: flex; flex-direction: column;
+        }
+        header {
+            display: flex; align-items: center; justify-content: space-between; padding: 1rem;
+            z-index: 10; background: rgba(15, 23, 42, 0.8);
+        }
+        .back-btn { text-decoration: none; color: var(--text); font-weight: bold; font-size: 0.9rem; border: 1px solid var(--text); padding: 4px 12px; border-radius: 6px; }
+        .stats { display: flex; gap: 15px; font-weight: bold; font-variant-numeric: tabular-nums; }
+        #how-btn { background: none; border: 1px solid var(--text); color: var(--text); width: 28px; height: 28px; border-radius: 50%; cursor: pointer; }
+
+        #board {
+            flex-grow: 1; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 12px; padding: 15px;
+            position: relative;
+        }
+        .pad {
+            border-radius: 20px; transition: transform 0.1s, opacity 0.1s; cursor: pointer; position: relative;
+            filter: brightness(0.5); border: 2px solid rgba(255,255,255,0.1);
+        }
+        .pad.active { filter: brightness(1.5); transform: scale(0.98); box-shadow: 0 0 40px var(--color); }
+        .pad:active { transform: scale(0.96); }
+        .pad[data-id="0"] { --color: #ef4444; background: #ef4444; }
+        .pad[data-id="1"] { --color: #3b82f6; background: #3b82f6; }
+        .pad[data-id="2"] { --color: #f59e0b; background: #f59e0b; }
+        .pad[data-id="3"] { --color: #10B981; background: #10B981; }
+
+        .overlay {
+            position: absolute; inset: 0; background: rgba(15, 23, 42, 0.9); 
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 100; text-align: center; padding: 2rem;
+        }
+        .hidden { display: none !important; }
+        h1 { margin: 0 0 10px; color: var(--accent); text-transform: uppercase; letter-spacing: 2px; }
+        p { margin-bottom: 2rem; line-height: 1.5; color: #94a3b8; }
+        .btn { 
+            background: var(--accent); color: white; border: none; padding: 12px 30px; 
+            border-radius: 8px; font-size: 1.1rem; font-weight: bold; cursor: pointer;
+            box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+        }
+        .btn:active { transform: scale(0.95); }
+        
+        #status-text {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            font-size: 2rem; font-weight: 800; pointer-events: none; text-transform: uppercase;
+            opacity: 0.3; z-index: 5; text-align: center;
+        }
+        #controls-hint { padding: 10px; text-align: center; font-size: 0.8rem; color: #64748b; }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <header>
+            <a href="../../" class="back-btn">Back</a>
+            <div class="stats">
+                <span>SCORE: <span id="score-val">0</span></span>
+                <span>BEST: <span id="best-val">0</span></span>
+            </div>
+            <button id="how-btn">?</button>
+        </header>
+
+        <div id="status-text">READY?</div>
+
+        <div id="board">
+            <div class="pad" data-id="0"></div>
+            <div class="pad" data-id="1"></div>
+            <div class="pad" data-id="2"></div>
+            <div class="pad" data-id="3"></div>
+        </div>
+
+        <div id="controls-hint">Mouse / Touch or Keys 1, 2, 3, 4</div>
+
+        <!-- Overlays -->
+        <div id="start-screen" class="overlay">
+            <h1>Echo Pulse</h1>
+            <p>A high-speed pattern recognition duel. Watch the light sequence and repeat it back. One mistake and the pulse collapses!</p>
+            <button class="btn" onclick="game.start()">INITIALIZE</button>
+        </div>
+
+        <div id="how-to-play" class="overlay hidden">
+            <h1>How to Play</h1>
+            <p>1. The pads will flash in a sequence.<br>2. Wait for "YOUR TURN".<br>3. Tap the pads in the exact same order.<br>4. The speed increases every round!</p>
+            <button class="btn" onclick="game.toggleHow()">GOT IT</button>
+        </div>
+
+        <div id="game-over" class="overlay hidden">
+            <h1 style="color: #ef4444">PULSE LOST</h1>
+            <p>Sequence synchronization failed at level <span id="final-lvl">0</span>.</p>
+            <button class="btn" onclick="game.start()">RETRY</button>
+        </div>
+    </div>
+
+    <script>
+        const SLUG = "echo-pulse-duel";
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        const game = {
+            sequence: [],
+            playerIndex: 0,
+            isPlaying: false,
+            isInputEnabled: false,
+            score: 0,
+            best: localStorage.getItem('fun_arcade_highscore_' + SLUG) || 0,
+            speed: 600,
+            
+            init() {
+                document.getElementById('best-val').textContent = this.best;
+                this.pads = document.querySelectorAll('.pad');
+                this.pads.forEach(p => {
+                    p.addEventListener('pointerdown', (e) => this.handleInput(parseInt(e.target.dataset.id)));
+                });
+                window.addEventListener('keydown', (e) => {
+                    const keys = ['1', '2', '3', '4'];
+                    if (keys.includes(e.key)) this.handleInput(keys.indexOf(e.key));
+                });
+                document.getElementById('how-btn').onclick = () => this.toggleHow();
+            },
+
+            start() {
+                this.sequence = [];
+                this.score = 0;
+                this.speed = 600;
+                this.updateScore();
+                document.getElementById('start-screen').classList.add('hidden');
+                document.getElementById('game-over').classList.add('hidden');
+                this.isPlaying = true;
+                this.nextRound();
+            },
+
+            updateScore() {
+                document.getElementById('score-val').textContent = this.score;
+                if (this.score > this.best) {
+                    this.best = this.score;
+                    localStorage.setItem('fun_arcade_highscore_' + SLUG, this.best);
+                    document.getElementById('best-val').textContent = this.best;
+                }
+            },
+
+            nextRound() {
+                this.playerIndex = 0;
+                this.isInputEnabled = false;
+                this.sequence.push(Math.floor(Math.random() * 4));
+                this.speed = Math.max(200, 600 - (this.sequence.length * 25));
+                
+                document.getElementById('status-text').textContent = "WATCH";
+                setTimeout(() => this.playSequence(), 800);
+            },
+
+            async playSequence() {
+                for (let i = 0; i < this.sequence.length; i++) {
+                    await this.flashPad(this.sequence[i], this.speed * 0.8);
+                    await new Promise(r => setTimeout(r, this.speed * 0.2));
+                }
+                this.isInputEnabled = true;
+                document.getElementById('status-text').textContent = "YOUR TURN";
+            },
+
+            async flashPad(id, duration) {
+                const pad = this.pads[id];
+                this.playSound(id);
+                pad.classList.add('active');
+                return new Promise(r => {
+                    setTimeout(() => {
+                        pad.classList.remove('active');
+                        r();
+                    }, duration);
+                });
+            },
+
+            handleInput(id) {
+                if (!this.isInputEnabled || !this.isPlaying) return;
+                
+                this.flashPad(id, 150);
+                
+                if (id === this.sequence[this.playerIndex]) {
+                    this.playerIndex++;
+                    if (this.playerIndex === this.sequence.length) {
+                        this.score++;
+                        this.updateScore();
+                        this.isInputEnabled = false;
+                        setTimeout(() => this.nextRound(), 600);
+                    }
+                } else {
+                    this.gameOver();
+                }
+            },
+
+            playSound(id) {
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                const freqs = [261.63, 329.63, 392.00, 523.25];
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freqs[id], audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.4);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.4);
+            },
+
+            gameOver() {
+                this.isPlaying = false;
+                this.isInputEnabled = false;
+                document.getElementById('final-lvl').textContent = this.score;
+                document.getElementById('game-over').classList.remove('hidden');
+                document.getElementById('status-text').textContent = "FAILED";
+            },
+
+            toggleHow() {
+                document.getElementById('how-to-play').classList.toggle('hidden');
+            }
+        };
+
+        game.init();
+    </script>
+</body>
+</html>
