@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Plasma Sentry</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #14B8A6;
+            --bg: #0f172a;
+            --text: #f8fafc;
+        }
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            touch-action: none;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Orbitron', sans-serif;
+            overflow: hidden;
+            height: 100dvh;
+        }
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+        header {
+            height: 60px;
+            padding: 0 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.3);
+            z-index: 10;
+        }
+        .back-btn {
+            color: var(--text);
+            text-decoration: none;
+            font-size: 0.8rem;
+            border: 1px solid var(--accent);
+            padding: 5px 10px;
+            border-radius: 4px;
+        }
+        .stats {
+            display: flex;
+            gap: 20px;
+        }
+        .stat-val {
+            color: var(--accent);
+            font-weight: bold;
+        }
+        #game-canvas {
+            flex-grow: 1;
+            background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
+            cursor: crosshair;
+        }
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 23, 42, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            text-align: center;
+            padding: 20px;
+        }
+        .hidden { display: none !important; }
+        h1 { color: var(--accent); margin: 0 0 10px 0; font-size: 2.5rem; }
+        .btn {
+            background: var(--accent);
+            color: var(--bg);
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            font-family: 'Orbitron', sans-serif;
+            font-weight: bold;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+        .btn:hover { filter: brightness(1.1); }
+        .how-to-btn {
+            background: none;
+            border: 1px solid var(--text);
+            color: var(--text);
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        .controls-hint {
+            position: absolute;
+            bottom: 20px;
+            font-size: 0.7rem;
+            opacity: 0.6;
+        }
+        #resource-bar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 4px;
+            background: var(--accent);
+            transition: width 0.1s linear;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <header>
+            <a href="../../" class="back-btn">Back</a>
+            <div class="stats">
+                <div>Score: <span id="score-val" class="stat-val">0</span></div>
+                <div>Best: <span id="best-val" class="stat-val">0</span></div>
+            </div>
+            <button class="how-to-btn" id="info-btn">?</button>
+        </header>
+        
+        <canvas id="game-canvas"></canvas>
+        <div id="resource-bar"></div>
+
+        <div id="start-screen" class="overlay">
+            <h1>PLASMA SENTRY</h1>
+            <p>Deploy sentry nodes to create arcs of energy.</p>
+            <p>Destroy viral cores before they reach the left side!</p>
+            <button class="btn" id="start-btn">INITIALIZE</button>
+            <div class="controls-hint">Tap/Click to place Nodes • Energy recharges over time</div>
+        </div>
+
+        <div id="game-over-screen" class="overlay hidden">
+            <h1 style="color: #ef4444;">SYSTEM BREACHED</h1>
+            <p>The viral cores have overwhelmed the port.</p>
+            <p>Final Score: <span id="final-score">0</span></p>
+            <button class="btn" id="retry-btn">REBOOT</button>
+        </div>
+
+        <div id="info-overlay" class="overlay hidden">
+            <h2>HOW TO PLAY</h2>
+            <p style="max-width: 400px;">1. Tap anywhere to place a Plasma Node.<br>2. Nodes automatically link to nearby nodes within range.<br>3. Enemies are destroyed when they pass through the links.<br>4. Each node costs energy. Watch the bottom bar!</p>
+            <button class="btn" id="close-info">GOT IT</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score-val');
+        const bestEl = document.getElementById('best-val');
+        const resBar = document.getElementById('resource-bar');
+        const slug = 'plasma-sentry';
+
+        let gameState = 'START';
+        let score = 0;
+        let energy = 100;
+        let nodes = [];
+        let enemies = [];
+        let particles = [];
+        let lastTime = 0;
+        let spawnTimer = 0;
+        let spawnRate = 2000;
+        let wave = 1;
+
+        const NODE_COST = 25;
+        const NODE_LIFESPAN = 5000;
+        const LINK_RANGE = 180;
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight - 60;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // --- Game Logic ---
+
+        class Node {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.life = 1.0;
+                this.radius = 6;
+                this.pulse = 0;
+            }
+            update(dt) {
+                this.life -= dt / NODE_LIFESPAN;
+                this.pulse += 0.1;
+                return this.life > 0;
+            }
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius + Math.sin(this.pulse)*2, 0, Math.PI*2);
+                ctx.fillStyle = `rgba(20, 184, 166, ${this.life})`;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = '#14B8A6';
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        class Enemy {
+            constructor() {
+                this.x = canvas.width + 50;
+                this.y = 50 + Math.random() * (canvas.height - 100);
+                this.speed = 1.5 + (wave * 0.2);
+                this.hp = 1;
+                this.size = 15;
+                this.hue = Math.random() * 60 - 30; // Reddish
+            }
+            update() {
+                this.x -= this.speed;
+                return this.x > -50;
+            }
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(Date.now() / 500);
+                ctx.strokeStyle = '#ef4444';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(-this.size/2, -this.size/2, this.size, this.size);
+                ctx.restore();
+            }
+        }
+
+        function spawnParticle(x, y, color) {
+            for(let i=0; i<8; i++) {
+                particles.push({
+                    x, y,
+                    vx: (Math.random()-0.5)*10,
+                    vy: (Math.random()-0.5)*10,
+                    life: 1.0,
+                    color
+                });
+            }
+        }
+
+        function checkLineCircleIntersection(p1, p2, circle, radius) {
+            const dx = p2.x - p1.x;
+            const dy = p2.y - p1.y;
+            const l2 = dx*dx + dy*dy;
+            if (l2 === 0) return false;
+            let t = ((circle.x - p1.x) * dx + (circle.y - p1.y) * dy) / l2;
+            t = Math.max(0, Math.min(1, t));
+            const px = p1.x + t * dx;
+            const py = p1.y + t * dy;
+            const distSq = (circle.x - px)**2 + (circle.y - py)**2;
+            return distSq < (radius * radius);
+        }
+
+        function update(time) {
+            if (gameState !== 'PLAYING') return;
+            const dt = time - lastTime;
+            lastTime = time;
+
+            // Resource
+            energy = Math.min(100, energy + 0.15);
+            resBar.style.width = energy + '%';
+
+            // Spawn
+            spawnTimer += dt;
+            if (spawnTimer > spawnRate) {
+                enemies.push(new Enemy());
+                spawnTimer = 0;
+                spawnRate = Math.max(400, 2000 - (score * 5));
+                wave = 1 + Math.floor(score / 20);
+            }
+
+            // Update Nodes
+            nodes = nodes.filter(n => n.update(dt));
+
+            // Update Enemies
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                const e = enemies[i];
+                if (!e.update()) {
+                    gameOver();
+                    return;
+                }
+
+                // Check Arcs
+                for (let j = 0; j < nodes.length; j++) {
+                    for (let k = j + 1; k < nodes.length; k++) {
+                        const n1 = nodes[j];
+                        const n2 = nodes[k];
+                        const dist = Math.hypot(n1.x - n2.x, n1.y - n2.y);
+                        if (dist < LINK_RANGE) {
+                            if (checkLineCircleIntersection(n1, n2, e, e.size)) {
+                                spawnParticle(e.x, e.y, '#ef4444');
+                                enemies.splice(i, 1);
+                                score++;
+                                scoreEl.innerText = score;
+                                break;
+                            }
+                        }
+                    }
+                    if (!enemies[i]) break;
+                }
+            }
+
+            // Particles
+            particles.forEach(p => {
+                p.x += p.vx; p.y += p.vy;
+                p.life -= 0.02;
+            });
+            particles = particles.filter(p => p.life > 0);
+
+            draw();
+            requestAnimationFrame(update);
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw Connections
+            ctx.lineWidth = 2;
+            for (let i = 0; i < nodes.length; i++) {
+                for (let j = i + 1; j < nodes.length; j++) {
+                    const n1 = nodes[i];
+                    const n2 = nodes[j];
+                    const dist = Math.hypot(n1.x - n2.x, n1.y - n2.y);
+                    if (dist < LINK_RANGE) {
+                        const alpha = Math.min(n1.life, n2.life) * (1 - dist/LINK_RANGE);
+                        ctx.strokeStyle = `rgba(20, 184, 166, ${alpha})`;
+                        ctx.beginPath();
+                        ctx.moveTo(n1.x, n1.y);
+                        ctx.lineTo(n2.x, n2.y);
+                        ctx.stroke();
+                    }
+                }
+            }
+
+            nodes.forEach(n => n.draw());
+            enemies.forEach(e => e.draw());
+            particles.forEach(p => {
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life;
+                ctx.fillRect(p.x, p.y, 3, 3);
+            });
+            ctx.globalAlpha = 1.0;
+        }
+
+        function handleInput(e) {
+            if (gameState !== 'PLAYING') return;
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX || e.touches[0].clientX) - rect.left;
+            const y = (e.clientY || e.touches[0].clientY) - rect.top;
+
+            if (energy >= NODE_COST) {
+                energy -= NODE_COST;
+                nodes.push(new Node(x, y));
+                spawnParticle(x, y, '#14B8A6');
+            }
+        }
+
+        function gameOver() {
+            gameState = 'GAMEOVER';
+            document.getElementById('game-over-screen').classList.remove('hidden');
+            document.getElementById('final-score').innerText = score;
+            const best = localStorage.getItem('fun_arcade_highscore_' + slug) || 0;
+            if (score > best) {
+                localStorage.setItem('fun_arcade_highscore_' + slug, score);
+                bestEl.innerText = score;
+            }
+        }
+
+        function start() {
+            score = 0;
+            energy = 100;
+            nodes = [];
+            enemies = [];
+            particles = [];
+            wave = 1;
+            scoreEl.innerText = '0';
+            bestEl.innerText = localStorage.getItem('fun_arcade_highscore_' + slug) || 0;
+            gameState = 'PLAYING';
+            lastTime = performance.now();
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('game-over-screen').classList.add('hidden');
+            requestAnimationFrame(update);
+        }
+
+        // Events
+        canvas.addEventListener('mousedown', handleInput);
+        canvas.addEventListener('touchstart', (e) => { e.preventDefault(); handleInput(e); });
+        document.getElementById('start-btn').onclick = start;
+        document.getElementById('retry-btn').onclick = start;
+        document.getElementById('info-btn').onclick = () => document.getElementById('info-overlay').classList.remove('hidden');
+        document.getElementById('close-info').onclick = () => document.getElementById('info-overlay').classList.add('hidden');
+
+        // Init Best Score
+        bestEl.innerText = localStorage.getItem('fun_arcade_highscore_' + slug) || 0;
+    </script>
+</body>
+</html>

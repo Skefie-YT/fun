@@ -198,5 +198,13 @@
     "category": "Puzzle",
     "accent": "#F59E0B",
     "addedAt": "2026-11-22T04:51:46Z"
+  },
+  {
+    "slug": "plasma-sentry",
+    "title": "Plasma Sentry",
+    "description": "Tap to deploy plasma nodes and chain electrical arcs to incinerate waves of invading viral cores before they reach the data port.",
+    "category": "Strategy",
+    "accent": "#14B8A6",
+    "addedAt": "2026-11-22T05:51:35Z"
   }
 ]
