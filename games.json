@@ -222,5 +222,13 @@
     "category": "Reflex",
     "accent": "#10B981",
     "addedAt": "2026-11-22T08:06:49Z"
+  },
+  {
+    "slug": "ion-dash-reflex",
+    "title": "Ion Dash",
+    "description": "Drag to dash between safe zones and dodge the high-speed ion beams cutting through the sector!",
+    "category": "Reflex",
+    "accent": "#8B5CF6",
+    "addedAt": "2026-11-22T09:42:14Z"
   }
 ]
