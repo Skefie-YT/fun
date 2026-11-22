@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Volt Vortex</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #10B981;
+            --bg: #0f172a;
+            --text: #f8fafc;
+        }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            touch-action: none;
+        }
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Outfit', sans-serif;
+            height: 100dvh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        #ui-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+        .hud {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem;
+            pointer-events: auto;
+        }
+        .back-btn, .btn {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-weight: bold;
+            border: 1px solid rgba(255,255,255,0.2);
+            cursor: pointer;
+        }
+        .scores {
+            text-align: center;
+        }
+        .score-val { font-size: 1.5rem; font-weight: 700; color: var(--accent); }
+        .best-val { font-size: 0.8rem; opacity: 0.7; }
+
+        #game-canvas {
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
+        }
+
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 2rem;
+            pointer-events: auto;
+            z-index: 20;
+        }
+        .hidden { display: none !important; }
+        h1 { color: var(--accent); font-size: 3rem; margin-bottom: 1rem; }
+        .hint { margin-top: 2rem; opacity: 0.6; font-size: 0.9rem; }
+        .big-btn {
+            background: var(--accent);
+            color: #000;
+            border: none;
+            padding: 1rem 2.5rem;
+            font-size: 1.25rem;
+            font-weight: 800;
+            border-radius: 50px;
+            cursor: pointer;
+            margin-top: 1.5rem;
+            transition: transform 0.1s;
+        }
+        .big-btn:active { transform: scale(0.95); }
+        .mute-btn { position: absolute; bottom: 20px; right: 20px; pointer-events: auto; background: none; border: none; font-size: 1.5rem; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <div class="hud">
+            <a href="../../" class="back-btn">Back</a>
+            <div class="scores">
+                <div class="score-val" id="score-display">0</div>
+                <div class="best-val">BEST: <span id="best-display">0</span></div>
+            </div>
+            <button class="btn" id="how-to-btn">?</button>
+        </div>
+    </div>
+
+    <canvas id="game-canvas"></canvas>
+
+    <div id="start-screen" class="overlay">
+        <h1>VOLT VORTEX</h1>
+        <p>Stay inside the rotating Green Zone while dodging the Red Sparks! Every second inside scores points.</p>
+        <button class="big-btn" id="start-btn">INITIALIZE</button>
+        <div class="hint">Hold Space or Tap & Hold to move clockwise</div>
+    </div>
+
+    <div id="game-over-screen" class="overlay hidden">
+        <h2 style="font-size: 2.5rem; margin-bottom: 0.5rem;">CORE COLLAPSE</h2>
+        <p id="final-score-msg">Your circuit fried at 0 points.</p>
+        <button class="big-btn" id="restart-btn">REBOOT</button>
+    </div>
+
+    <div id="how-to-overlay" class="overlay hidden">
+        <h2>SYSTEM SPECS</h2>
+        <ul style="list-style: none; margin: 1.5rem 0; text-align: left; line-height: 1.6;">
+            <li>⚡ <b>Goal:</b> Survive the longest.</li>
+            <li>🟢 <b>Green:</b> Safe zone. Points generate here.</li>
+            <li>🔴 <b>Red:</b> Lethal sparks. Avoid at all costs.</li>
+            <li>🔄 <b>Controls:</b> Release = Counter-Clockwise | Hold = Clockwise.</li>
+        </ul>
+        <button class="btn" id="close-how-to">Got it!</button>
+    </div>
+
+    <button class="mute-btn" id="mute-toggle">🔊</button>
+
+    <script>
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        const slug = 'volt-vortex';
+        
+        let gameState = 'START';
+        let score = 0;
+        let bestScore = localStorage.getItem('fun_arcade_highscore_' + slug) || 0;
+        let frames = 0;
+        let isHolding = false;
+        let muted = false;
+
+        const config = {
+            orbitRadius: 0,
+            playerSize: 8,
+            safeZoneWidth: 0.7, 
+            baseSpeed: 0.02,
+            enemySpeed: 1.5,
+            playerSpeed: 0.06
+        };
+
+        let player = { angle: 0, targetAngle: 0 };
+        let safeZone = { angle: 0, size: 0.8, speed: 0.01 };
+        let enemies = [];
+        let particles = [];
+
+        function init() {
+            resize();
+            document.getElementById('best-display').textContent = bestScore;
+        }
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            config.orbitRadius = Math.min(canvas.width, canvas.height) * 0.35;
+        }
+
+        window.addEventListener('resize', resize);
+
+        const inputStart = () => isHolding = true;
+        const inputEnd = () => isHolding = false;
+
+        window.addEventListener('mousedown', inputStart);
+        window.addEventListener('mouseup', inputEnd);
+        window.addEventListener('touchstart', (e) => { e.preventDefault(); inputStart(); }, {passive: false});
+        window.addEventListener('touchend', inputEnd);
+        window.addEventListener('keydown', (e) => { if(e.code === 'Space') inputStart(); });
+        window.addEventListener('keyup', (e) => { if(e.code === 'Space') inputEnd(); });
+
+        function spawnEnemy() {
+            const side = Math.random() > 0.5 ? -0.1 : 1.1;
+            enemies.push({
+                x: Math.random() * canvas.width,
+                y: side * canvas.height,
+                vx: (Math.random() - 0.5) * 2,
+                vy: side < 0 ? Math.random() * 3 + 2 : -(Math.random() * 3 + 2),
+                life: 300
+            });
+        }
+
+        function createExplosion(x, y, color) {
+            for(let i=0; i<15; i++) {
+                particles.push({
+                    x, y,
+                    vx: (Math.random()-0.5)*8,
+                    vy: (Math.random()-0.5)*8,
+                    life: 1,
+                    color: color
+                });
+            }
+        }
+
+        function update(dt) {
+            if (gameState !== 'PLAYING') return;
+
+            frames++;
+
+            // Player Movement
+            const direction = isHolding ? 1 : -1;
+            player.angle += direction * config.playerSpeed;
+
+            // Safe Zone Rotation
+            safeZone.angle += safeZone.speed;
+            if (frames % 300 === 0) safeZone.speed *= 1.05;
+
+            // Score logic (check if in safe zone)
+            const diff = Math.abs(((player.angle % (Math.PI*2)) + Math.PI*2) % (Math.PI*2) - ((safeZone.angle % (Math.PI*2)) + Math.PI*2) % (Math.PI*2));
+            const normDiff = Math.min(diff, Math.PI*2 - diff);
+            
+            if (normDiff < safeZone.size / 2) {
+                score += 1;
+                document.getElementById('score-display').textContent = Math.floor(score / 10);
+            } else {
+                // Small penalty or lack of gain?
+                score = Math.max(0, score - 0.5);
+            }
+
+            // Enemies
+            if (frames % Math.max(10, 60 - Math.floor(frames/200)) === 0) spawnEnemy();
+
+            enemies.forEach((en, i) => {
+                en.x += en.vx;
+                en.y += en.vy;
+                en.life--;
+
+                // Collision
+                const px = canvas.width/2 + Math.cos(player.angle) * config.orbitRadius;
+                const py = canvas.height/2 + Math.sin(player.angle) * config.orbitRadius;
+                const d = Math.hypot(en.x - px, en.y - py);
+                if (d < 15) gameOver();
+            });
+            enemies = enemies.filter(en => en.life > 0);
+
+            // Particles
+            particles.forEach(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.02;
+            });
+            particles = particles.filter(p => p.life > 0);
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const cx = canvas.width / 2;
+            const cy = canvas.height / 2;
+
+            // Orbit Track
+            ctx.beginPath();
+            ctx.arc(cx, cy, config.orbitRadius, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+            ctx.lineWidth = 4;
+            ctx.stroke();
+
+            // Safe Zone Arc
+            ctx.beginPath();
+            ctx.arc(cx, cy, config.orbitRadius, safeZone.angle - safeZone.size/2, safeZone.angle + safeZone.size/2);
+            ctx.strokeStyle = config.safeZoneWidth > 0 ? '#10B981' : '#ef4444';
+            ctx.lineWidth = 12;
+            ctx.lineCap = 'round';
+            ctx.stroke();
+
+            // Particles
+            particles.forEach(p => {
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.fillRect(p.x, p.y, 4, 4);
+            });
+            ctx.globalAlpha = 1;
+
+            // Player
+            const px = cx + Math.cos(player.angle) * config.orbitRadius;
+            const py = cy + Math.sin(player.angle) * config.orbitRadius;
+            
+            ctx.fillStyle = '#fff';
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#fff';
+            ctx.beginPath();
+            ctx.arc(px, py, config.playerSize, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // Enemies
+            enemies.forEach(en => {
+                ctx.fillStyle = '#ef4444';
+                ctx.beginPath();
+                ctx.arc(en.x, en.y, 5, 0, Math.PI*2);
+                ctx.fill();
+                // Tail
+                ctx.strokeStyle = '#ef4444';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(en.x, en.y);
+                ctx.lineTo(en.x - en.vx*3, en.y - en.vy*3);
+                ctx.stroke();
+            });
+
+            requestAnimationFrame(() => {
+                update();
+                draw();
+            });
+        }
+
+        function gameOver() {
+            if (gameState === 'GAMEOVER') return;
+            gameState = 'GAMEOVER';
+            const finalScore = Math.floor(score / 10);
+            document.getElementById('final-score-msg').textContent = `Your circuit fried at ${finalScore} points!`;
+            document.getElementById('game-over-screen').classList.remove('hidden');
+            
+            if (finalScore > bestScore) {
+                bestScore = finalScore;
+                localStorage.setItem('fun_arcade_highscore_' + slug, bestScore);
+                document.getElementById('best-display').textContent = bestScore;
+            }
+            createExplosion(canvas.width/2 + Math.cos(player.angle) * config.orbitRadius, canvas.height/2 + Math.sin(player.angle) * config.orbitRadius, '#ef4444');
+            playSound(150, 'sawtooth', 0.3);
+        }
+
+        function startGame() {
+            gameState = 'PLAYING';
+            score = 0;
+            frames = 0;
+            enemies = [];
+            player.angle = 0;
+            safeZone.speed = 0.015;
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('game-over-screen').classList.add('hidden');
+            playSound(440, 'sine', 0.1);
+        }
+
+        // Web Audio Synth
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playSound(freq, type, vol) {
+            if (muted) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.3);
+        }
+
+        // UI Controls
+        document.getElementById('start-btn').addEventListener('click', startGame);
+        document.getElementById('restart-btn').addEventListener('click', startGame);
+        document.getElementById('how-to-btn').addEventListener('click', () => {
+            document.getElementById('how-to-overlay').classList.remove('hidden');
+        });
+        document.getElementById('close-how-to').addEventListener('click', () => {
+            document.getElementById('how-to-overlay').classList.add('hidden');
+        });
+        document.getElementById('mute-toggle').addEventListener('click', () => {
+            muted = !muted;
+            document.getElementById('mute-toggle').textContent = muted ? '🔇' : '🔊';
+        });
+
+        init();
+        draw();
+    </script>
+</body>
+</html>
