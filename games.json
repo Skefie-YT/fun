@@ -158,5 +158,13 @@
     "category": "Reflex",
     "accent": "#10B981",
     "addedAt": "2026-11-21T23:30:21Z"
+  },
+  {
+    "slug": "crossfire-grid",
+    "title": "Crossfire Grid",
+    "description": "Place pulse beacons on the grid to hit every target core with 4-way laser beams before running out of beacons.",
+    "category": "Puzzle",
+    "accent": "#14B8A6",
+    "addedAt": "2026-11-22T00:42:43Z"
   }
 ]
