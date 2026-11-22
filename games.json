@@ -174,5 +174,13 @@
     "category": "Reflex",
     "accent": "#10B981",
     "addedAt": "2026-11-22T02:00:22Z"
+  },
+  {
+    "slug": "strike-vector",
+    "title": "Strike Vector",
+    "description": "Slide across the tactical grid to smash enemy drones while dodging their telegraphed laser sights.",
+    "category": "Strategy",
+    "accent": "#EF4444",
+    "addedAt": "2026-11-22T02:52:44Z"
   }
 ]
