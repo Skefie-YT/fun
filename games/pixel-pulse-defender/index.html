@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pixel Pulse Defender</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #0EA5E9;
+            --bg: #0f172a;
+            --text: #f8fafc;
+        }
+        * { box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100dvh; background: var(--bg); color: var(--text); font-family: 'Orbitron', sans-serif; overflow: hidden; }
+        
+        #game-container { position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; }
+        
+        canvas { flex-grow: 1; touch-action: none; background: radial-gradient(circle, #1e293b 0%, #0f172a 100%); }
+
+        .hud {
+            position: absolute; top: 0; left: 0; width: 100%; height: 60px; padding: 0 20px;
+            display: flex; justify-content: space-between; align-items: center; z-index: 10;
+            background: rgba(15, 23, 42, 0.8); border-bottom: 2px solid var(--accent);
+        }
+
+        .back-btn { text-decoration: none; color: var(--text); font-size: 0.9rem; border: 1px solid var(--accent); padding: 5px 12px; border-radius: 4px; transition: 0.3s; }
+        .back-btn:hover { background: var(--accent); }
+
+        .score-box { text-align: center; font-weight: bold; }
+        .score-val { color: var(--accent); font-size: 1.4rem; }
+
+        .btn-round { background: none; border: 1px solid var(--accent); color: var(--text); width: 34px; height: 34px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; font-weight: bold; }
+
+        .overlay {
+            position: absolute; inset: 0; background: rgba(15, 23, 42, 0.95);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 100; text-align: center; padding: 20px;
+        }
+
+        .hidden { display: none !important; }
+
+        h1 { color: var(--accent); margin: 0 0 10px 0; text-transform: uppercase; letter-spacing: 2px; }
+        p { max-width: 400px; line-height: 1.6; margin-bottom: 30px; opacity: 0.9; }
+
+        .main-btn {
+            background: var(--accent); color: white; border: none; padding: 15px 40px;
+            font-family: inherit; font-size: 1.2rem; font-weight: bold; border-radius: 50px;
+            cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 0 15px rgba(14, 165, 233, 0.4);
+        }
+        .main-btn:active { transform: scale(0.95); }
+
+        .controls-hint { position: absolute; bottom: 20px; font-size: 0.7rem; opacity: 0.5; text-transform: uppercase; }
+        
+        #health-bar { position: absolute; top: 60px; left: 0; height: 4px; background: #ef4444; width: 100%; transform-origin: left; transition: transform 0.3s; }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div class="hud">
+        <a href="../../" class="back-btn">Back</a>
+        <div class="score-box">
+            SCORE <span id="score-display" class="score-val">0</span>
+            <div style="font-size: 0.6rem; opacity: 0.7;">BEST: <span id="best-display">0</span></div>
+        </div>
+        <button class="btn-round" id="how-to-btn">?</button>
+    </div>
+    <div id="health-bar"></div>
+    
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- Overlays -->
+    <div id="start-overlay" class="overlay">
+        <h1>Pixel Pulse</h1>
+        <p>Waves of viral cores are invading! Tap the screen to drop Pulse Mines. Time your blasts to clear clusters and protect your firewall.</p>
+        <button class="main-btn" id="start-btn">INITIALIZE</button>
+        <div class="controls-hint">Tap or Click to deploy mines</div>
+    </div>
+
+    <div id="gameover-overlay" class="overlay hidden">
+        <h1 style="color: #ef4444;">System Breach</h1>
+        <p id="final-stats">Score: 0</p>
+        <button class="main-btn" id="restart-btn">REBOOT</button>
+    </div>
+
+    <div id="help-overlay" class="overlay hidden">
+        <h1>How to Play</h1>
+        <ul style="text-align: left; margin-bottom: 30px;">
+            <li>Tap to place a Pulse Mine.</li>
+            <li>Mines take a moment to arm and explode.</li>
+            <li>The explosion wipes out all enemies in radius.</li>
+            <li>Don't let enemies reach the bottom!</li>
+        </ul>
+        <button class="main-btn" id="close-help-btn">GOT IT</button>
+    </div>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const scoreEl = document.getElementById('score-display');
+const bestEl = document.getElementById('best-display');
+const healthBar = document.getElementById('health-bar');
+
+const SLUG = 'fun_arcade_highscore_pixel-pulse-defender';
+let score = 0;
+let bestScore = localStorage.getItem(SLUG) || 0;
+bestEl.textContent = bestScore;
+
+let gameActive = false;
+let health = 100;
+let enemies = [];
+let mines = [];
+let explosions = [];
+let particles = [];
+let frame = 0;
+let spawnRate = 90;
+
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight - 60;
+}
+window.addEventListener('resize', resize);
+resize();
+
+class Enemy {
+    constructor() {
+        this.r = 12 + Math.random() * 8;
+        this.x = Math.random() * (canvas.width - this.r * 2) + this.r;
+        this.y = -this.r;
+        this.speed = 1.5 + (score / 500);
+        this.color = `hsl(${200 + Math.random() * 40}, 80%, 60%)`;
+    }
+    update() {
+        this.y += this.speed;
+        if (this.y > canvas.height) {
+            health -= 15;
+            this.dead = true;
+            shake();
+        }
+    }
+    draw() {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+        ctx.fillStyle = this.color;
+        ctx.fill();
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+    }
+}
+
+class Mine {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.timer = 40;
+        this.maxTimer = 40;
+        this.radius = 80;
+    }
+    update() {
+        this.timer--;
+        if (this.timer <= 0) {
+            this.explode();
+            this.dead = true;
+        }
+    }
+    explode() {
+        explosions.push(new Explosion(this.x, this.y, this.radius));
+        for (let i = 0; i < 15; i++) {
+            particles.push(new Particle(this.x, this.y, '#0EA5E9'));
+        }
+    }
+    draw() {
+        const pct = this.timer / this.maxTimer;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, 8 + (1 - pct) * 4, 0, Math.PI * 2);
+        ctx.fillStyle = pct < 0.3 ? '#ef4444' : '#0EA5E9';
+        ctx.fill();
+        ctx.strokeStyle = '#fff';
+        ctx.stroke();
+    }
+}
+
+class Explosion {
+    constructor(x, y, maxR) {
+        this.x = x;
+        this.y = y;
+        this.r = 10;
+        this.maxR = maxR;
+        this.life = 1.0;
+    }
+    update() {
+        this.r += (this.maxR - this.r) * 0.2;
+        this.life -= 0.05;
+        if (this.life <= 0) this.dead = true;
+
+        enemies.forEach(e => {
+            const dist = Math.hypot(e.x - this.x, e.y - this.y);
+            if (dist < this.r + e.r) {
+                e.dead = true;
+                score += 10;
+                scoreEl.textContent = score;
+            }
+        });
+    }
+    draw() {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(14, 165, 233, ${this.life * 0.4})`;
+        ctx.fill();
+        ctx.strokeStyle = `rgba(255, 255, 255, ${this.life})`;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+    }
+}
+
+class Particle {
+    constructor(x, y, color) {
+        this.x = x; this.y = y;
+        this.vx = (Math.random() - 0.5) * 8;
+        this.vy = (Math.random() - 0.5) * 8;
+        this.life = 1.0;
+        this.color = color;
+    }
+    update() {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.life -= 0.02;
+        if (this.life <= 0) this.dead = true;
+    }
+    draw() {
+        ctx.globalAlpha = this.life;
+        ctx.fillStyle = this.color;
+        ctx.fillRect(this.x, this.y, 3, 3);
+        ctx.globalAlpha = 1;
+    }
+}
+
+let shakeAmt = 0;
+function shake() { shakeAmt = 10; }
+
+function loop() {
+    if (!gameActive) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (shakeAmt > 0) {
+        ctx.translate(Math.random() * shakeAmt, Math.random() * shakeAmt);
+        shakeAmt *= 0.9;
+    }
+
+    frame++;
+    if (frame % Math.max(20, Math.floor(spawnRate - score/100)) === 0) {
+        enemies.push(new Enemy());
+    }
+
+    healthBar.style.transform = `scaleX(${Math.max(0, health / 100)})`;
+    if (health <= 0) gameOver();
+
+    [enemies, mines, explosions, particles].forEach(list => {
+        for (let i = list.length - 1; i >= 0; i--) {
+            list[i].update();
+            list[i].draw();
+            if (list[i].dead) list.splice(i, 1);
+        }
+    });
+
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    requestAnimationFrame(loop);
+}
+
+function startGame() {
+    score = 0;
+    health = 100;
+    enemies = [];
+    mines = [];
+    explosions = [];
+    particles = [];
+    scoreEl.textContent = '0';
+    gameActive = true;
+    document.querySelectorAll('.overlay').forEach(o => o.classList.add('hidden'));
+    loop();
+}
+
+function gameOver() {
+    gameActive = false;
+    if (score > bestScore) {
+        bestScore = score;
+        localStorage.setItem(SLUG, bestScore);
+        bestEl.textContent = bestScore;
+    }
+    document.getElementById('final-stats').textContent = `Pulse score: ${score}`;
+    document.getElementById('gameover-overlay').classList.remove('hidden');
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+    if (!gameActive) return;
+    const rect = canvas.getBoundingClientRect();
+    mines.push(new Mine(e.clientX - rect.left, e.clientY - rect.top));
+});
+
+document.getElementById('start-btn').onclick = startGame;
+document.getElementById('restart-btn').onclick = startGame;
+document.getElementById('how-to-btn').onclick = () => {
+    document.getElementById('help-overlay').classList.remove('hidden');
+    gameActive = false;
+};
+document.getElementById('close-help-btn').onclick = () => {
+    document.getElementById('help-overlay').classList.add('hidden');
+    if (health > 0) {
+        gameActive = true;
+        loop();
+    }
+};
+</script>
+</body>
+</html>

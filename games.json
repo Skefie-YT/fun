@@ -334,5 +334,13 @@
     "category": "Physics",
     "accent": "#E85D04",
     "addedAt": "2026-11-22T22:37:26Z"
+  },
+  {
+    "slug": "pixel-pulse-defender",
+    "title": "Pixel Pulse Defender",
+    "description": "Tap or click to drop pulse mines that blast incoming viruses before they reach your firewall.",
+    "category": "Action",
+    "accent": "#0EA5E9",
+    "addedAt": "2026-11-22T23:35:16Z"
   }
 ]
