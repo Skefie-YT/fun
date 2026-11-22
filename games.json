@@ -318,5 +318,13 @@
     "category": "Reflex",
     "accent": "#EF4444",
     "addedAt": "2026-11-22T20:38:50Z"
+  },
+  {
+    "slug": "quantum-knight",
+    "title": "Quantum Knight",
+    "description": "Leap in L-shaped knight moves across the neon grid to capture all data cores before your energy runs out.",
+    "category": "Puzzle",
+    "accent": "#10B981",
+    "addedAt": "2026-11-22T21:35:22Z"
   }
 ]
