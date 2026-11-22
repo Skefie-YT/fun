@@ -254,5 +254,13 @@
     "category": "Puzzle",
     "accent": "#EF4444",
     "addedAt": "2026-11-22T12:43:52Z"
+  },
+  {
+    "slug": "zen-stack-physics",
+    "title": "Zen Stack",
+    "description": "Drop shapes to build a stable pile and reach the goal line without letting any pieces fall off the platform!",
+    "category": "Physics",
+    "accent": "#EC4899",
+    "addedAt": "2026-11-22T13:53:29Z"
   }
 ]
