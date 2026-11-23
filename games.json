@@ -374,5 +374,13 @@
     "category": "Reflex",
     "accent": "#8B5CF6",
     "addedAt": "2026-11-23T05:07:24Z"
+  },
+  {
+    "slug": "logic-link-node",
+    "title": "Logic Link Node",
+    "description": "Connect all power nodes by drawing non-overlapping paths on the grid to restore the system core.",
+    "category": "Puzzle",
+    "accent": "#8B5CF6",
+    "addedAt": "2026-11-23T09:14:43Z"
   }
 ]

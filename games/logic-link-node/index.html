@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Logic Link Node</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #8B5CF6;
+            --bg: #0f172a;
+            --panel: #1e293b;
+            --text: #f8fafc;
+        }
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Outfit', sans-serif;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 100dvh;
+        }
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 20px;
+            background: var(--panel);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            z-index: 10;
+        }
+        .back-btn {
+            color: var(--text);
+            text-decoration: none;
+            font-weight: bold;
+            font-size: 14px;
+            background: rgba(255,255,255,0.1);
+            padding: 6px 12px;
+            border-radius: 6px;
+        }
+        .stats {
+            text-align: center;
+            flex-grow: 1;
+        }
+        .stat-val { font-weight: 700; color: var(--accent); }
+        .help-btn {
+            background: var(--accent);
+            border: none;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        #game-container {
+            flex-grow: 1;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        canvas {
+            background: #111827;
+            border-radius: 12px;
+            box-shadow: 0 0 40px rgba(0,0,0,0.5);
+            max-width: 100%;
+            max-height: 100%;
+            touch-action: none;
+        }
+        .overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            padding: 40px;
+            text-align: center;
+        }
+        .hidden { display: none !important; }
+        h1 { margin: 0 0 10px 0; color: var(--accent); }
+        p { line-height: 1.6; margin-bottom: 20px; }
+        .btn-play {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .btn-play:active { transform: scale(0.95); }
+        .hint-bar {
+            position: absolute;
+            bottom: 20px;
+            font-size: 0.8rem;
+            opacity: 0.6;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <a href="../../" class="back-btn">Back</a>
+    <div class="stats">
+        Level: <span id="level-val" class="stat-val">1</span> | 
+        Best: <span id="best-val" class="stat-val">0</span>
+    </div>
+    <button class="help-btn" onclick="toggleHelp()">?</button>
+</header>
+
+<div id="game-container">
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- Screens -->
+    <div id="start-screen" class="overlay">
+        <h1>LOGIC LINK NODE</h1>
+        <p>Drag from a colored node to its pair. Connect every pair without crossing paths to clear the grid.</p>
+        <button class="btn-play" onclick="startGame()">START MISSION</button>
+        <div class="hint-bar">Drag to draw &bull; Click path to clear</div>
+    </div>
+
+    <div id="help-overlay" class="overlay hidden">
+        <h1>How to Play</h1>
+        <p>1. Connect matching colored nodes.<br>2. Paths cannot cross or overlap.<br>3. Fill every grid cell for a perfect clear.<br>4. Tap an existing path to reset it.</p>
+        <button class="btn-play" onclick="toggleHelp()">RESUME</button>
+    </div>
+
+    <div id="win-screen" class="overlay hidden">
+        <h1 id="win-title">SYSTEM RESTORED</h1>
+        <p>Grid connection complete. Initializing next sector...</p>
+        <button class="btn-play" onclick="nextLevel()">CONTINUE</button>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const STORAGE_KEY = 'fun_arcade_highscore_logic-link-node';
+    
+    let state = {
+        level: 1,
+        gridSize: 5,
+        nodes: [], // {x, y, color, id}
+        paths: {}, // id: [ {x,y} ]
+        currentDrawingId: null,
+        bestLevel: localStorage.getItem(STORAGE_KEY) || 0,
+        isMuted: false
+    };
+
+    const COLORS = [
+        '#EF4444', '#3B82F6', '#10B981', '#F59E0B', '#EC4899', '#8B5CF6', '#06B6D4', '#84CC16'
+    ];
+
+    function init() {
+        document.getElementById('best-val').innerText = state.bestLevel;
+        resize();
+        window.addEventListener('resize', resize);
+        setupControls();
+    }
+
+    function resize() {
+        const size = Math.min(window.innerWidth - 40, window.innerHeight - 150, 500);
+        canvas.width = size;
+        canvas.height = size;
+        draw();
+    }
+
+    function setupLevel(lvl) {
+        state.level = lvl;
+        state.gridSize = lvl < 3 ? 5 : lvl < 6 ? 6 : lvl < 10 ? 7 : 8;
+        state.nodes = [];
+        state.paths = {};
+        document.getElementById('level-val').innerText = lvl;
+        
+        // Procedural-ish level generation (simple pairs logic)
+        const count = Math.min(3 + Math.floor(lvl / 2), COLORS.length);
+        const usedPositions = new Set();
+        
+        for (let i = 0; i < count; i++) {
+            for (let pair = 0; pair < 2; pair++) {
+                let x, y, key;
+                do {
+                    x = Math.floor(Math.random() * state.gridSize);
+                    y = Math.floor(Math.random() * state.gridSize);
+                    key = `${x},${y}`;
+                } while (usedPositions.has(key));
+                
+                usedPositions.add(key);
+                state.nodes.push({ x, y, color: COLORS[i], pairId: i });
+            }
+            state.paths[i] = [];
+        }
+        draw();
+    }
+
+    function getGridPos(e) {
+        const rect = canvas.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        const x = Math.floor(((clientX - rect.left) / rect.width) * state.gridSize);
+        const y = Math.floor(((clientY - rect.top) / rect.height) * state.gridSize);
+        return { x, y };
+    }
+
+    function setupControls() {
+        const startDrawing = (e) => {
+            const { x, y } = getGridPos(e);
+            if (x < 0 || x >= state.gridSize || y < 0 || y >= state.gridSize) return;
+
+            const node = state.nodes.find(n => n.x === x && n.y === y);
+            if (node) {
+                state.currentDrawingId = node.pairId;
+                state.paths[node.pairId] = [{ x, y }];
+                playSound(200, 0.1);
+            } else {
+                // If clicking an existing path, clear it
+                for (const id in state.paths) {
+                    if (state.paths[id].some(p => p.x === x && p.y === y)) {
+                        state.paths[id] = [];
+                        break;
+                    }
+                }
+            }
+            draw();
+        };
+
+        const moveDrawing = (e) => {
+            if (state.currentDrawingId === null) return;
+            const { x, y } = getGridPos(e);
+            if (x < 0 || x >= state.gridSize || y < 0 || y >= state.gridSize) return;
+
+            const path = state.paths[state.currentDrawingId];
+            const last = path[path.length - 1];
+
+            if (last.x === x && last.y === y) return;
+
+            // Must be adjacent
+            const dist = Math.abs(x - last.x) + Math.abs(y - last.y);
+            if (dist === 1) {
+                // Check if path loops back
+                const existingIndex = path.findIndex(p => p.x === x && p.y === y);
+                if (existingIndex !== -1) {
+                    state.paths[state.currentDrawingId] = path.slice(0, existingIndex + 1);
+                } else {
+                    // Check if hits another path or node
+                    const nodeAtPos = state.nodes.find(n => n.x === x && n.y === y);
+                    
+                    // If it's a node
+                    if (nodeAtPos) {
+                        if (nodeAtPos.pairId === state.currentDrawingId) {
+                            path.push({ x, y });
+                            state.currentDrawingId = null;
+                            checkWin();
+                        } else {
+                            // Blocked by other node
+                        }
+                    } else {
+                        // If it's empty, check if other paths are there
+                        let blocked = false;
+                        for (const id in state.paths) {
+                            if (state.paths[id].some(p => p.x === x && p.y === y)) blocked = true;
+                        }
+                        if (!blocked) {
+                            path.push({ x, y });
+                            playSound(300 + (path.length * 20), 0.05);
+                        }
+                    }
+                }
+            }
+            draw();
+        };
+
+        const endDrawing = () => {
+            if (state.currentDrawingId !== null) {
+                // If let go and not finished, we can keep it or clear it. 
+                // Standard flow is to keep partial paths.
+                state.currentDrawingId = null;
+            }
+            draw();
+        };
+
+        canvas.addEventListener('mousedown', startDrawing);
+        window.addEventListener('mousemove', moveDrawing);
+        window.addEventListener('mouseup', endDrawing);
+
+        canvas.addEventListener('touchstart', (e) => { e.preventDefault(); startDrawing(e); }, {passive: false});
+        window.addEventListener('touchmove', (e) => { e.preventDefault(); moveDrawing(e); }, {passive: false});
+        window.addEventListener('touchend', endDrawing);
+    }
+
+    function checkWin() {
+        const totalNodes = state.nodes.length;
+        let connectedNodes = 0;
+        
+        for (const id in state.paths) {
+            const path = state.paths[id];
+            if (path.length < 2) continue;
+            const start = path[0];
+            const end = path[path.length - 1];
+            const n1 = state.nodes.find(n => n.x === start.x && n.y === start.y && n.pairId == id);
+            const n2 = state.nodes.find(n => n.x === end.x && n.y === end.y && n.pairId == id);
+            if (n1 && n2 && n1 !== n2) connectedNodes += 2;
+        }
+
+        if (connectedNodes === totalNodes) {
+            setTimeout(() => {
+                document.getElementById('win-screen').classList.remove('hidden');
+                playSound(600, 0.2);
+                playSound(800, 0.3);
+                if (state.level > state.bestLevel) {
+                    state.bestLevel = state.level;
+                    localStorage.setItem(STORAGE_KEY, state.bestLevel);
+                    document.getElementById('best-val').innerText = state.bestLevel;
+                }
+            }, 300);
+        }
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const cellSize = canvas.width / state.gridSize;
+
+        // Draw Grid
+        ctx.strokeStyle = '#334155';
+        ctx.lineWidth = 1;
+        for (let i = 0; i <= state.gridSize; i++) {
+            ctx.beginPath();
+            ctx.moveTo(i * cellSize, 0);
+            ctx.lineTo(i * cellSize, canvas.height);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(0, i * cellSize);
+            ctx.lineTo(canvas.width, i * cellSize);
+            ctx.stroke();
+        }
+
+        // Draw Paths
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        for (const id in state.paths) {
+            const path = state.paths[id];
+            if (path.length < 1) continue;
+            
+            const node = state.nodes.find(n => n.pairId == id);
+            ctx.strokeStyle = node.color;
+            ctx.lineWidth = cellSize * 0.4;
+            ctx.beginPath();
+            ctx.moveTo(path[0].x * cellSize + cellSize/2, path[0].y * cellSize + cellSize/2);
+            for (let i = 1; i < path.length; i++) {
+                ctx.lineTo(path[i].x * cellSize + cellSize/2, path[i].y * cellSize + cellSize/2);
+            }
+            ctx.stroke();
+
+            // Glow
+            ctx.globalAlpha = 0.3;
+            ctx.lineWidth = cellSize * 0.6;
+            ctx.stroke();
+            ctx.globalAlpha = 1.0;
+        }
+
+        // Draw Nodes
+        state.nodes.forEach(node => {
+            ctx.fillStyle = node.color;
+            ctx.beginPath();
+            ctx.arc(node.x * cellSize + cellSize/2, node.y * cellSize + cellSize/2, cellSize * 0.3, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Inner core
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.arc(node.x * cellSize + cellSize/2, node.y * cellSize + cellSize/2, cellSize * 0.1, 0, Math.PI * 2);
+            ctx.fill();
+        });
+    }
+
+    function startGame() {
+        document.getElementById('start-screen').classList.add('hidden');
+        setupLevel(1);
+    }
+
+    function nextLevel() {
+        document.getElementById('win-screen').classList.add('hidden');
+        setupLevel(state.level + 1);
+    }
+
+    function toggleHelp() {
+        const help = document.getElementById('help-overlay');
+        help.classList.toggle('hidden');
+    }
+
+    function playSound(freq, duration) {
+        if (state.isMuted) return;
+        try {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + duration);
+        } catch(e) {}
+    }
+
+    init();
+</script>
+</body>
+</html>
