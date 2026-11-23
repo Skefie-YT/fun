@@ -366,5 +366,13 @@
     "category": "Reflex",
     "accent": "#0EA5E9",
     "addedAt": "2026-11-23T03:55:11Z"
+  },
+  {
+    "slug": "pulse-breaker",
+    "title": "Pulse Breaker",
+    "description": "Smash descending beat blocks in the strike zone across 4 lanes to build combos and unleash Hyper Pulse!",
+    "category": "Reflex",
+    "accent": "#8B5CF6",
+    "addedAt": "2026-11-23T05:07:24Z"
   }
 ]

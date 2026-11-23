@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Pulse Breaker — Fun Arcade</title>
+<style>
+  :root {
+    --bg: #09090f;
+    --panel: #131320;
+    --border: rgba(255,255,255,0.1);
+    --accent: #8B5CF6;
+    --accent-glow: rgba(139, 92, 246, 0.55);
+    --cyan: #06b6d4;
+    --pink: #ec4899;
+    --gold: #f59e0b;
+    --text: #f8fafc;
+    --muted: #94a3b8;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; user-select: none; }
+  html, body {
+    width: 100%; height: 100dvh; overflow: hidden;
+    background: var(--bg); color: var(--text);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    display: flex; flex-direction: column;
+  }
+  /* Top Bar */
+  .topbar {
+    height: 52px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 14px; background: rgba(19, 19, 32, 0.92);
+    border-bottom: 1px solid var(--border); z-index: 20;
+  }
+  .back-btn {
+    color: var(--text); text-decoration: none; font-size: 13px; font-weight: 600;
+    padding: 6px 12px; border-radius: 8px; background: rgba(255,255,255,0.07);
+    border: 1px solid var(--border); transition: background 0.15s;
+  }
+  .back-btn:hover { background: rgba(255,255,255,0.14); }
+  .hud-stats {
+    display: flex; gap: 16px; align-items: center; font-size: 13px; font-weight: 700;
+  }
+  .stat { display: flex; flex-direction: column; align-items: center; line-height: 1.1; }
+  .stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  .stat-val { font-size: 15px; color: #fff; font-variant-numeric: tabular-nums; }
+  .top-actions { display: flex; gap: 8px; align-items: center; }
+  .icon-btn {
+    width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--border);
+    background: rgba(255,255,255,0.07); color: var(--text); font-size: 15px; font-weight: 700;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .icon-btn:hover { background: rgba(255,255,255,0.14); border-color: var(--accent); }
+
+  /* Main Game Area */
+  .game-wrap {
+    position: relative; flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; overflow: hidden;
+    background: radial-gradient(circle at 50% 30%, #17122b 0%, #09090f 70%);
+  }
+  canvas {
+    display: block; width: 100%; height: 100%; max-width: 520px;
+    touch-action: none;
+  }
+
+  /* Overdrive Bar */
+  .overdrive-btn {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    z-index: 10; padding: 6px 16px; border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.18); background: rgba(19,19,32,0.85);
+    color: var(--muted); font-size: 12px; font-weight: 800; letter-spacing: 0.08em;
+    text-transform: uppercase; cursor: pointer; overflow: hidden;
+    transition: transform 0.15s, box-shadow 0.2s, color 0.2s;
+    pointer-events: none;
+  }
+  .overdrive-btn.ready {
+    pointer-events: auto; color: #fff; border-color: var(--gold);
+    box-shadow: 0 0 18px rgba(245, 158, 11, 0.55);
+    animation: pulseBtn 0.9s infinite alternate;
+  }
+  .overdrive-fill {
+    position: absolute; left: 0; top: 0; bottom: 0; width: 0%;
+    background: linear-gradient(90deg, var(--accent), var(--gold));
+    opacity: 0.35; z-index: -1; transition: width 0.12s;
+  }
+  @keyframes pulseBtn {
+    from { transform: translateX(-50%) scale(1); }
+    to { transform: translateX(-50%) scale(1.06); }
+  }
+
+  /* Overlays */
+  .overlay {
+    position: absolute; inset: 0; z-index: 30;
+    background: rgba(9, 9, 15, 0.86); backdrop-filter: blur(8px);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 24px; text-align: center; transition: opacity 0.2s;
+  }
+  .overlay.hidden { opacity: 0; pointer-events: none; }
+  .badge {
+    font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.12em;
+    color: var(--accent); background: rgba(139, 92, 246, 0.15);
+    border: 1px solid rgba(139, 92, 246, 0.35); padding: 4px 12px; border-radius: 999px;
+    margin-bottom: 12px;
+  }
+  .overlay h1 {
+    font-size: clamp(30px, 6vw, 44px); font-weight: 900; letter-spacing: -0.02em;
+    margin-bottom: 10px;
+    background: linear-gradient(135deg, #fff 30%, #c4b5fd 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .overlay p {
+    max-width: 380px; font-size: 15px; line-height: 1.5; color: var(--muted);
+    margin-bottom: 24px;
+  }
+  .primary-btn {
+    padding: 14px 36px; font-size: 16px; font-weight: 800; border: none; border-radius: 12px;
+    background: linear-gradient(135deg, var(--accent), #6d28d9); color: #fff;
+    cursor: pointer; box-shadow: 0 8px 28px var(--accent-glow);
+    transition: transform 0.12s, box-shadow 0.15s;
+  }
+  .primary-btn:hover { transform: translateY(-2px); box-shadow: 0 12px 34px var(--accent-glow); }
+  .primary-btn:active { transform: scale(0.97); }
+
+  .score-summary {
+    display: flex; gap: 24px; margin-bottom: 24px; padding: 14px 24px;
+    background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 14px;
+  }
+  .sum-item { display: flex; flex-direction: column; gap: 2px; }
+  .sum-label { font-size: 11px; color: var(--muted); text-transform: uppercase; }
+  .sum-val { font-size: 22px; font-weight: 800; color: #fff; }
+
+  .controls-hint {
+    position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+    font-size: 12px; color: var(--muted); white-space: nowrap;
+    background: rgba(255,255,255,0.04); padding: 6px 14px; border-radius: 999px;
+    border: 1px solid var(--border);
+  }
+
+  /* How to Play Modal */
+  .howto-card {
+    max-width: 400px; width: 100%; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 16px; padding: 24px; text-align: left;
+  }
+  .howto-card h2 { font-size: 20px; margin-bottom: 12px; color: #fff; }
+  .howto-card ul { list-style: none; display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+  .howto-card li { font-size: 14px; color: var(--muted); line-height: 1.45; padding-left: 16px; position: relative; }
+  .howto-card li::before { content: '▸'; position: absolute; left: 0; color: var(--accent); font-weight: 700; }
+  .howto-card strong { color: #fff; }
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a href="../../" class="back-btn">Back</a>
+    <div class="hud-stats">
+      <div class="stat"><span class="stat-label">Score</span><span class="stat-val" id="scoreVal">0</span></div>
+      <div class="stat"><span class="stat-label">Best</span><span class="stat-val" id="bestVal">0</span></div>
+      <div class="stat"><span class="stat-label">Shield</span><span class="stat-val" id="shieldVal">5</span></div>
+    </div>
+    <div class="top-actions">
+      <button class="icon-btn" id="muteBtn" title="Toggle Sound">🔊</button>
+      <button class="icon-btn" id="helpBtn" title="How to Play">?</button>
+    </div>
+  </header>
+
+  <main class="game-wrap">
+    <button class="overdrive-btn" id="overdriveBtn">
+      <div class="overdrive-fill" id="overdriveFill"></div>
+      <span id="overdriveText">HYPER PULSE 0%</span>
+    </button>
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- Start Overlay -->
+    <div class="overlay" id="startOverlay">
+      <div class="badge">Rhythm Reflex</div>
+      <h1>Pulse Breaker</h1>
+      <p>Smash descending beat blocks inside the glowing Strike Zone to build combos and unleash Hyper Pulse!</p>
+      <button class="primary-btn" id="startBtn">Start Beat</button>
+      <div class="controls-hint">Keys: D · F · J · K (or 1-4) &nbsp;|&nbsp; Space: Hyper Pulse &nbsp;|&nbsp; Tap Lanes</div>
+    </div>
+
+    <!-- Game Over Overlay -->
+    <div class="overlay hidden" id="gameOverOverlay">
+      <div class="badge">Track Complete</div>
+      <h1>Beat Dropped</h1>
+      <div class="score-summary">
+        <div class="sum-item"><span class="sum-label">Score</span><span class="sum-val" id="finalScore">0</span></div>
+        <div class="sum-item"><span class="sum-label">Best</span><span class="sum-val" id="finalBest">0</span></div>
+        <div class="sum-item"><span class="sum-label">Max Combo</span><span class="sum-val" id="finalCombo">0</span></div>
+      </div>
+      <button class="primary-btn" id="restartBtn">Play Again</button>
+    </div>
+
+    <!-- How to Play Overlay -->
+    <div class="overlay hidden" id="helpOverlay">
+      <div class="howto-card">
+        <h2>How to Play</h2>
+        <ul>
+          <li><strong>Smash the Beat:</strong> Tap the 4 lane pads or press <strong>D, F, J, K</strong> (or <strong>1, 2, 3, 4</strong>) when blocks enter the Strike Zone.</li>
+          <li><strong>Build Combos:</strong> Consecutive hits increase your multiplier up to <strong>8x</strong> and restore shields every 25 hits.</li>
+          <li><strong>Gold Blocks:</strong> Worth 2x points and charge your <strong>Hyper Pulse</strong> meter faster.</li>
+          <li><strong>Hyper Pulse:</strong> When at 100%, press <strong>Space</strong> or tap the top bar to auto-smash all blocks for 4 seconds!</li>
+        </ul>
+        <button class="primary-btn" id="closeHelpBtn" style="width:100%">Got It</button>
+      </div>
+    </div>
+  </main>
+
+<script>
+(() => {
+  const SLUG = 'pulse-breaker';
+  const HS_KEY = 'fun_arcade_highscore_' + SLUG;
+
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+
+  const scoreEl = document.getElementById('scoreVal');
+  const bestEl = document.getElementById('bestVal');
+  const shieldEl = document.getElementById('shieldVal');
+  const overdriveBtn = document.getElementById('overdriveBtn');
+  const overdriveFill = document.getElementById('overdriveFill');
+  const overdriveText = document.getElementById('overdriveText');
+
+  const startOverlay = document.getElementById('startOverlay');
+  const gameOverOverlay = document.getElementById('gameOverOverlay');
+  const helpOverlay = document.getElementById('helpOverlay');
+  const finalScoreEl = document.getElementById('finalScore');
+  const finalBestEl = document.getElementById('finalBest');
+  const finalComboEl = document.getElementById('finalCombo');
+
+  const muteBtn = document.getElementById('muteBtn');
+  const helpBtn = document.getElementById('helpBtn');
+  const closeHelpBtn = document.getElementById('closeHelpBtn');
+  const startBtn = document.getElementById('startBtn');
+  const restartBtn = document.getElementById('restartBtn');
+
+  // Audio Engine (Web Audio API)
+  let audioCtx = null;
+  let muted = false;
+
+  function initAudio() {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  }
+
+  function playTone(freq, type, duration, vol = 0.14, slide = 0) {
+    if (muted || !audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    if (slide) osc.frequency.exponentialRampToValueAtTime(slide, audioCtx.currentTime + duration);
+    gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.start(); osc.stop(audioCtx.currentTime + duration);
+  }
+
+  function playBeatTick(step) {
+    if (muted || !audioCtx) return;
+    // Kick on 0, 2; Hi-hat on 1, 3
+    if (step % 2 === 0) {
+      playTone(110, 'sine', 0.12, 0.16, 42);
+    } else {
+      playTone(800, 'triangle', 0.04, 0.05, 300);
+    }
+  }
+
+  function playHitSound(lane, isGold) {
+    const notes = [261.63, 329.63, 392.00, 523.25];
+    playTone(notes[lane] * (isGold ? 1.5 : 1), 'triangle', 0.14, 0.18, notes[lane] * 1.2);
+  }
+
+  function playMissSound() {
+    playTone(130, 'sawtooth', 0.18, 0.14, 65);
+  }
+
+  function playOverdriveSound() {
+    [261.63, 329.63, 392.00, 523.25, 659.25].forEach((f, i) => {
+      setTimeout(() => playTone(f, 'sine', 0.2, 0.15), i * 45);
+    });
+  }
+
+  muteBtn.addEventListener('click', () => {
+    muted = !muted;
+    muteBtn.textContent = muted ? '🔇' : '🔊';
+  });
+
+  // Game State
+  const LANES = 4;
+  const LANE_COLORS = ['#8B5CF6', '#06b6d4', '#ec4899', '#8B5CF6'];
+  const LANE_KEYS = ['D', 'F', 'J', 'K'];
+
+  let width = 420, height = 640;
+  let bestScore = parseInt(localStorage.getItem(HS_KEY) || '0', 10);
+  bestEl.textContent = bestScore;
+
+  let state = 'start'; // start | playing | paused | gameover
+  let score = 0;
+  let combo = 0;
+  let maxCombo = 0;
+  let shields = 5;
+  let overdrive = 0; // 0..100
+  let hyperTimer = 0; // seconds remaining
+  let shake = 0;
+
+  let blocks = [];
+  let particles = [];
+  let lasers = [];
+  let floatingTexts = [];
+  let laneFlash = [0, 0, 0, 0];
+
+  let bpm = 118;
+  let beatTimer = 0;
+  let beatStep = 0;
+  let lastTime = 0;
+
+  function resize() {
+    const rect = canvas.parentElement.getBoundingClientRect();
+    width = Math.min(rect.width, 520);
+    height = rect.height;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function getStrikeY() { return height - 92; }
+  function getLaneW() { return width / LANES; }
+
+  function resetGame() {
+    score = 0; combo = 0; maxCombo = 0; shields = 5;
+    overdrive = 0; hyperTimer = 0; shake = 0;
+    bpm = 118; beatTimer = 0; beatStep = 0;
+    blocks = []; particles = []; lasers = []; floatingTexts = [];
+    laneFlash = [0, 0, 0, 0];
+    updateHUD();
+  }
+
+  function updateHUD() {
+    scoreEl.textContent = score;
+    bestEl.textContent = bestScore;
+    shieldEl.textContent = shields;
+    overdriveFill.style.width = overdrive + '%';
+    if (hyperTimer > 0) {
+      overdriveBtn.classList.add('ready');
+      overdriveText.textContent = `HYPER PULSE ${hyperTimer.toFixed(1)}s`;
+    } else if (overdrive >= 100) {
+      overdriveBtn.classList.add('ready');
+      overdriveText.textContent = 'PRESS SPACE: HYPER PULSE!';
+    } else {
+      overdriveBtn.classList.remove('ready');
+      overdriveText.textContent = `HYPER PULSE ${Math.floor(overdrive)}%`;
+    }
+  }
+
+  function spawnParticles(x, y, color, count = 14) {
+    for (let i = 0; i < count; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 90 + Math.random() * 220;
+      particles.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 0.45 + Math.random() * 0.25,
+        maxLife: 0.7,
+        size: 3 + Math.random() * 4,
+        color
+      });
+    }
+  }
+
+  function addFloatingText(x, y, text, color) {
+    floatingTexts.push({ x, y, text, color, life: 0.65 });
+  }
+
+  function spawnBlock() {
+    const lane = Math.floor(Math.random() * LANES);
+    const isGold = Math.random() < 0.14;
+    const speed = 220 + Math.min(260, (bpm - 118) * 3.2);
+    blocks.push({
+      lane,
+      y: -36,
+      h: 26,
+      speed,
+      isGold,
+      hit: false
+    });
+  }
+
+  function activateHyperPulse() {
+    if (state !== 'playing' || overdrive < 100 || hyperTimer > 0) return;
+    overdrive = 0;
+    hyperTimer = 4.0;
+    shake = 8;
+    playOverdriveSound();
+    updateHUD();
+  }
+
+  overdriveBtn.addEventListener('click', activateHyperPulse);
+
+  function triggerLane(lane) {
+    if (state !== 'playing') return;
+    laneFlash[lane] = 1;
+    const strikeY = getStrikeY();
+    const laneW = getLaneW();
+    const cx = lane * laneW + laneW / 2;
+
+    // Fire visual laser
+    lasers.push({ x: cx, life: 0.16, color: LANE_COLORS[lane] });
+
+    // Find closest block in this lane near strike zone
+    let targetIdx = -1;
+    let bestDist = Infinity;
+    for (let i = 0; i < blocks.length; i++) {
+      const b = blocks[i];
+      if (b.lane !== lane || b.hit) continue;
+      const dist = Math.abs(b.y - strikeY);
+      if (dist < 62 && dist < bestDist) {
+        bestDist = dist;
+        targetIdx = i;
+      }
+    }
+
+    if (targetIdx !== -1) {
+      const b = blocks[targetIdx];
+      b.hit = true;
+      blocks.splice(targetIdx, 1);
+
+      const isPerfect = bestDist < 24;
+      combo++;
+      if (combo > maxCombo) maxCombo = combo;
+      const mult = Math.min(8, 1 + Math.floor(combo / 5));
+      const pts = (b.isGold ? 200 : isPerfect ? 120 : 80) * mult;
+      score += pts;
+      if (score > bestScore) {
+        bestScore = score;
+        localStorage.setItem(HS_KEY, bestScore);
+      }
+
+      if (combo % 25 === 0 && shields < 5) {
+        shields++;
+        addFloatingText(cx, strikeY - 48, '+1 SHIELD', '#22c55e');
+      }
+
+      if (hyperTimer <= 0) {
+        overdrive = Math.min(100, overdrive + (b.isGold ? 20 : 8));
+      }
+
+      shake = Math.min(6, shake + 2.5);
+      playHitSound(lane, b.isGold);
+      spawnParticles(cx, b.y, b.isGold ? '#f59e0b' : LANE_COLORS[lane], 16);
+      addFloatingText(cx, strikeY - 26, isPerfect ? `PERFECT +${pts}` : `+${pts}`, b.isGold ? '#f59e0b' : '#fff');
+      updateHUD();
+    } else if (hyperTimer <= 0) {
+      // Missed tap
+      combo = 0;
+      playMissSound();
+      addFloatingText(cx, strikeY - 20, 'MISS', '#ef4444');
+      updateHUD();
+    }
+  }
+
+  // Input Handling
+  const keyMap = { KeyD: 0, Digit1: 0, KeyF: 1, Digit2: 1, KeyJ: 2, Digit3: 2, KeyK: 3, Digit4: 3 };
+  window.addEventListener('keydown', (e) => {
+    if (e.repeat) return;
+    if (e.code === 'Space') {
+      if (state === 'playing') { e.preventDefault(); activateHyperPulse(); }
+      return;
+    }
+    if (e.code in keyMap) {
+      triggerLane(keyMap[e.code]);
+    }
+  });
+
+  canvas.addEventListener('pointerdown', (e) => {
+    if (state !== 'playing') return;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const lane = Math.max(0, Math.min(LANES - 1, Math.floor((x / rect.width) * LANES)));
+    triggerLane(lane);
+  });
+
+  // Overlay Controls
+  startBtn.addEventListener('click', () => {
+    initAudio();
+    resetGame();
+    state = 'playing';
+    startOverlay.classList.add('hidden');
+    lastTime = performance.now();
+  });
+
+  restartBtn.addEventListener('click', () => {
+    initAudio();
+    resetGame();
+    state = 'playing';
+    gameOverOverlay.classList.add('hidden');
+    lastTime = performance.now();
+  });
+
+  helpBtn.addEventListener('click', () => {
+    if (state === 'playing') state = 'paused';
+    helpOverlay.classList.remove('hidden');
+  });
+
+  closeHelpBtn.addEventListener('click', () => {
+    helpOverlay.classList.add('hidden');
+    if (state === 'paused') {
+      state = 'playing';
+      lastTime = performance.now();
+    }
+  });
+
+  function endGame() {
+    state = 'gameover';
+    finalScoreEl.textContent = score;
+    finalBestEl.textContent = bestScore;
+    finalComboEl.textContent = maxCombo;
+    gameOverOverlay.classList.remove('hidden');
+  }
+
+  function update(dt) {
+    if (state !== 'playing') return;
+
+    // Beat & Spawning
+    const beatInterval = 60 / bpm;
+    beatTimer += dt;
+    if (beatTimer >= beatInterval) {
+      beatTimer -= beatInterval;
+      beatStep++;
+      playBeatTick(beatStep);
+      spawnBlock();
+      if (bpm < 168) bpm += 0.28;
+    }
+
+    // Hyper Pulse
+    if (hyperTimer > 0) {
+      hyperTimer = Math.max(0, hyperTimer - dt);
+      updateHUD();
+    }
+
+    const strikeY = getStrikeY();
+    const laneW = getLaneW();
+
+    // Update Blocks
+    for (let i = blocks.length - 1; i >= 0; i--) {
+      const b = blocks[i];
+      b.y += b.speed * dt;
+
+      // Auto-smash during Hyper Pulse
+      if (hyperTimer > 0 && b.y >= strikeY - 12) {
+        const cx = b.lane * laneW + laneW / 2;
+        score += 150;
+        if (score > bestScore) { bestScore = score; localStorage.setItem(HS_KEY, bestScore); }
+        spawnParticles(cx, b.y, '#f59e0b', 10);
+        lasers.push({ x: cx, life: 0.12, color: '#f59e0b' });
+        blocks.splice(i, 1);
+        updateHUD();
+        continue;
+      }
+
+      // Missed block
+      if (b.y > height + 20) {
+        blocks.splice(i, 1);
+        combo = 0;
+        shields--;
+        shake = 7;
+        playMissSound();
+        updateHUD();
+        if (shields <= 0) {
+          endGame();
+          return;
+        }
+      }
+    }
+
+    // Update Particles
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.life -= dt;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+
+    // Update Lasers & Flashes
+    for (let i = lasers.length - 1; i >= 0; i--) {
+      lasers[i].life -= dt;
+      if (lasers[i].life <= 0) lasers.splice(i, 1);
+    }
+    for (let i = 0; i < LANES; i++) {
+      laneFlash[i] = Math.max(0, laneFlash[i] - dt * 5);
+    }
+
+    // Floating Texts
+    for (let i = floatingTexts.length - 1; i >= 0; i--) {
+      const ft = floatingTexts[i];
+      ft.y -= 42 * dt;
+      ft.life -= dt;
+      if (ft.life <= 0) floatingTexts.splice(i, 1);
+    }
+
+    shake = Math.max(0, shake - dt * 24);
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, width, height);
+    ctx.save();
+    if (shake > 0) {
+      ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
+    }
+
+    const laneW = getLaneW();
+    const strikeY = getStrikeY();
+
+    // Draw Lanes
+    for (let i = 0; i < LANES; i++) {
+      const x = i * laneW;
+      if (laneFlash[i] > 0) {
+        ctx.fillStyle = `rgba(139, 92, 246, ${laneFlash[i] * 0.18})`;
+        ctx.fillRect(x, 0, laneW, height);
+      }
+      ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
+    }
+
+    // Strike Zone Bar
+    ctx.fillStyle = hyperTimer > 0 ? 'rgba(245, 158, 11, 0.16)' : 'rgba(139, 92, 246, 0.12)';
+    ctx.fillRect(0, strikeY - 24, width, 48);
+    ctx.strokeStyle = hyperTimer > 0 ? '#f59e0b' : '#8B5CF6';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, strikeY - 24); ctx.lineTo(width, strikeY - 24); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, strikeY + 24); ctx.lineTo(width, strikeY + 24); ctx.stroke();
+
+    // Lane Pads at Bottom
+    for (let i = 0; i < LANES; i++) {
+      const x = i * laneW + 8;
+      const w = laneW - 16;
+      const y = strikeY + 34;
+      ctx.fillStyle = laneFlash[i] > 0 ? LANE_COLORS[i] : 'rgba(255,255,255,0.06)';
+      ctx.strokeStyle = LANE_COLORS[i];
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.roundRect(x, y, w, 42, 10); ctx.fill(); ctx.stroke();
+
+      ctx.fillStyle = '#fff';
+      ctx.font = '700 14px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(LANE_KEYS[i], x + w / 2, y + 26);
+    }
+
+    // Lasers
+    lasers.forEach(l => {
+      ctx.strokeStyle = l.color;
+      ctx.globalAlpha = l.life / 0.16;
+      ctx.lineWidth = 6;
+      ctx.beginPath(); ctx.moveTo(l.x, strikeY); ctx.lineTo(l.x, 0); ctx.stroke();
+      ctx.globalAlpha = 1;
+    });
+
+    // Beat Blocks
+    blocks.forEach(b => {
+      const x = b.lane * laneW + 10;
+      const w = laneW - 20;
+      const color = b.isGold ? '#f59e0b' : LANE_COLORS[b.lane];
+      ctx.fillStyle = color;
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 14;
+      ctx.beginPath(); ctx.roundRect(x, b.y - b.h / 2, w, b.h, 7); ctx.fill();
+      ctx.shadowBlur = 0;
+
+      ctx.fillStyle = 'rgba(255,255,255,0.45)';
+      ctx.fillRect(x + 6, b.y - 3, w - 12, 6);
+    });
+
+    // Particles
+    particles.forEach(p => {
+      ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
+      ctx.fillStyle = p.color;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+
+    // Combo Display
+    if (combo >= 2 && state === 'playing') {
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.font = '800 22px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${combo}x COMBO`, width / 2, 72);
+    }
+
+    // Floating Texts
+    floatingTexts.forEach(ft => {
+      ctx.globalAlpha = Math.max(0, ft.life / 0.65);
+      ctx.fillStyle = ft.color;
+      ctx.font = '800 14px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(ft.text, ft.x, ft.y);
+    });
+    ctx.globalAlpha = 1;
+
+    ctx.restore();
+  }
+
+  function loop(now) {
+    const dt = Math.min(0.05, (now - lastTime) / 1000);
+    lastTime = now;
+    update(dt);
+    draw();
+    requestAnimationFrame(loop);
+  }
+  lastTime = performance.now();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
