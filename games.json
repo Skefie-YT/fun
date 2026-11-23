@@ -398,5 +398,13 @@
     "category": "Reflex",
     "accent": "#F59E0B",
     "addedAt": "2026-11-23T11:51:24Z"
+  },
+  {
+    "slug": "memory-matrix-duel",
+    "title": "Memory Matrix Duel",
+    "description": "Watch the grid, memorize the hidden pattern, and recreate it perfectly as the challenges intensify!",
+    "category": "Puzzle",
+    "accent": "#10B981",
+    "addedAt": "2026-11-23T13:01:00Z"
   }
 ]
