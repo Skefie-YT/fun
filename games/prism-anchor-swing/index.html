@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Prism Anchor Swing</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap');
+        :root { --accent: #F59E0B; --bg: #0f172a; }
+        * { box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
+        body { margin: 0; padding: 0; background: var(--bg); color: #fff; font-family: 'Outfit', sans-serif; overflow: hidden; height: 100dvh; touch-action: none; }
+        #game-container { position: relative; width: 100%; height: 100dvh; display: flex; flex-direction: column; }
+        
+        header { height: 60px; padding: 0 20px; display: flex; align-items: center; justify-content: space-between; background: rgba(15, 23, 42, 0.9); z-index: 20; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .back-btn { text-decoration: none; color: #94a3b8; font-weight: 700; transition: color 0.2s; }
+        .back-btn:hover { color: #fff; }
+        .hud-stats { display: flex; gap: 20px; font-weight: 700; }
+        .score-box { color: var(--accent); }
+        .help-btn { background: rgba(255,255,255,0.1); border: none; color: white; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; }
+
+        canvas { flex: 1; width: 100%; height: 100%; display: block; }
+
+        .overlay { position: absolute; inset: 0; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(8px); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; text-align: center; padding: 40px; }
+        .overlay h1 { font-size: 3rem; margin: 0; color: var(--accent); text-transform: uppercase; letter-spacing: 2px; }
+        .overlay p { max-width: 400px; line-height: 1.6; color: #cbd5e1; margin: 20px 0; }
+        .btn-play { background: var(--accent); color: #000; border: none; padding: 15px 40px; font-size: 1.2rem; font-weight: 800; border-radius: 50px; cursor: pointer; transition: transform 0.2s; }
+        .btn-play:hover { transform: scale(1.05); }
+        
+        #how-to-play { display: none; }
+        #how-to-play.active { display: flex; }
+        
+        #game-over { display: none; }
+        #game-over.active { display: flex; }
+
+        .controls-hint { position: absolute; bottom: 20px; color: #64748b; font-size: 0.9rem; }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <header>
+        <a href="../../" class="back-btn">Back</a>
+        <div class="hud-stats">
+            <div>SCORE: <span id="score-val" class="score-box">0</span></div>
+            <div>BEST: <span id="best-val">0</span></div>
+        </div>
+        <button class="help-btn" onclick="toggleHelp()">?</button>
+    </header>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="start-screen" class="overlay">
+        <h1>PRISM ANCHOR</h1>
+        <p>Hold to grapple onto nearby anchors and swing. Release at the right time to launch yourself higher. Match the color of the speed gates to survive!</p>
+        <button class="btn-play" onclick="startGame()">START MISSION</button>
+        <div class="controls-hint">Click/Tap & Hold to Swing • Release to Jump</div>
+    </div>
+
+    <div id="how-to-play" class="overlay" onclick="toggleHelp()">
+        <h1>HOW TO PLAY</h1>
+        <p>Your momentum is your life. Swing around glowing anchors to gain speed. Release to fly upwards. Pass through gates to score, but watch out: missing an anchor or hitting the screen bottom ends your run!</p>
+        <button class="btn-play">GOT IT</button>
+    </div>
+
+    <div id="game-over" class="overlay">
+        <h1 id="over-title">CRASHED</h1>
+        <p>Your ascent ended at altitude <span id="final-score" class="score-box">0</span>.</p>
+        <button class="btn-play" onclick="startGame()">RETRY</button>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreVal = document.getElementById('score-val');
+    const bestVal = document.getElementById('best-val');
+    const finalScore = document.getElementById('final-score');
+    
+    const SLUG = 'prism-anchor-swing';
+    const ACCENT = '#F59E0B';
+    
+    let gameState = 'START';
+    let score = 0;
+    let best = localStorage.getItem('fun_arcade_highscore_' + SLUG) || 0;
+    bestVal.textContent = best;
+
+    let player, anchors, gates, particles, cameraY, lastAnchorY;
+    const GRAVITY = 0.15;
+    const SWING_FORCE = 0.08;
+    const COLORS = ['#F59E0B', '#10B981', '#3B82F6', '#EC4899'];
+
+    class Player {
+        constructor() {
+            this.x = canvas.width / 2;
+            this.y = canvas.height - 100;
+            this.vx = 0;
+            this.vy = 0;
+            this.radius = 12;
+            this.isSwinging = false;
+            this.anchor = null;
+            this.angle = 0;
+            this.dist = 0;
+            this.angVel = 0;
+            this.color = ACCENT;
+        }
+
+        update() {
+            if (this.isSwinging && this.anchor) {
+                // Pendulum physics
+                let ax = this.anchor.x - this.x;
+                let ay = this.anchor.y - this.y;
+                this.dist = Math.sqrt(ax*ax + ay*ay);
+                
+                let gravityComp = Math.sin(this.angle) * GRAVITY;
+                this.angVel += -gravityComp / this.dist;
+                this.angVel *= 0.992; // Damping
+                this.angle += this.angVel;
+
+                this.x = this.anchor.x + Math.sin(this.angle) * this.dist;
+                this.y = this.anchor.y + Math.cos(this.angle) * this.dist;
+
+                // Pre-calculate velocities for release
+                this.vx = Math.cos(this.angle) * this.angVel * this.dist;
+                this.vy = -Math.sin(this.angle) * this.angVel * this.dist;
+            } else {
+                this.vy += GRAVITY;
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vx *= 0.99;
+            }
+
+            // Boundary bounce
+            if (this.x < this.radius) { this.x = this.radius; this.vx *= -0.5; }
+            if (this.x > canvas.width - this.radius) { this.x = canvas.width - this.radius; this.vx *= -0.5; }
+            
+            // Fail condition
+            if (this.y > cameraY + canvas.height + 200) gameOver();
+        }
+
+        draw() {
+            if (this.isSwinging && this.anchor) {
+                ctx.beginPath();
+                ctx.moveTo(this.x, this.y - cameraY);
+                ctx.lineTo(this.anchor.x, this.anchor.y - cameraY);
+                ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+            ctx.beginPath();
+            ctx.arc(this.x, this.y - cameraY, this.radius, 0, Math.PI * 2);
+            ctx.fillStyle = this.color;
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = this.color;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+    }
+
+    function initGame() {
+        canvas.width = canvas.offsetWidth;
+        canvas.height = canvas.offsetHeight;
+        player = new Player();
+        anchors = [];
+        gates = [];
+        particles = [];
+        cameraY = 0;
+        score = 0;
+        lastAnchorY = canvas.height - 200;
+        scoreVal.textContent = "0";
+        
+        // Initial anchors
+        for(let i=0; i<6; i++) spawnAnchor();
+    }
+
+    function spawnAnchor() {
+        lastAnchorY -= 150 + Math.random() * 100;
+        anchors.push({
+            x: 50 + Math.random() * (canvas.width - 100),
+            y: lastAnchorY,
+            id: Date.now() + Math.random()
+        });
+    }
+
+    function toggleHelp() {
+        const help = document.getElementById('how-to-play');
+        help.classList.toggle('active');
+    }
+
+    function startGame() {
+        document.getElementById('start-screen').style.display = 'none';
+        document.getElementById('game-over').classList.remove('active');
+        initGame();
+        gameState = 'PLAYING';
+        requestAnimationFrame(gameLoop);
+    }
+
+    function gameOver() {
+        gameState = 'GAMEOVER';
+        if (score > best) {
+            best = score;
+            localStorage.setItem('fun_arcade_highscore_' + SLUG, best);
+            bestVal.textContent = best;
+        }
+        finalScore.textContent = score;
+        document.getElementById('game-over').classList.add('active');
+    }
+
+    function handleAction(isDown) {
+        if (gameState !== 'PLAYING') return;
+
+        if (isDown) {
+            // Find nearest anchor above player within range
+            let nearest = null;
+            let minDist = 250;
+            
+            anchors.forEach(a => {
+                let d = Math.sqrt((a.x - player.x)**2 + (a.y - player.y)**2);
+                if (d < minDist) {
+                    minDist = d;
+                    nearest = a;
+                }
+            });
+
+            if (nearest) {
+                player.isSwinging = true;
+                player.anchor = nearest;
+                player.angle = Math.atan2(player.x - nearest.x, player.y - nearest.y);
+                player.dist = minDist;
+                // Translate current velocity into angular velocity
+                player.angVel = (player.vx * Math.cos(player.angle) - player.vy * Math.sin(player.angle)) / player.dist;
+            }
+        } else {
+            player.isSwinging = false;
+            player.anchor = null;
+        }
+    }
+
+    window.addEventListener('mousedown', () => handleAction(true));
+    window.addEventListener('mouseup', () => handleAction(false));
+    window.addEventListener('touchstart', (e) => { e.preventDefault(); handleAction(true); });
+    window.addEventListener('touchend', (e) => { e.preventDefault(); handleAction(false); });
+    window.addEventListener('keydown', (e) => { if(e.code === 'Space') handleAction(true); });
+    window.addEventListener('keyup', (e) => { if(e.code === 'Space') handleAction(false); });
+
+    function gameLoop() {
+        if (gameState !== 'PLAYING') return;
+
+        // Update
+        player.update();
+        
+        // Camera follow
+        let targetCam = player.y - canvas.height * 0.6;
+        if (targetCam < cameraY) cameraY += (targetCam - cameraY) * 0.1;
+
+        // Dynamic generation
+        if (anchors[anchors.length-1].y > cameraY - 200) spawnAnchor();
+        
+        // Cleanup
+        if (anchors[0] && anchors[0].y > cameraY + canvas.height + 100) {
+            anchors.shift();
+            score++;
+            scoreVal.textContent = score;
+        }
+
+        // Render
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Draw Background detail
+        ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+        for(let i=0; i<canvas.height; i+=50) {
+            let yPos = i - (cameraY % 50);
+            ctx.beginPath();
+            ctx.moveTo(0, yPos); ctx.lineTo(canvas.width, yPos); ctx.stroke();
+        }
+
+        // Draw Anchors
+        anchors.forEach(a => {
+            ctx.beginPath();
+            ctx.arc(a.x, a.y - cameraY, 6, 0, Math.PI * 2);
+            ctx.fillStyle = '#fff';
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#fff';
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            
+            ctx.beginPath();
+            ctx.arc(a.x, a.y - cameraY, 20, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+            ctx.stroke();
+        });
+
+        player.draw();
+
+        requestAnimationFrame(gameLoop);
+    }
+
+    // Resize handler
+    window.addEventListener('resize', () => {
+        canvas.width = canvas.offsetWidth;
+        canvas.height = canvas.offsetHeight;
+    });
+</script>
+</body>
+</html>

@@ -438,5 +438,13 @@
     "category": "Puzzle",
     "accent": "#8B5CF6",
     "addedAt": "2026-11-23T20:45:24Z"
+  },
+  {
+    "slug": "prism-anchor-swing",
+    "title": "Prism Anchor Swing",
+    "description": "Hold to swing from neon anchors and release to launch yourself upward through shifting color gates!",
+    "category": "Reflex",
+    "accent": "#F59E0B",
+    "addedAt": "2026-11-23T21:45:02Z"
   }
 ]
