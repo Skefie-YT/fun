@@ -350,5 +350,13 @@
     "category": "Reflex",
     "accent": "#E85D04",
     "addedAt": "2026-11-23T00:49:26Z"
+  },
+  {
+    "slug": "orbit-snap-reflex",
+    "title": "Orbit Snap",
+    "description": "Tap or press Space to expand your ring and catch the orbiting particles as they pass through the sync zone!",
+    "category": "Reflex",
+    "accent": "#14B8A6",
+    "addedAt": "2026-11-23T02:10:16Z"
   }
 ]

@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Orbit Snap</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --accent: #14B8A6; --bg: #0f172a; --text: #f8fafc; }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: 'Outfit', sans-serif; overflow: hidden; touch-action: none; height: 100dvh; }
+        
+        #hud { position: absolute; top: 0; left: 0; width: 100%; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; z-index: 10; }
+        .back-btn { color: white; text-decoration: none; font-weight: 700; opacity: 0.8; font-size: 14px; }
+        .score-container { text-align: center; pointer-events: none; }
+        .score-val { font-size: 24px; font-weight: 700; display: block; }
+        .best-val { font-size: 10px; opacity: 0.6; text-transform: uppercase; letter-spacing: 1px; }
+        .help-btn { background: none; border: 1px solid rgba(255,255,255,0.3); color: white; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; }
+
+        #game-container { position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+        canvas { width: 100%; height: 100%; display: block; }
+
+        .overlay { position: absolute; inset: 0; background: rgba(15, 23, 42, 0.9); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; padding: 20px; text-align: center; }
+        .hidden { display: none !important; }
+        h1 { margin: 0 0 10px; color: var(--accent); text-transform: uppercase; letter-spacing: 2px; }
+        p { max-width: 300px; margin-bottom: 20px; line-height: 1.5; }
+        .btn { background: var(--accent); border: none; color: white; padding: 15px 40px; font-weight: 700; font-size: 18px; border-radius: 50px; cursor: pointer; transition: transform 0.1s; }
+        .btn:active { transform: scale(0.95); }
+        .controls-hint { position: absolute; bottom: 30px; opacity: 0.5; font-size: 12px; letter-spacing: 1px; }
+    </style>
+</head>
+<body>
+    <div id="hud">
+        <a href="../../" class="back-btn">Back</a>
+        <div class="score-container">
+            <span class="score-val" id="scoreText">0</span>
+            <span class="best-val">Best: <span id="bestText">0</span></span>
+        </div>
+        <button class="help-btn" onclick="toggleHelp()">?</button>
+    </div>
+
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+
+        <div id="startScreen" class="overlay">
+            <h1>Orbit Snap</h1>
+            <p>Catch the orbiting nodes by expanding your ring exactly when they pass through the target zones.</p>
+            <button class="btn" onclick="startGame()">START MISSION</button>
+            <div class="controls-hint">TAP OR SPACE TO SNAP</div>
+        </div>
+
+        <div id="gameOverScreen" class="overlay hidden">
+            <h1 style="color: #ef4444">Core Destabilized</h1>
+            <p>You missed the synchronization sequence.</p>
+            <div style="margin-bottom: 20px">Score: <span id="finalScore">0</span></div>
+            <button class="btn" onclick="startGame()">REBOOT</button>
+        </div>
+
+        <div id="helpScreen" class="overlay hidden" onclick="toggleHelp()">
+            <h1>How to Play</h1>
+            <p>1. Watch the glowing target zones on your center ring.<br>2. Tap when an orbital particle aligns with a target.<br>3. Don't miss! Every catch speeds up the rotation.</p>
+            <p style="font-size: 14px; opacity: 0.7">(Tap anywhere to return)</p>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const slug = 'orbit-snap-reflex';
+        
+        let score = 0;
+        let best = localStorage.getItem('fun_arcade_highscore_' + slug) || 0;
+        let gameState = 'START';
+        let rotation = 0;
+        let rotSpeed = 0.02;
+        let ringAnim = 0; // for expanding effect
+        let particles = [];
+        let targets = [];
+        let flash = 0;
+
+        document.getElementById('bestText').innerText = best;
+
+        function resize() {
+            canvas.width = window.innerWidth * window.devicePixelRatio;
+            canvas.height = window.innerHeight * window.devicePixelRatio;
+            ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        function initGame() {
+            score = 0;
+            rotSpeed = 0.02;
+            particles = [];
+            targets = [];
+            generateLevel();
+            updateHUD();
+        }
+
+        function generateLevel() {
+            targets = [];
+            // Always have 2 targets opposite each other for rhythm
+            const startAngle = Math.random() * Math.PI * 2;
+            targets.push(startAngle);
+            targets.push(startAngle + Math.PI);
+            
+            // Create 1 orbiting particle
+            particles = [{
+                angle: Math.random() * Math.PI * 2,
+                radius: 100,
+                captured: false
+            }];
+        }
+
+        function handleInput(e) {
+            if (e.code === 'Space' || e.type === 'mousedown' || e.type === 'touchstart') {
+                if (gameState !== 'PLAYING') return;
+                
+                ringAnim = 1;
+                let hit = false;
+                const p = particles[0];
+                
+                targets.forEach(tAngle => {
+                    const diff = Math.abs((p.angle % (Math.PI * 2)) - (tAngle % (Math.PI * 2)));
+                    const normalizedDiff = Math.min(diff, Math.PI * 2 - diff);
+                    
+                    if (normalizedDiff < 0.25) {
+                        hit = true;
+                    }
+                });
+
+                if (hit) {
+                    score++;
+                    flash = 1;
+                    rotSpeed += 0.0015;
+                    updateHUD();
+                    // Relocate particle to keep gameplay flow
+                    p.angle += Math.PI * 0.8; 
+                } else {
+                    gameOver();
+                }
+            }
+        }
+
+        window.addEventListener('keydown', handleInput);
+        window.addEventListener('mousedown', handleInput);
+        window.addEventListener('touchstart', (e) => { e.preventDefault(); handleInput(e); }, {passive: false});
+
+        function updateHUD() {
+            document.getElementById('scoreText').innerText = score;
+            if (score > best) {
+                best = score;
+                localStorage.setItem('fun_arcade_highscore_' + slug, best);
+                document.getElementById('bestText').innerText = best;
+            }
+        }
+
+        function startGame() {
+            document.getElementById('startScreen').classList.add('hidden');
+            document.getElementById('gameOverScreen').classList.add('hidden');
+            initGame();
+            gameState = 'PLAYING';
+        }
+
+        function gameOver() {
+            gameState = 'GAMEOVER';
+            document.getElementById('finalScore').innerText = score;
+            document.getElementById('gameOverScreen').classList.remove('hidden');
+        }
+
+        function toggleHelp() {
+            document.getElementById('helpScreen').classList.toggle('hidden');
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const cx = canvas.width / (2 * window.devicePixelRatio);
+            const cy = canvas.height / (2 * window.devicePixelRatio);
+            const baseRadius = 80;
+
+            // Pulse background
+            if (flash > 0) {
+                ctx.fillStyle = `rgba(20, 184, 166, ${flash * 0.15})`;
+                ctx.fillRect(0,0, canvas.width, canvas.height);
+                flash *= 0.9;
+            }
+
+            // Draw Static Ring Track
+            ctx.beginPath();
+            ctx.arc(cx, cy, baseRadius, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+            ctx.lineWidth = 4;
+            ctx.stroke();
+
+            // Draw Target Zones
+            targets.forEach(angle => {
+                ctx.save();
+                ctx.translate(cx, cy);
+                ctx.rotate(angle);
+                ctx.beginPath();
+                ctx.arc(baseRadius, 0, 12, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255,255,255,0.2)';
+                ctx.fill();
+                ctx.strokeStyle = '#14B8A6';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.restore();
+            });
+
+            // Draw Animated Core Expansion
+            if (ringAnim > 0) {
+                ctx.beginPath();
+                ctx.arc(cx, cy, baseRadius + (ringAnim * 15), 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(20, 184, 166, ${ringAnim})`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ringAnim *= 0.85;
+            }
+
+            // Update and Draw Orbiting Particle
+            if (gameState === 'PLAYING') {
+                particles.forEach(p => {
+                    p.angle += rotSpeed;
+                    const px = cx + Math.cos(p.angle) * baseRadius;
+                    const py = cy + Math.sin(p.angle) * baseRadius;
+                    
+                    // Glow effect
+                    ctx.shadowBlur = 15;
+                    ctx.shadowColor = '#14B8A6';
+                    ctx.fillStyle = '#f8fafc';
+                    ctx.beginPath();
+                    ctx.arc(px, py, 6, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                });
+            }
+
+            requestAnimationFrame(draw);
+        }
+
+        draw();
+    </script>
+</body>
+</html>
