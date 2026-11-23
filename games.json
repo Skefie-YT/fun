@@ -342,5 +342,13 @@
     "category": "Action",
     "accent": "#0EA5E9",
     "addedAt": "2026-11-22T23:35:16Z"
+  },
+  {
+    "slug": "warp-weave-reflex",
+    "title": "Warp Weave",
+    "description": "Drag or touch to weave through high-speed cosmic rifts and collect energy particles while dodging the void wall.",
+    "category": "Reflex",
+    "accent": "#E85D04",
+    "addedAt": "2026-11-23T00:49:26Z"
   }
 ]
