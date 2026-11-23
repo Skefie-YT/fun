@@ -422,5 +422,13 @@
     "category": "Reflex",
     "accent": "#0EA5E9",
     "addedAt": "2026-11-23T15:56:45Z"
+  },
+  {
+    "slug": "cluster-burst",
+    "title": "Cluster Burst",
+    "description": "Chain together energy orbs of the same color to trigger massive score multipliers before the board overflows!",
+    "category": "Puzzle",
+    "accent": "#0EA5E9",
+    "addedAt": "2026-11-23T19:56:29Z"
   }
 ]

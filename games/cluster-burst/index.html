@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Cluster Burst</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #0EA5E9;
+            --bg: #0f172a;
+            --text: #f8fafc;
+        }
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Outfit', sans-serif;
+            overflow: hidden;
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+        }
+        #ui-top {
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(0,0,0,0.3);
+            z-index: 10;
+        }
+        .back-btn {
+            color: var(--text);
+            text-decoration: none;
+            font-weight: bold;
+            border: 2px solid var(--accent);
+            padding: 5px 12px;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        .stats {
+            text-align: center;
+            flex-grow: 1;
+        }
+        .stat-val {
+            font-weight: 700;
+            color: var(--accent);
+            font-size: 1.2rem;
+        }
+        #game-container {
+            position: relative;
+            flex-grow: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 10px;
+        }
+        canvas {
+            background: #1e293b;
+            border-radius: 12px;
+            box-shadow: 0 0 30px rgba(0,0,0,0.5);
+            max-width: 100%;
+            max-height: 100%;
+            touch-action: none;
+        }
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(15, 23, 42, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 20;
+            padding: 30px;
+            text-align: center;
+        }
+        .hidden {
+            display: none !important;
+        }
+        h1 {
+            margin: 0 0 10px 0;
+            color: var(--accent);
+            font-size: 2.5rem;
+        }
+        .btn {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            border-radius: 30px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: transform 0.2s;
+        }
+        .btn:active {
+            transform: scale(0.95);
+        }
+        #help-btn {
+            background: #475569;
+            width: 30px; height: 30px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .controls-hint {
+            position: absolute;
+            bottom: 20px;
+            font-size: 0.8rem;
+            opacity: 0.6;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui-top">
+        <a href="../../" class="back-btn">Back</a>
+        <div class="stats">
+            Score: <span id="score-display" class="stat-val">0</span> | 
+            Best: <span id="best-display" class="stat-val">0</span>
+        </div>
+        <div id="help-btn">?</div>
+    </div>
+
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+
+        <!-- Start Screen -->
+        <div id="start-screen" class="overlay">
+            <h1>CLUSTER BURST</h1>
+            <p>Drag through adjacent orbs of the same color to link them. Release to trigger a chain reaction!</p>
+            <button class="btn" id="start-btn">START SYSTEM</button>
+            <div class="controls-hint">Mouse drag or Touch to link</div>
+        </div>
+
+        <!-- Game Over Screen -->
+        <div id="game-over-screen" class="overlay hidden">
+            <h1 style="color: #ef4444;">OVERLOAD</h1>
+            <p>The grid has reached maximum capacity.</p>
+            <p id="final-score-text">Final Score: 0</p>
+            <button class="btn" id="restart-btn">REBOOT</button>
+        </div>
+
+        <!-- How to Play Overlay -->
+        <div id="help-overlay" class="overlay hidden">
+            <h2>HOW TO PLAY</h2>
+            <p>1. Connect 3+ orbs of the same color.</p>
+            <p>2. Larger chains earn massive multipliers.</p>
+            <p>3. Every move spawns new orbs.</p>
+            <p>4. If the grid fills up, it's game over!</p>
+            <button class="btn" id="close-help">GOT IT</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreDisplay = document.getElementById('score-display');
+        const bestDisplay = document.getElementById('best-display');
+        const SLUG = 'cluster-burst';
+        
+        const ROWS = 8;
+        const COLS = 6;
+        const TILE_SIZE = 60;
+        const COLORS = ['#F43F5E', '#10B981', '#0EA5E9', '#F59E0B', '#8B5CF6'];
+
+        let state = {
+            grid: [],
+            score: 0,
+            highScore: localStorage.getItem('fun_arcade_highscore_' + SLUG) || 0,
+            selection: [],
+            particles: [],
+            isDragging: false,
+            isGameOver: false
+        };
+
+        function init() {
+            resize();
+            bestDisplay.innerText = state.highScore;
+            state.grid = Array.from({length: ROWS}, () => Array(COLS).fill(null));
+            // Fill initial bottom half
+            for(let r = ROWS-4; r < ROWS; r++) {
+                for(let c = 0; c < COLS; c++) {
+                    state.grid[r][c] = Math.floor(Math.random() * COLORS.length);
+                }
+            }
+            animate();
+        }
+
+        function resize() {
+            const padding = 40;
+            const availableWidth = window.innerWidth - padding;
+            const availableHeight = window.innerHeight - 150;
+            const aspect = COLS / ROWS;
+            
+            if (availableWidth / availableHeight > aspect) {
+                canvas.height = availableHeight;
+                canvas.width = canvas.height * aspect;
+            } else {
+                canvas.width = availableWidth;
+                canvas.height = canvas.width / aspect;
+            }
+        }
+
+        window.addEventListener('resize', resize);
+
+        function getGridPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX || e.touches[0].clientX) - rect.left;
+            const y = (e.clientY || e.touches[0].clientY) - rect.top;
+            return {
+                c: Math.floor(x / (canvas.width / COLS)),
+                r: Math.floor(y / (canvas.height / ROWS))
+            };
+        }
+
+        const handleInputStart = (e) => {
+            if (state.isGameOver) return;
+            state.isDragging = true;
+            handleInputMove(e);
+        };
+
+        const handleInputMove = (e) => {
+            if (!state.isDragging || state.isGameOver) return;
+            const {r, c} = getGridPos(e);
+            if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return;
+            
+            const tileValue = state.grid[r][c];
+            if (tileValue === null) return;
+
+            if (state.selection.length === 0) {
+                state.selection.push({r, c, color: tileValue});
+            } else {
+                const last = state.selection[state.selection.length - 1];
+                const alreadyIn = state.selection.find(s => s.r === r && s.c === c);
+                
+                if (alreadyIn) {
+                    if (state.selection.length > 1 && alreadyIn === state.selection[state.selection.length - 2]) {
+                        state.selection.pop();
+                    }
+                } else {
+                    const dist = Math.abs(r - last.r) + Math.abs(c - last.c);
+                    if (dist === 1 && tileValue === last.color) {
+                        state.selection.push({r, c, color: tileValue});
+                    }
+                }
+            }
+        };
+
+        const handleInputEnd = () => {
+            if (!state.isDragging) return;
+            state.isDragging = false;
+
+            if (state.selection.length >= 3) {
+                burstSelection();
+            }
+            state.selection = [];
+        };
+
+        function burstSelection() {
+            const count = state.selection.length;
+            const points = count * 10 * (count - 2);
+            state.score += points;
+            scoreDisplay.innerText = state.score;
+
+            state.selection.forEach(s => {
+                spawnParticles(s.c, s.r, COLORS[s.color]);
+                state.grid[s.r][s.c] = null;
+            });
+
+            applyGravity();
+            spawnNewRow();
+            checkGameOver();
+        }
+
+        function applyGravity() {
+            for (let c = 0; c < COLS; c++) {
+                let empty = ROWS - 1;
+                for (let r = ROWS - 1; r >= 0; r--) {
+                    if (state.grid[r][c] !== null) {
+                        const val = state.grid[r][c];
+                        state.grid[r][c] = null;
+                        state.grid[empty][c] = val;
+                        empty--;
+                    }
+                }
+            }
+        }
+
+        function spawnNewRow() {
+            // Every successful burst spawns a new row from bottom (pushing up)
+            for (let c = 0; c < COLS; c++) {
+                for (let r = 0; r < ROWS - 1; r++) {
+                    state.grid[r][c] = state.grid[r+1][c];
+                }
+                state.grid[ROWS-1][c] = Math.floor(Math.random() * COLORS.length);
+            }
+        }
+
+        function checkGameOver() {
+            for (let c = 0; c < COLS; c++) {
+                if (state.grid[0][c] !== null) {
+                    state.isGameOver = true;
+                    document.getElementById('game-over-screen').classList.remove('hidden');
+                    document.getElementById('final-score-text').innerText = `Final Score: ${state.score}`;
+                    if (state.score > state.highScore) {
+                        state.highScore = state.score;
+                        localStorage.setItem('fun_arcade_highscore_' + SLUG, state.highScore);
+                        bestDisplay.innerText = state.highScore;
+                    }
+                }
+            }
+        }
+
+        function spawnParticles(c, r, color) {
+            const w = canvas.width / COLS;
+            const h = canvas.height / ROWS;
+            const x = c * w + w/2;
+            const y = r * h + h/2;
+            for(let i=0; i<8; i++) {
+                state.particles.push({
+                    x, y,
+                    vx: (Math.random() - 0.5) * 8,
+                    vy: (Math.random() - 0.5) * 8,
+                    life: 1.0,
+                    color
+                });
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const w = canvas.width / COLS;
+            const h = canvas.height / ROWS;
+
+            // Draw Grid/Orbs
+            for (let r = 0; r < ROWS; r++) {
+                for (let c = 0; c < COLS; c++) {
+                    const val = state.grid[r][c];
+                    if (val !== null) {
+                        const x = c * w + w/2;
+                        const y = r * h + h/2;
+                        ctx.beginPath();
+                        ctx.arc(x, y, w*0.35, 0, Math.PI*2);
+                        ctx.fillStyle = COLORS[val];
+                        ctx.fill();
+                        // Highlight if in selection
+                        if (state.selection.find(s => s.r === r && s.c === c)) {
+                            ctx.strokeStyle = 'white';
+                            ctx.lineWidth = 4;
+                            ctx.stroke();
+                        }
+                    }
+                }
+            }
+
+            // Draw selection lines
+            if (state.selection.length > 1) {
+                ctx.beginPath();
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 5;
+                ctx.lineJoin = 'round';
+                state.selection.forEach((s, idx) => {
+                    const x = s.c * w + w/2;
+                    const y = s.r * h + h/2;
+                    if (idx === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                });
+                ctx.stroke();
+            }
+
+            // Particles
+            state.particles = state.particles.filter(p => p.life > 0);
+            state.particles.forEach(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.02;
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.fillRect(p.x, p.y, 4, 4);
+            });
+            ctx.globalAlpha = 1.0;
+        }
+
+        function animate() {
+            draw();
+            requestAnimationFrame(animate);
+        }
+
+        // Event Listeners
+        canvas.addEventListener('mousedown', handleInputStart);
+        window.addEventListener('mousemove', handleInputMove);
+        window.addEventListener('mouseup', handleInputEnd);
+        canvas.addEventListener('touchstart', (e) => { e.preventDefault(); handleInputStart(e); }, {passive: false});
+        window.addEventListener('touchmove', (e) => { handleInputMove(e); }, {passive: false});
+        window.addEventListener('touchend', handleInputEnd);
+
+        document.getElementById('start-btn').onclick = () => {
+            document.getElementById('start-screen').classList.add('hidden');
+            init();
+        };
+
+        document.getElementById('restart-btn').onclick = () => {
+            state.isGameOver = false;
+            state.score = 0;
+            scoreDisplay.innerText = '0';
+            document.getElementById('game-over-screen').classList.add('hidden');
+            init();
+        };
+
+        const helpBtn = document.getElementById('help-btn');
+        const helpOverlay = document.getElementById('help-overlay');
+        helpBtn.onclick = () => helpOverlay.classList.remove('hidden');
+        document.getElementById('close-help').onclick = () => helpOverlay.classList.add('hidden');
+
+    </script>
+</body>
+</html>
