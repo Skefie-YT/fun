@@ -430,5 +430,13 @@
     "category": "Puzzle",
     "accent": "#0EA5E9",
     "addedAt": "2026-11-23T19:56:29Z"
+  },
+  {
+    "slug": "fusion-flare",
+    "title": "Fusion Flare",
+    "description": "Tap tiles to increase their size. When they peak, they explode, triggering a chain reaction to clear the board!",
+    "category": "Puzzle",
+    "accent": "#8B5CF6",
+    "addedAt": "2026-11-23T20:45:24Z"
   }
 ]
