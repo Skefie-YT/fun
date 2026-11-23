@@ -406,5 +406,13 @@
     "category": "Puzzle",
     "accent": "#10B981",
     "addedAt": "2026-11-23T13:01:00Z"
+  },
+  {
+    "slug": "tile-shift-tactics",
+    "title": "Tile Shift Tactics",
+    "description": "Slide entire rows and columns to align matching cores and trigger massive energy discharges before the grid locks up!",
+    "category": "Puzzle",
+    "accent": "#EF4444",
+    "addedAt": "2026-11-23T14:27:39Z"
   }
 ]

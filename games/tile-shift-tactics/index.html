@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Tile Shift Tactics</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --accent: #EF4444; --bg: #0f172a; --text: #f8fafc; }
+        * { box-sizing: border-box; user-select: none; touch-action: none; }
+        body { margin: 0; background: var(--bg); color: var(--text); font-family: 'Orbitron', sans-serif; overflow: hidden; height: 100dvh; display: flex; flex-direction: column; }
+        
+        #ui-top { display: flex; justify-content: space-between; align-items: center; padding: 10px 20px; background: rgba(0,0,0,0.4); z-index: 10; }
+        .back-btn { color: var(--text); text-decoration: none; border: 1px solid var(--accent); padding: 5px 15px; border-radius: 4px; font-size: 12px; transition: 0.3s; }
+        .back-btn:hover { background: var(--accent); }
+        .stat-box { text-align: center; }
+        .stat-label { font-size: 10px; color: var(--accent); text-transform: uppercase; }
+        .stat-value { font-size: 18px; font-weight: bold; }
+        
+        #game-container { flex: 1; position: relative; display: flex; justify-content: center; align-items: center; overflow: hidden; }
+        #grid-canvas { background: #1e293b; border-radius: 8px; box-shadow: 0 0 30px rgba(0,0,0,0.5); cursor: grab; max-width: 95vw; max-height: 70vh; }
+        #grid-canvas:active { cursor: grabbing; }
+
+        .overlay { position: absolute; inset: 0; background: rgba(15, 23, 42, 0.9); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; text-align: center; padding: 20px; transition: opacity 0.3s; }
+        .hidden { display: none; }
+        h1 { color: var(--accent); margin: 0 0 10px; font-size: 2.5rem; text-shadow: 0 0 10px var(--accent); }
+        .btn { background: var(--accent); color: white; border: none; padding: 15px 40px; font-family: inherit; font-size: 1.2rem; border-radius: 5px; cursor: pointer; margin-top: 20px; transition: transform 0.1s; }
+        .btn:active { transform: scale(0.95); }
+        .info-btn { width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--text); display: flex; justify-content: center; align-items: center; cursor: pointer; }
+        
+        #hint-bar { position: absolute; bottom: 10px; width: 100%; text-align: center; font-size: 10px; opacity: 0.6; pointer-events: none; }
+        .particle { position: absolute; pointer-events: none; }
+    </style>
+</head>
+<body>
+    <div id="ui-top">
+        <a href="../../" class="back-btn">Back</a>
+        <div class="stat-box">
+            <div class="stat-label">Score</div>
+            <div id="score-val" class="stat-value">0</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-label">Best</div>
+            <div id="best-val" class="stat-value">0</div>
+        </div>
+        <div class="info-btn" onclick="toggleHelp()">?</div>
+    </div>
+
+    <div id="game-container">
+        <canvas id="grid-canvas"></canvas>
+
+        <!-- Start Screen -->
+        <div id="start-screen" class="overlay">
+            <h1>TILE SHIFT</h1>
+            <p>Slide rows and columns to connect 3+ matching power cores.</p>
+            <p style="font-size: 0.8rem; color: #94a3b8;">Think ahead! Every move counts toward your power peak.</p>
+            <button class="btn" onclick="startGame()">INITIALIZE</button>
+        </div>
+
+        <!-- Help Overlay -->
+        <div id="help-overlay" class="overlay hidden">
+            <h2 style="color:var(--accent)">How to Play</h2>
+            <ul style="text-align:left; line-height:1.6; max-width:300px;">
+                <li>Drag horizontally to shift a Row.</li>
+                <li>Drag vertically to shift a Column.</li>
+                <li>Match 3 or more of the same color.</li>
+                <li>Matches clear and drop new tiles.</li>
+            </ul>
+            <button class="btn" onclick="toggleHelp()">GOT IT</button>
+        </div>
+
+        <!-- Game Over -->
+        <div id="game-over" class="overlay hidden">
+            <h2 style="color:var(--accent)">GRID LOCKED</h2>
+            <div id="final-score-text">Final Score: 0</div>
+            <button class="btn" onclick="startGame()">REBOOT</button>
+        </div>
+    </div>
+
+    <div id="hint-bar">Swipe or Drag to shift the Grid</div>
+
+    <script>
+        const canvas = document.getElementById('grid-canvas');
+        const ctx = canvas.getContext('2d');
+        const slug = 'tile-shift-tactics';
+        
+        const GRID_SIZE = 6;
+        const COLORS = ['#EF4444', '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6'];
+        let TILE_SIZE = 60;
+        let grid = [];
+        let score = 0;
+        let isDragging = false;
+        let dragStart = { x: 0, y: 0 };
+        let dragTarget = { type: null, index: 0, offset: 0 };
+        let isAnimating = false;
+
+        function initGrid() {
+            grid = [];
+            for (let r = 0; r < GRID_SIZE; r++) {
+                grid[r] = [];
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    grid[r][c] = Math.floor(Math.random() * COLORS.length);
+                }
+            }
+            // Clear any initial matches without scoring
+            while (findMatches().length > 0) {
+                const matches = findMatches();
+                matches.forEach(m => grid[m.r][m.c] = Math.floor(Math.random() * COLORS.length));
+            }
+        }
+
+        function resize() {
+            const minDim = Math.min(window.innerWidth * 0.9, window.innerHeight * 0.6);
+            TILE_SIZE = Math.floor(minDim / GRID_SIZE);
+            canvas.width = TILE_SIZE * GRID_SIZE;
+            canvas.height = TILE_SIZE * GRID_SIZE;
+            draw();
+        }
+
+        window.addEventListener('resize', resize);
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            for (let r = 0; r < GRID_SIZE; r++) {
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    let drawX = c * TILE_SIZE;
+                    let drawY = r * TILE_SIZE;
+
+                    if (isDragging) {
+                        if (dragTarget.type === 'row' && dragTarget.index === r) {
+                            drawX += dragTarget.offset;
+                            // Draw wrap-around clones
+                            drawTile(drawX - canvas.width, drawY, grid[r][c]);
+                            drawTile(drawX + canvas.width, drawY, grid[r][c]);
+                        } else if (dragTarget.type === 'col' && dragTarget.index === c) {
+                            drawY += dragTarget.offset;
+                            drawTile(drawX, drawY - canvas.height, grid[r][c]);
+                            drawTile(drawX, drawY + canvas.height, grid[r][c]);
+                        }
+                    }
+                    drawTile(drawX, drawY, grid[r][c]);
+                }
+            }
+        }
+
+        function drawTile(x, y, colorIdx) {
+            ctx.save();
+            ctx.translate(x, y);
+            
+            // Cell background
+            ctx.strokeStyle = '#334155';
+            ctx.strokeRect(2, 2, TILE_SIZE - 4, TILE_SIZE - 4);
+
+            // Core
+            ctx.fillStyle = COLORS[colorIdx];
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = COLORS[colorIdx];
+            ctx.beginPath();
+            ctx.arc(TILE_SIZE/2, TILE_SIZE/2, TILE_SIZE/3, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Gloss
+            ctx.fillStyle = 'rgba(255,255,255,0.2)';
+            ctx.beginPath();
+            ctx.arc(TILE_SIZE/2 - TILE_SIZE/8, TILE_SIZE/2 - TILE_SIZE/8, TILE_SIZE/8, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.restore();
+        }
+
+        // Touch/Mouse Logic
+        function handleStart(e) {
+            if (isAnimating) return;
+            const rect = canvas.getBoundingClientRect();
+            const pos = e.touches ? e.touches[0] : e;
+            dragStart.x = pos.clientX - rect.left;
+            dragStart.y = pos.clientY - rect.top;
+            isDragging = true;
+        }
+
+        function handleMove(e) {
+            if (!isDragging || isAnimating) return;
+            const rect = canvas.getBoundingClientRect();
+            const pos = e.touches ? e.touches[0] : e;
+            const currentX = pos.clientX - rect.left;
+            const currentY = pos.clientY - rect.top;
+            const dx = currentX - dragStart.x;
+            const dy = currentY - dragStart.y;
+
+            if (!dragTarget.type) {
+                if (Math.abs(dx) > 10) {
+                    dragTarget.type = 'row';
+                    dragTarget.index = Math.floor(dragStart.y / TILE_SIZE);
+                } else if (Math.abs(dy) > 10) {
+                    dragTarget.type = 'col';
+                    dragTarget.index = Math.floor(dragStart.x / TILE_SIZE);
+                }
+            }
+
+            if (dragTarget.type === 'row') dragTarget.offset = dx;
+            if (dragTarget.type === 'col') dragTarget.offset = dy;
+            draw();
+        }
+
+        function handleEnd() {
+            if (!isDragging) return;
+            isDragging = false;
+
+            if (dragTarget.type) {
+                const steps = Math.round((dragTarget.type === 'row' ? dragTarget.offset : dragTarget.offset) / TILE_SIZE);
+                finalizeShift(dragTarget.type, dragTarget.index, steps);
+            }
+
+            dragTarget = { type: null, index: 0, offset: 0 };
+            processMatches();
+        }
+
+        function finalizeShift(type, index, steps) {
+            steps = ((steps % GRID_SIZE) + GRID_SIZE) % GRID_SIZE;
+            if (steps === 0) return;
+
+            if (type === 'row') {
+                const row = grid[index];
+                grid[index] = [...row.slice(GRID_SIZE - steps), ...row.slice(0, GRID_SIZE - steps)];
+            } else {
+                const col = [];
+                for (let r = 0; r < GRID_SIZE; r++) col.push(grid[r][index]);
+                const newCol = [...col.slice(GRID_SIZE - steps), ...col.slice(0, GRID_SIZE - steps)];
+                for (let r = 0; r < GRID_SIZE; r++) grid[r][index] = newCol[r];
+            }
+        }
+
+        function findMatches() {
+            let matches = [];
+            // Horizontal
+            for (let r = 0; r < GRID_SIZE; r++) {
+                let count = 1;
+                for (let c = 1; c <= GRID_SIZE; c++) {
+                    if (c < GRID_SIZE && grid[r][c] === grid[r][c - 1]) {
+                        count++;
+                    } else {
+                        if (count >= 3) {
+                            for (let i = 1; i <= count; i++) matches.push({ r, c: c - i });
+                        }
+                        count = 1;
+                    }
+                }
+            }
+            // Vertical
+            for (let c = 0; c < GRID_SIZE; c++) {
+                let count = 1;
+                for (let r = 1; r <= GRID_SIZE; r++) {
+                    if (r < GRID_SIZE && grid[r][c] === grid[r - 1][c]) {
+                        count++;
+                    } else {
+                        if (count >= 3) {
+                            for (let i = 1; i <= count; i++) matches.push({ r: r - i, c });
+                        }
+                        count = 1;
+                    }
+                }
+            }
+            return matches;
+        }
+
+        async function processMatches() {
+            let matches = findMatches();
+            if (matches.length === 0) {
+                draw();
+                return;
+            }
+
+            isAnimating = true;
+            while (matches.length > 0) {
+                score += matches.length * 10;
+                updateUI();
+                
+                // Visual feedback: simple flash/removal
+                matches.forEach(m => grid[m.r][m.c] = -1);
+                draw();
+                await new Promise(r => setTimeout(r, 200));
+
+                // Drop tiles
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    let emptySpot = GRID_SIZE - 1;
+                    for (let r = GRID_SIZE - 1; r >= 0; r--) {
+                        if (grid[r][c] !== -1) {
+                            grid[emptySpot][c] = grid[r][c];
+                            if (emptySpot !== r) grid[r][c] = -1;
+                            emptySpot--;
+                        }
+                    }
+                    for (let r = emptySpot; r >= 0; r--) {
+                        grid[r][c] = Math.floor(Math.random() * COLORS.length);
+                    }
+                }
+                draw();
+                await new Promise(r => setTimeout(r, 200));
+                matches = findMatches();
+            }
+            isAnimating = false;
+        }
+
+        function updateUI() {
+            document.getElementById('score-val').innerText = score;
+            const best = localStorage.getItem('fun_arcade_highscore_' + slug) || 0;
+            if (score > best) {
+                localStorage.setItem('fun_arcade_highscore_' + slug, score);
+                document.getElementById('best-val').innerText = score;
+            }
+        }
+
+        function startGame() {
+            score = 0;
+            updateUI();
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('game-over').classList.add('hidden');
+            initGrid();
+            resize();
+            document.getElementById('best-val').innerText = localStorage.getItem('fun_arcade_highscore_' + slug) || 0;
+        }
+
+        function toggleHelp() {
+            document.getElementById('help-overlay').classList.toggle('hidden');
+        }
+
+        canvas.addEventListener('mousedown', handleStart);
+        window.addEventListener('mousemove', handleMove);
+        window.addEventListener('mouseup', handleEnd);
+        canvas.addEventListener('touchstart', handleStart);
+        window.addEventListener('touchmove', handleMove);
+        window.addEventListener('touchend', handleEnd);
+
+        // Initial Boot
+        resize();
+    </script>
+</body>
+</html>
