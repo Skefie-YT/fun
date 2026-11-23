@@ -454,5 +454,13 @@
     "category": "Physics",
     "accent": "#10B981",
     "addedAt": "2026-11-23T22:44:15Z"
+  },
+  {
+    "slug": "pivot-perch-balance",
+    "title": "Pivot Perch",
+    "description": "Drop dynamic weights onto a rocking fulcrum beam to keep it balanced while stacking for high multipliers!",
+    "category": "Physics",
+    "accent": "#14B8A6",
+    "addedAt": "2026-11-23T23:44:19Z"
   }
 ]
