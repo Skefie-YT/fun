@@ -358,5 +358,13 @@
     "category": "Reflex",
     "accent": "#14B8A6",
     "addedAt": "2026-11-23T02:10:16Z"
+  },
+  {
+    "slug": "rhythm-rail-runner",
+    "title": "Rhythm Rail Runner",
+    "description": "Switch lanes in sync with the beat to catch energy pulses and dodge void walls in this high-speed rhythmic dash.",
+    "category": "Reflex",
+    "accent": "#0EA5E9",
+    "addedAt": "2026-11-23T03:55:11Z"
   }
 ]

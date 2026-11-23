@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Rhythm Rail Runner</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #0EA5E9;
+            --bg: #020617;
+            --text: #f8fafc;
+        }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            touch-action: none;
+        }
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Orbitron', sans-serif;
+            overflow: hidden;
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+        }
+        #ui-top {
+            padding: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(15, 23, 42, 0.8);
+            z-index: 100;
+        }
+        .back-btn {
+            color: var(--text);
+            text-decoration: none;
+            font-size: 0.8rem;
+            border: 1px solid var(--accent);
+            padding: 0.4rem 0.8rem;
+            border-radius: 4px;
+        }
+        .stats {
+            text-align: center;
+        }
+        .help-btn {
+            background: none;
+            border: 1px solid var(--accent);
+            color: var(--text);
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        #game-container {
+            flex: 1;
+            position: relative;
+            width: 100%;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(2, 6, 23, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 200;
+            text-align: center;
+            padding: 2rem;
+        }
+        .hidden { display: none !important; }
+        h1 { color: var(--accent); margin-bottom: 1rem; }
+        .btn-main {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 1rem 2rem;
+            font-size: 1.2rem;
+            font-family: inherit;
+            cursor: pointer;
+            margin-top: 1.5rem;
+            border-radius: 4px;
+            text-transform: uppercase;
+        }
+        .hint-bar {
+            position: absolute;
+            bottom: 2rem;
+            opacity: 0.6;
+            font-size: 0.8rem;
+        }
+        .mute-btn {
+            position: absolute;
+            bottom: 1rem;
+            right: 1rem;
+            background: none;
+            border: none;
+            color: var(--accent);
+            cursor: pointer;
+            font-size: 1.5rem;
+        }
+    </style>
+</head>
+<body>
+
+<div id="ui-top">
+    <a href="../../" class="back-btn">Back</a>
+    <div class="stats">
+        <div>SCORE: <span id="score-val">0</span></div>
+        <div style="font-size: 0.7rem; opacity: 0.8;">BEST: <span id="best-val">0</span></div>
+    </div>
+    <button class="help-btn" onclick="toggleHelp()">?</button>
+</div>
+
+<div id="game-container">
+    <canvas id="canvas"></canvas>
+
+    <!-- Overlays -->
+    <div id="start-screen" class="overlay">
+        <h1>RHYTHM RAIL</h1>
+        <p>Switch lanes to match the beat nodes.<br>Dodge the void walls!</p>
+        <button class="btn-main" onclick="startGame()">Start Groove</button>
+        <div class="hint-bar">Tap/Click sides or use Left/Right arrows to switch lanes</div>
+    </div>
+
+    <div id="help-screen" class="overlay hidden">
+        <h2>HOW TO PLAY</h2>
+        <p style="margin-top:1rem; line-height: 1.6;">
+            Blue Nodes: Stay in their lane to collect.<br>
+            Red Barriers: Move to a different lane to avoid.<br>
+            The rhythm accelerates as you score!
+        </p>
+        <button class="btn-main" onclick="toggleHelp()">Got it</button>
+    </div>
+
+    <div id="game-over" class="overlay hidden">
+        <h2 id="status-text">CONNECTION LOST</h2>
+        <p id="final-score-text"></p>
+        <button class="btn-main" onclick="startGame()">Reboot</button>
+    </div>
+
+    <button id="mute-toggle" class="mute-btn" onclick="toggleMute()">🔊</button>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const scoreEl = document.getElementById('score-val');
+const bestEl = document.getElementById('best-val');
+const startScreen = document.getElementById('start-screen');
+const helpScreen = document.getElementById('help-screen');
+const gameOverScreen = document.getElementById('game-over');
+
+let width, height, laneWidth;
+let score = 0;
+let bestScore = localStorage.getItem('fun_arcade_highscore_rhythm-rail-runner') || 0;
+bestEl.textContent = bestScore;
+
+let isPlaying = false;
+let playerLane = 1; // 0, 1, 2
+let targets = [];
+let particles = [];
+let speed = 5;
+let lastSpawn = 0;
+let spawnRate = 1200;
+let frame = 0;
+let isMuted = false;
+
+// Audio context setup for procedural synth
+let audioCtx = null;
+function initAudio() {
+    if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+}
+
+function playNote(freq, type, dur) {
+    if(isMuted || !audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + dur);
+}
+
+function toggleMute() {
+    isMuted = !isMuted;
+    document.getElementById('mute-toggle').textContent = isMuted ? '🔇' : '🔊';
+}
+
+function toggleHelp() {
+    helpScreen.classList.toggle('hidden');
+}
+
+function resize() {
+    width = canvas.width = canvas.offsetWidth;
+    height = canvas.height = canvas.offsetHeight;
+    laneWidth = width / 3;
+}
+window.addEventListener('resize', resize);
+resize();
+
+class Target {
+    constructor(lane, isEnemy) {
+        this.lane = lane;
+        this.isEnemy = isEnemy;
+        this.y = -50;
+        this.size = laneWidth * 0.4;
+        this.collected = false;
+    }
+    update() {
+        this.y += speed;
+    }
+    draw() {
+        const x = this.lane * laneWidth + laneWidth / 2;
+        ctx.beginPath();
+        if (this.isEnemy) {
+            ctx.fillStyle = '#ef4444';
+            ctx.rect(x - this.size, this.y - 10, this.size * 2, 20);
+        } else {
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#0EA5E9';
+            ctx.fillStyle = '#0EA5E9';
+            ctx.arc(x, this.y, this.size * 0.5, 0, Math.PI * 2);
+        }
+        ctx.fill();
+        ctx.shadowBlur = 0;
+    }
+}
+
+function spawn() {
+    const lane = Math.floor(Math.random() * 3);
+    const isEnemy = Math.random() > 0.7;
+    targets.push(new Target(lane, isEnemy));
+}
+
+function createParticles(x, y, color) {
+    for(let i=0; i<8; i++) {
+        particles.push({
+            x, y, 
+            vx: (Math.random() - 0.5) * 10, 
+            vy: (Math.random() - 0.5) * 10,
+            life: 1,
+            color
+        });
+    }
+}
+
+function startGame() {
+    initAudio();
+    score = 0;
+    speed = 6;
+    spawnRate = 1000;
+    targets = [];
+    particles = [];
+    playerLane = 1;
+    scoreEl.textContent = '0';
+    startScreen.classList.add('hidden');
+    gameOverScreen.classList.add('hidden');
+    isPlaying = true;
+    requestAnimationFrame(gameLoop);
+}
+
+function gameOver() {
+    isPlaying = false;
+    if(score > bestScore) {
+        bestScore = score;
+        localStorage.setItem('fun_arcade_highscore_rhythm-rail-runner', bestScore);
+        bestEl.textContent = bestScore;
+    }
+    document.getElementById('final-score-text').textContent = `FINAL SCORE: ${score}`;
+    gameOverScreen.classList.remove('hidden');
+    playNote(150, 'sawtooth', 0.5);
+}
+
+function gameLoop(t) {
+    if (!isPlaying) return;
+    ctx.clearRect(0, 0, width, height);
+
+    // Draw Lanes
+    ctx.strokeStyle = 'rgba(14, 165, 233, 0.1)';
+    ctx.lineWidth = 2;
+    for(let i=1; i<3; i++) {
+        ctx.beginPath();
+        ctx.moveTo(i * laneWidth, 0);
+        ctx.lineTo(i * laneWidth, height);
+        ctx.stroke();
+    }
+
+    // Handle Spawning
+    if (t - lastSpawn > spawnRate) {
+        spawn();
+        lastSpawn = t;
+        speed += 0.05;
+        spawnRate = Math.max(400, 1000 - (speed * 40));
+        playNote(440 + (score % 8) * 40, 'sine', 0.1);
+    }
+
+    // Draw & Update Targets
+    for (let i = targets.length - 1; i >= 0; i--) {
+        const obj = targets[i];
+        obj.update();
+        obj.draw();
+
+        // Collision Check
+        const py = height * 0.85;
+        if (!obj.collected && Math.abs(obj.y - py) < 30 && obj.lane === playerLane) {
+            if (obj.isEnemy) {
+                gameOver();
+            } else {
+                obj.collected = true;
+                score += 10;
+                scoreEl.textContent = score;
+                createParticles(obj.lane * laneWidth + laneWidth/2, py, '#0EA5E9');
+                playNote(880, 'triangle', 0.05);
+            }
+        }
+
+        if (obj.y > height) {
+            if(!obj.isEnemy && !obj.collected) {
+                // Missed a rhythm note - small penalty or game over?
+                // We'll just continue to keep it fast-paced
+            }
+            targets.splice(i, 1);
+        }
+    }
+
+    // Draw Player
+    const px = playerLane * laneWidth + laneWidth / 2;
+    const py = height * 0.85;
+    ctx.fillStyle = '#fff';
+    ctx.shadowBlur = 20;
+    ctx.shadowColor = '#fff';
+    ctx.beginPath();
+    ctx.moveTo(px, py - 20);
+    ctx.lineTo(px - 15, py + 15);
+    ctx.lineTo(px + 15, py + 15);
+    ctx.closePath();
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Particles
+    for(let i = particles.length-1; i>=0; i--) {
+        const p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life -= 0.02;
+        if(p.life <= 0) particles.splice(i, 1);
+        else {
+            ctx.fillStyle = p.color;
+            ctx.globalAlpha = p.life;
+            ctx.fillRect(p.x, p.y, 4, 4);
+            ctx.globalAlpha = 1;
+        }
+    }
+
+    requestAnimationFrame(gameLoop);
+}
+
+// Controls
+function handleInput(dir) {
+    if(!isPlaying) return;
+    if(dir === 'left' && playerLane > 0) playerLane--;
+    if(dir === 'right' && playerLane < 2) playerLane++;
+    playNote(220, 'square', 0.02);
+}
+
+window.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowLeft') handleInput('left');
+    if (e.key === 'ArrowRight') handleInput('right');
+});
+
+canvas.addEventListener('touchstart', (e) => {
+    const touchX = e.touches[0].clientX;
+    if (touchX < width / 2) handleInput('left');
+    else handleInput('right');
+});
+
+canvas.addEventListener('mousedown', (e) => {
+    if (e.clientX < width / 2) handleInput('left');
+    else handleInput('right');
+});
+</script>
+</body>
+</html>
