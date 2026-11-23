@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Stellar Recoil</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #8B5CF6;
+            --bg: #0f172a;
+        }
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body, html {
+            margin: 0; padding: 0;
+            width: 100%; height: 100%;
+            background: var(--bg);
+            color: white;
+            font-family: 'Orbitron', sans-serif;
+            overflow: hidden;
+        }
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+        }
+        canvas {
+            flex-grow: 1;
+            touch-action: none;
+            display: block;
+        }
+        .hud {
+            position: absolute;
+            top: 0; left: 0; width: 100%;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            pointer-events: none;
+            z-index: 10;
+        }
+        .hud div, .hud a, .hud button {
+            pointer-events: auto;
+        }
+        .back-btn {
+            color: white; text-decoration: none; background: rgba(255,255,255,0.1);
+            padding: 5px 12px; border-radius: 4px; font-size: 14px;
+        }
+        .score-box { text-align: center; }
+        .best-score { font-size: 10px; opacity: 0.7; }
+        .help-btn {
+            background: none; border: 1px solid white; color: white;
+            width: 30px; height: 30px; border-radius: 50%; cursor: pointer;
+        }
+        .overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            padding: 20px;
+            text-align: center;
+        }
+        .hidden { display: none !important; }
+        h1 { margin: 0; color: var(--accent); font-size: 2.5rem; text-shadow: 0 0 10px var(--accent); }
+        .btn-main {
+            background: var(--accent);
+            color: white; border: none;
+            padding: 15px 40px; font-size: 1.2rem;
+            border-radius: 50px; cursor: pointer;
+            margin-top: 20px; font-family: 'Orbitron';
+            box-shadow: 0 0 20px rgba(139, 92, 246, 0.4);
+        }
+        .hint-bar {
+            position: absolute; bottom: 20px;
+            font-size: 12px; opacity: 0.6;
+        }
+        #fuel-bar-container {
+            position: absolute;
+            bottom: 20px; left: 50%;
+            transform: translateX(-50%);
+            width: 200px; height: 10px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        #fuel-fill {
+            width: 100%; height: 100%;
+            background: var(--accent);
+            transition: width 0.1s linear;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div class="hud">
+        <a href="../../" class="back-btn">Back</a>
+        <div class="score-box">
+            <div id="current-score">0m</div>
+            <div class="best-score">Best: <span id="best-val">0m</span></div>
+        </div>
+        <button class="help-btn" onclick="toggleHelp()">?</button>
+    </div>
+
+    <div id="fuel-bar-container"><div id="fuel-fill"></div></div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="start-screen" class="overlay">
+        <h1>STELLAR RECOIL</h1>
+        <p>In zero gravity, every shot pushes you back. Shoot to fly!</p>
+        <p style="font-size: 0.9rem; max-width: 300px;">Collect energy orbs to stay fueled and stay ahead of the rising solar storm.</p>
+        <button class="btn-main" onclick="startGame()">LAUNCH</button>
+        <div class="hint-bar">CLICK or TAP to shoot & propel</div>
+    </div>
+
+    <div id="game-over-screen" class="overlay hidden">
+        <h2 id="over-title">CRITICAL FAILURE</h2>
+        <p>Distance Traveled: <span id="final-score">0</span>m</p>
+        <button class="btn-main" onclick="startGame()">RETRY</button>
+    </div>
+
+    <div id="help-overlay" class="overlay hidden" onclick="toggleHelp()">
+        <h2>HOW TO PLAY</h2>
+        <ul style="text-align: left; line-height: 1.6;">
+            <li>Aim with your mouse/finger.</li>
+            <li>Click to fire an energy pulse.</li>
+            <li>The <b>Recoil</b> pushes you the opposite way.</li>
+            <li>Collect <span style="color:#FBDB4C">Yellow Orbs</span> for fuel.</li>
+            <li>Avoid the red <span style="color:#F43F5E">Solar Storm</span> at the bottom!</li>
+        </ul>
+        <p style="font-size: 0.8rem;">Tap anywhere to close</p>
+    </div>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const scoreEl = document.getElementById('current-score');
+const bestEl = document.getElementById('best-val');
+const fuelFill = document.getElementById('fuel-fill');
+const SLUG = 'stellar-recoil';
+
+let width, height, raf;
+let gameState = 'START';
+let score = 0;
+let bestScore = localStorage.getItem('fun_arcade_highscore_' + SLUG) || 0;
+
+// Game variables
+const player = {
+    x: 0, y: 0, vx: 0, vy: 0, radius: 15,
+    rotation: 0, fuel: 100
+};
+let cameraY = 0;
+let bullets = [];
+let particles = [];
+let collectibles = [];
+let stormY = 0;
+let lastTime = 0;
+
+// Setup
+function resize() {
+    width = canvas.width = window.innerWidth;
+    height = canvas.height = window.innerHeight;
+    if (gameState === 'START') resetGame();
+}
+window.addEventListener('resize', resize);
+resize();
+bestEl.textContent = bestScore + 'm';
+
+function resetGame() {
+    player.x = width / 2;
+    player.y = height * 0.7;
+    player.vx = 0; player.vy = 0;
+    player.fuel = 100;
+    cameraY = 0;
+    stormY = height + 300;
+    bullets = [];
+    particles = [];
+    collectibles = [];
+    score = 0;
+    scoreEl.textContent = '0m';
+    
+    // Initial collectibles
+    for(let i=0; i<10; i++) spawnCollectible(-(i * 200));
+}
+
+function spawnCollectible(y) {
+    collectibles.push({
+        x: Math.random() * (width - 60) + 30,
+        y: y,
+        radius: 10,
+        pulse: 0
+    });
+}
+
+function toggleHelp() {
+    document.getElementById('help-overlay').classList.toggle('hidden');
+}
+
+function startGame() {
+    document.getElementById('start-screen').classList.add('hidden');
+    document.getElementById('game-over-screen').classList.add('hidden');
+    resetGame();
+    gameState = 'PLAYING';
+    lastTime = performance.now();
+    requestAnimationFrame(update);
+}
+
+function gameOver() {
+    gameState = 'OVER';
+    document.getElementById('game-over-screen').classList.remove('hidden');
+    document.getElementById('final-score').textContent = score;
+    document.getElementById('over-title').textContent = player.fuel <= 0 ? "FUEL DEPLETED" : "STORM BREACHED";
+    if (score > bestScore) {
+        bestScore = score;
+        localStorage.setItem('fun_arcade_highscore_' + SLUG, bestScore);
+        bestEl.textContent = bestScore + 'm';
+    }
+}
+
+function handleInput(e) {
+    if (gameState !== 'PLAYING') return;
+    const t = e.touches ? e.touches[0] : e;
+    const rect = canvas.getBoundingClientRect();
+    const tx = t.clientX - rect.left;
+    const ty = t.clientY - rect.top + cameraY;
+
+    if (player.fuel <= 0) return;
+
+    // Recoil physics
+    const angle = Math.atan2(ty - player.y, tx - player.x);
+    const force = 12;
+    player.vx -= Math.cos(angle) * force;
+    player.vy -= Math.sin(angle) * force;
+    player.fuel -= 6;
+
+    // Visual Bullet
+    bullets.push({
+        x: player.x, y: player.y, 
+        vx: Math.cos(angle) * 15, 
+        vy: Math.sin(angle) * 15, 
+        life: 1
+    });
+
+    // Particles
+    for(let i=0; i<5; i++) {
+        particles.push({
+            x: player.x, y: player.y,
+            vx: (Math.random() - 0.5) * 5,
+            vy: (Math.random() - 0.5) * 5,
+            life: 1, color: '#8B5CF6'
+        });
+    }
+}
+
+canvas.addEventListener('mousedown', handleInput);
+canvas.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    handleInput(e);
+}, {passive: false});
+
+function update(time) {
+    if (gameState !== 'PLAYING') return;
+    const dt = (time - lastTime) / 16.66;
+    lastTime = time;
+
+    // Gravity & Friction
+    player.vy += 0.25 * dt;
+    player.vx *= 0.98;
+    player.vy *= 0.98;
+    player.x += player.vx * dt;
+    player.y += player.vy * dt;
+
+    // Screen Wrap X
+    if (player.x < 0) player.x = width;
+    if (player.x > width) player.x = 0;
+
+    // Camera tracking
+    const targetCam = player.y - height * 0.6;
+    cameraY += (targetCam - cameraY) * 0.1;
+
+    // Score
+    const currentDist = Math.max(0, Math.floor((height * 0.7 - player.y) / 10));
+    if (currentDist > score) score = currentDist;
+    scoreEl.textContent = score + 'm';
+
+    // Storm mechanics
+    stormY -= 1.8 * dt;
+    if (player.y > stormY) gameOver();
+    if (player.fuel <= 0 && Math.abs(player.vx) < 0.1 && Math.abs(player.vy) < 0.1) gameOver();
+
+    // Fuel management
+    player.fuel = Math.min(100, player.fuel);
+    fuelFill.style.width = player.fuel + '%';
+
+    // Entity processing
+    bullets.forEach((b, i) => {
+        b.x += b.vx * dt; b.y += b.vy * dt;
+        b.life -= 0.02 * dt;
+        if (b.life <= 0) bullets.splice(i, 1);
+    });
+
+    particles.forEach((p, i) => {
+        p.x += p.vx * dt; p.y += p.vy * dt;
+        p.life -= 0.03 * dt;
+        if (p.life <= 0) particles.splice(i, 1);
+    });
+
+    collectibles.forEach((c, i) => {
+        c.pulse += 0.1 * dt;
+        const dx = player.x - c.x;
+        const dy = player.y - c.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist < player.radius + c.radius) {
+            player.fuel += 25;
+            collectibles.splice(i, 1);
+            // Spawn new ones ahead
+            spawnCollectible(player.y - height - Math.random() * 200);
+        }
+        if (c.y > cameraY + height + 100) {
+            collectibles.splice(i, 1);
+            spawnCollectible(player.y - height - Math.random() * 200);
+        }
+    });
+
+    draw();
+    raf = requestAnimationFrame(update);
+}
+
+function draw() {
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(0, 0, width, height);
+
+    ctx.save();
+    ctx.translate(0, -cameraY);
+
+    // Grid background
+    ctx.strokeStyle = 'rgba(139, 92, 246, 0.05)';
+    ctx.lineWidth = 1;
+    for(let x=0; x<width; x+=50) {
+        ctx.beginPath(); ctx.moveTo(x, cameraY); ctx.lineTo(x, cameraY + height); ctx.stroke();
+    }
+
+    // Storm
+    const grad = ctx.createLinearGradient(0, stormY, 0, stormY + 400);
+    grad.addColorStop(0, 'rgba(244, 63, 94, 0.8)');
+    grad.addColorStop(1, 'rgba(244, 63, 94, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, stormY, width, 1000);
+
+    // Collectibles
+    collectibles.forEach(c => {
+        const s = 1 + Math.sin(c.pulse) * 0.2;
+        ctx.fillStyle = '#FBDB4C';
+        ctx.shadowBlur = 15; ctx.shadowColor = '#FBDB4C';
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, c.radius * s, 0, Math.PI*2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+    });
+
+    // Bullets
+    ctx.fillStyle = '#A78BFA';
+    bullets.forEach(b => {
+        ctx.globalAlpha = b.life;
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, 4, 0, Math.PI*2);
+        ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+
+    // Particles
+    particles.forEach(p => {
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = p.life;
+        ctx.fillRect(p.x, p.y, 2, 2);
+    });
+    ctx.globalAlpha = 1;
+
+    // Player
+    ctx.save();
+    ctx.translate(player.x, player.y);
+    const angle = Math.atan2(player.vy, player.vx);
+    ctx.rotate(angle + Math.PI/2);
+    
+    // Ship shape
+    ctx.fillStyle = 'white';
+    ctx.shadowBlur = 15; ctx.shadowColor = '#8B5CF6';
+    ctx.beginPath();
+    ctx.moveTo(0, -18); ctx.lineTo(12, 10); ctx.lineTo(-12, 10); ctx.closePath();
+    ctx.fill();
+    
+    // Engine glow
+    if (player.fuel > 0) {
+        ctx.fillStyle = '#8B5CF6';
+        ctx.beginPath();
+        ctx.arc(0, 8, 5, 0, Math.PI*2);
+        ctx.fill();
+    }
+    ctx.restore();
+
+    ctx.restore();
+}
+</script>
+</body>
+</html>

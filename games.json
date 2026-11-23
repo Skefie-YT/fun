@@ -382,5 +382,13 @@
     "category": "Puzzle",
     "accent": "#8B5CF6",
     "addedAt": "2026-11-23T09:14:43Z"
+  },
+  {
+    "slug": "stellar-recoil",
+    "title": "Stellar Recoil",
+    "description": "Shoot to propel yourself through space! Use recoil to navigate, collect fuel, and avoid the encroaching solar storm.",
+    "category": "Physics",
+    "accent": "#8B5CF6",
+    "addedAt": "2026-11-23T10:58:42Z"
   }
 ]
