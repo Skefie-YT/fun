@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Beat Bounce — Fun Arcade</title>
+<style>
+  :root {
+    --bg: #0b0d14;
+    --surface: #141824;
+    --border: rgba(255, 255, 255, 0.1);
+    --text: #f8fafc;
+    --muted: #94a3b8;
+    --accent: #F59E0B;
+    --accent-glow: rgba(245, 158, 11, 0.45);
+    --good: #38bdf8;
+    --miss: #ef4444;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; user-select: none; }
+  html, body {
+    width: 100%; height: 100dvh; overflow: hidden;
+    background: var(--bg); color: var(--text);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    display: flex; flex-direction: column;
+  }
+  header {
+    height: 56px; min-height: 56px;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 14px; background: rgba(20, 24, 36, 0.9);
+    border-bottom: 1px solid var(--border);
+    z-index: 20;
+  }
+  .back-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 13px; border-radius: 8px;
+    background: rgba(255,255,255,0.07); color: var(--text);
+    text-decoration: none; font-size: 14px; font-weight: 600;
+    border: 1px solid var(--border); transition: background 0.15s;
+  }
+  .back-btn:hover { background: rgba(255,255,255,0.14); }
+  .hud {
+    display: flex; align-items: center; gap: 16px;
+  }
+  .stat { text-align: center; line-height: 1.15; }
+  .stat-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+  .stat-val { font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--text); }
+  .stat-val.accent { color: var(--accent); }
+  .header-actions { display: flex; align-items: center; gap: 8px; }
+  .icon-btn {
+    width: 36px; height: 36px; border-radius: 8px;
+    background: rgba(255,255,255,0.07); color: var(--text);
+    border: 1px solid var(--border); font-size: 16px; font-weight: 700;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s;
+  }
+  .icon-btn:hover { background: rgba(255,255,255,0.15); }
+
+  main {
+    position: relative; flex: 1; width: 100%; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+  }
+  canvas {
+    display: block; width: 100%; height: 100%; touch-action: none;
+  }
+
+  .overlay {
+    position: absolute; inset: 0;
+    background: rgba(11, 13, 20, 0.84);
+    backdrop-filter: blur(8px);
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px; z-index: 30;
+    transition: opacity 0.2s;
+  }
+  .overlay.hidden { opacity: 0; pointer-events: none; }
+  .card {
+    width: 100%; max-width: 390px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 18px; padding: 26px 22px; text-align: center;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+  }
+  .badge {
+    display: inline-block; padding: 4px 10px; border-radius: 999px;
+    background: rgba(245, 158, 11, 0.16); color: var(--accent);
+    font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+  h1 { font-size: 30px; font-weight: 900; letter-spacing: -0.02em; margin-bottom: 8px; }
+  .desc { font-size: 14px; color: var(--muted); line-height: 1.5; margin-bottom: 20px; }
+  .btn-primary {
+    width: 100%; padding: 14px; border-radius: 12px; border: none;
+    background: var(--accent); color: #0b0d14; font-size: 16px; font-weight: 800;
+    cursor: pointer; box-shadow: 0 6px 20px var(--accent-glow);
+    transition: transform 0.1s, filter 0.15s;
+  }
+  .btn-primary:hover { filter: brightness(1.08); }
+  .btn-primary:active { transform: scale(0.97); }
+
+  .controls-hint {
+    position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
+    font-size: 12px; color: var(--muted); background: rgba(20, 24, 36, 0.75);
+    padding: 6px 14px; border-radius: 999px; border: 1px solid var(--border);
+    pointer-events: none; white-space: nowrap; z-index: 10;
+  }
+  .rules-list {
+    text-align: left; font-size: 13.5px; color: var(--muted);
+    line-height: 1.55; margin-bottom: 20px; padding-left: 18px;
+  }
+  .rules-list li { margin-bottom: 6px; }
+  .rules-list strong { color: var(--text); }
+  .score-summary {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px;
+  }
+  .summary-box {
+    background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+    border-radius: 12px; padding: 12px;
+  }
+  .summary-box .stat-val { font-size: 22px; margin-top: 2px; }
+</style>
+</head>
+<body>
+  <header>
+    <a href="../../" class="back-btn">&#8592; Back</a>
+    <div class="hud">
+      <div class="stat">
+        <div class="stat-label">Score</div>
+        <div class="stat-val accent" id="scoreVal">0</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Best</div>
+        <div class="stat-val" id="bestVal">0</div>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="icon-btn" id="muteBtn" title="Toggle Sound">&#128266;</button>
+      <button class="icon-btn" id="helpBtn" title="How to Play">?</button>
+    </div>
+  </header>
+
+  <main>
+    <canvas id="gameCanvas"></canvas>
+    <div class="controls-hint" id="controlsHint">Tap, Click, or Press Space on the beat</div>
+
+    <!-- Start Overlay -->
+    <div class="overlay" id="startOverlay">
+      <div class="card">
+        <div class="badge">Rhythm Reflex</div>
+        <h1>Beat Bounce</h1>
+        <p class="desc">Your orb arcs from pad to pad on the beat. Tap right as the shrinking ring hits the pad to chain combos and unleash Fever Mode!</p>
+        <button class="btn-primary" id="startBtn">Start Playing</button>
+      </div>
+    </div>
+
+    <!-- How to Play Overlay -->
+    <div class="overlay hidden" id="helpOverlay">
+      <div class="card">
+        <div class="badge">How to Play</div>
+        <h1 style="font-size:24px;">Rules &amp; Controls</h1>
+        <ul class="rules-list">
+          <li><strong>Timing:</strong> Tap, click, or press <strong>Space</strong> when the orb lands on a pad and the golden ring aligns.</li>
+          <li><strong>Combos:</strong> Hit <strong>Perfect</strong> or <strong>Good</strong> beats to build your multiplier. Reach 8x combo for <strong>Fever Mode</strong>!</li>
+          <li><strong>Shields:</strong> You have 3 shields. Missing a beat or tapping way too early costs 1 shield.</li>
+          <li><strong>Tempo:</strong> The BPM gradually speeds up as your score climbs!</li>
+        </ul>
+        <button class="btn-primary" id="closeHelpBtn">Got It</button>
+      </div>
+    </div>
+
+    <!-- Game Over Overlay -->
+    <div class="overlay hidden" id="gameOverOverlay">
+      <div class="card">
+        <div class="badge" style="background:rgba(239,68,68,0.18);color:#ef4444;">Track Ended</div>
+        <h1>Out of Sync!</h1>
+        <div class="score-summary">
+          <div class="summary-box">
+            <div class="stat-label">Final Score</div>
+            <div class="stat-val accent" id="finalScore">0</div>
+          </div>
+          <div class="summary-box">
+            <div class="stat-label">Best Score</div>
+            <div class="stat-val" id="finalBest">0</div>
+          </div>
+        </div>
+        <p class="desc" id="gameOverMsg" style="margin-bottom:16px;">Max Combo: 0</p>
+        <button class="btn-primary" id="restartBtn">Play Again</button>
+      </div>
+    </div>
+  </main>
+
+<script>
+(() => {
+  const SLUG = 'beat-bounce';
+  const HIGH_SCORE_KEY = 'fun_arcade_highscore_' + SLUG;
+
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+  const scoreEl = document.getElementById('scoreVal');
+  const bestEl = document.getElementById('bestVal');
+  const startOverlay = document.getElementById('startOverlay');
+  const helpOverlay = document.getElementById('helpOverlay');
+  const gameOverOverlay = document.getElementById('gameOverOverlay');
+  const finalScoreEl = document.getElementById('finalScore');
+  const finalBestEl = document.getElementById('finalBest');
+  const gameOverMsg = document.getElementById('gameOverMsg');
+  const muteBtn = document.getElementById('muteBtn');
+
+  let width = 0, height = 0, dpr = 1;
+  function resize() {
+    const rect = canvas.parentElement.getBoundingClientRect();
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    width = rect.width;
+    height = rect.height;
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // Audio Engine (Web Audio API)
+  let audioCtx = null;
+  let muted = false;
+  const scaleNotes = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33, 659.25];
+
+  function initAudio() {
+    if (!audioCtx) {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (AudioContext) audioCtx = new AudioContext();
+    }
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  }
+
+  function playKick() {
+    if (muted || !audioCtx) return;
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(140, now);
+    osc.frequency.exponentialRampToValueAtTime(42, now + 0.12);
+    gain.gain.setValueAtTime(0.35, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.start(now); osc.stop(now + 0.15);
+  }
+
+  function playSynth(noteIdx, quality) {
+    if (muted || !audioCtx) return;
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = quality === 'perfect' ? 'triangle' : 'sine';
+    const freq = scaleNotes[noteIdx % scaleNotes.length];
+    osc.frequency.setValueAtTime(freq, now);
+    gain.gain.setValueAtTime(quality === 'perfect' ? 0.25 : 0.16, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.start(now); osc.stop(now + 0.28);
+  }
+
+  function playMissSound() {
+    if (muted || !audioCtx) return;
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(130, now);
+    osc.frequency.linearRampToValueAtTime(75, now + 0.18);
+    gain.gain.setValueAtTime(0.18, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.start(now); osc.stop(now + 0.2);
+  }
+
+  muteBtn.addEventListener('click', () => {
+    muted = !muted;
+    muteBtn.innerHTML = muted ? '&#128263;' : '&#128266;';
+  });
+
+  // Game State
+  let bestScore = parseInt(localStorage.getItem(HIGH_SCORE_KEY) || '0', 10);
+  bestEl.textContent = bestScore;
+
+  let state = 'start'; // start, playing, paused, gameover
+  let score = 0;
+  let combo = 0;
+  let maxCombo = 0;
+  let shields = 3;
+  let bpm = 105;
+  let beatInterval = 60 / bpm;
+  let lastTime = 0;
+  let beatProgress = 0; // 0 to 1 between pads
+  let currentPadIndex = 0;
+  let padHitThisBeat = false;
+  let shakeTime = 0;
+  let shakeMag = 0;
+  let cameraX = 0;
+  let padSpacing = 170;
+
+  const pads = [];
+  const particles = [];
+  const popups = [];
+  const trail = [];
+
+  function generatePad(index) {
+    const baseY = height * 0.68;
+    const variation = Math.sin(index * 0.85) * Math.min(70, height * 0.12);
+    return {
+      index,
+      x: index * padSpacing,
+      y: baseY + variation,
+      hit: false,
+      missed: false,
+      pulse: 0
+    };
+  }
+
+  function resetGame() {
+    score = 0;
+    combo = 0;
+    maxCombo = 0;
+    shields = 3;
+    bpm = 105;
+    beatInterval = 60 / bpm;
+    beatProgress = 0;
+    currentPadIndex = 0;
+    padHitThisBeat = true; // First pad is starting point
+    shakeTime = 0;
+    pads.length = 0;
+    particles.length = 0;
+    popups.length = 0;
+    trail.length = 0;
+    padSpacing = Math.max(130, Math.min(200, width * 0.34));
+    for (let i = 0; i < 12; i++) pads.push(generatePad(i));
+    cameraX = pads[0].x;
+    scoreEl.textContent = '0';
+  }
+
+  function spawnParticles(x, y, color, count) {
+    for (let i = 0; i < count; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 70 + Math.random() * 200;
+      particles.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 40,
+        life: 1,
+        decay: 1.8 + Math.random() * 1.2,
+        size: 3 + Math.random() * 4,
+        color
+      });
+    }
+  }
+
+  function addPopup(x, y, text, color) {
+    popups.push({ x, y, text, color, life: 1 });
+  }
+
+  function triggerBeatAction() {
+    if (state !== 'playing') return;
+    initAudio();
+    if (padHitThisBeat) return; // Already hit this beat
+
+    // Target pad is currentPadIndex + 1 when beatProgress is near 1,
+    // OR if just crossed 0, currentPadIndex is the pad.
+    // We measure distance to the nearest beat (0 or 1).
+    const targetPad = pads[currentPadIndex + 1];
+    const distToBeat = Math.abs(1 - beatProgress);
+    const timeError = distToBeat * beatInterval;
+
+    if (timeError <= 0.085) {
+      // PERFECT
+      padHitThisBeat = true;
+      targetPad.hit = true;
+      targetPad.pulse = 1;
+      combo++;
+      if (combo > maxCombo) maxCombo = combo;
+      const mult = Math.min(8, 1 + Math.floor(combo / 4)) * (combo >= 8 ? 2 : 1);
+      score += 100 * mult;
+      scoreEl.textContent = score;
+      playSynth(combo, 'perfect');
+      spawnParticles(targetPad.x, targetPad.y, '#F59E0B', 18);
+      addPopup(targetPad.x, targetPad.y - 36, combo >= 8 ? `FEVER +${100 * mult}` : 'PERFECT!', '#F59E0B');
+      shakeTime = 0.08; shakeMag = 4;
+    } else if (timeError <= 0.175) {
+      // GOOD
+      padHitThisBeat = true;
+      targetPad.hit = true;
+      targetPad.pulse = 0.7;
+      combo++;
+      if (combo > maxCombo) maxCombo = combo;
+      const mult = Math.min(8, 1 + Math.floor(combo / 4));
+      score += 50 * mult;
+      scoreEl.textContent = score;
+      playSynth(combo, 'good');
+      spawnParticles(targetPad.x, targetPad.y, '#38bdf8', 10);
+      addPopup(targetPad.x, targetPad.y - 34, 'GOOD', '#38bdf8');
+    } else {
+      // TOO EARLY -> MISS
+      handleMiss(targetPad, 'EARLY!');
+    }
+  }
+
+  function handleMiss(pad, label) {
+    padHitThisBeat = true;
+    if (pad) pad.missed = true;
+    combo = 0;
+    shields--;
+    playMissSound();
+    shakeTime = 0.18; shakeMag = 8;
+    if (pad) {
+      spawnParticles(pad.x, pad.y, '#ef4444', 12);
+      addPopup(pad.x, pad.y - 34, label, '#ef4444');
+    }
+    if (shields <= 0) {
+      endGame();
+    }
+  }
+
+  function endGame() {
+    state = 'gameover';
+    if (score > bestScore) {
+      bestScore = score;
+      localStorage.setItem(HIGH_SCORE_KEY, String(bestScore));
+      bestEl.textContent = bestScore;
+    }
+    finalScoreEl.textContent = score;
+    finalBestEl.textContent = bestScore;
+    gameOverMsg.textContent = `Max Combo: ${maxCombo} • Peak Tempo: ${Math.round(bpm)} BPM`;
+    gameOverOverlay.classList.remove('hidden');
+  }
+
+  // Input Listeners
+  canvas.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    triggerBeatAction();
+  });
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
+      if (state === 'playing') {
+        e.preventDefault();
+        triggerBeatAction();
+      }
+    }
+  });
+
+  document.getElementById('startBtn').addEventListener('click', () => {
+    initAudio();
+    resetGame();
+    state = 'playing';
+    startOverlay.classList.add('hidden');
+    playKick();
+  });
+
+  document.getElementById('restartBtn').addEventListener('click', () => {
+    initAudio();
+    resetGame();
+    state = 'playing';
+    gameOverOverlay.classList.add('hidden');
+    playKick();
+  });
+
+  document.getElementById('helpBtn').addEventListener('click', () => {
+    if (state === 'playing') state = 'paused';
+    helpOverlay.classList.remove('hidden');
+  });
+
+  document.getElementById('closeHelpBtn').addEventListener('click', () => {
+    helpOverlay.classList.add('hidden');
+    if (state === 'paused') {
+      lastTime = performance.now();
+      state = 'playing';
+    }
+  });
+
+  function update(dt) {
+    if (state !== 'playing') return;
+
+    // Gradually ramp BPM
+    bpm = Math.min(148, 105 + Math.floor(score / 600) * 2.5);
+    beatInterval = 60 / bpm;
+
+    beatProgress += dt / beatInterval;
+
+    if (beatProgress >= 1) {
+      beatProgress -= 1;
+      const landedPad = pads[currentPadIndex + 1];
+      if (!padHitThisBeat) {
+        handleMiss(landedPad, 'MISSED!');
+        if (state !== 'playing') return;
+      }
+      currentPadIndex++;
+      padHitThisBeat = false;
+      playKick();
+
+      // Generate more pads ahead
+      const lastPad = pads[pads.length - 1];
+      if (lastPad.index < currentPadIndex + 10) {
+        pads.push(generatePad(lastPad.index + 1));
+      }
+      // Trim old pads
+      if (pads.length > 20) pads.shift();
+    }
+
+    // Smooth camera follow
+    const p0 = pads.find(p => p.index === currentPadIndex) || pads[0];
+    const p1 = pads.find(p => p.index === currentPadIndex + 1) || p0;
+    const ballX = p0.x + (p1.x - p0.x) * beatProgress;
+    const arcHeight = Math.min(115, height * 0.2);
+    const ballY = p0.y + (p1.y - p0.y) * beatProgress - Math.sin(beatProgress * Math.PI) * arcHeight;
+
+    cameraX += (ballX - cameraX) * Math.min(1, dt * 10);
+
+    trail.push({ x: ballX, y: ballY, life: 1 });
+    if (trail.length > 18) trail.shift();
+    for (const t of trail) t.life -= dt * 3.5;
+
+    for (const p of pads) {
+      if (p.pulse > 0) p.pulse = Math.max(0, p.pulse - dt * 3);
+    }
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const pt = particles[i];
+      pt.x += pt.vx * dt;
+      pt.y += pt.vy * dt;
+      pt.vy += 320 * dt;
+      pt.life -= pt.decay * dt;
+      if (pt.life <= 0) particles.splice(i, 1);
+    }
+    for (let i = popups.length - 1; i >= 0; i--) {
+      const pop = popups[i];
+      pop.y -= 45 * dt;
+      pop.life -= dt * 1.4;
+      if (pop.life <= 0) popups.splice(i, 1);
+    }
+    if (shakeTime > 0) shakeTime = Math.max(0, shakeTime - dt);
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, width, height);
+
+    // Background subtle grid
+    ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+    ctx.lineWidth = 1;
+    const gridSize = 48;
+    const offsetX = -(cameraX * 0.3) % gridSize;
+    for (let x = offsetX; x < width; x += gridSize) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
+    }
+    for (let y = 0; y < height; y += gridSize) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
+    }
+
+    if (pads.length === 0) return;
+
+    ctx.save();
+    let sx = 0, sy = 0;
+    if (shakeTime > 0) {
+      sx = (Math.random() - 0.5) * shakeMag * 2;
+      sy = (Math.random() - 0.5) * shakeMag * 2;
+    }
+    const viewOffsetX = width * 0.32 - cameraX + sx;
+    ctx.translate(viewOffsetX, sy);
+
+    // Draw pads
+    for (const p of pads) {
+      const isTarget = p.index === currentPadIndex + 1;
+      const padW = 54, padH = 14;
+
+      // Shrinking beat ring on target pad
+      if (isTarget && !p.hit && !p.missed && state === 'playing') {
+        const ringRadius = 24 + (1 - beatProgress) * 56;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, ringRadius, 0, Math.PI * 2);
+        ctx.strokeStyle = beatProgress > 0.82 ? '#F59E0B' : 'rgba(245, 158, 11, 0.45)';
+        ctx.lineWidth = beatProgress > 0.82 ? 3.5 : 2;
+        ctx.stroke();
+      }
+
+      // Pad glow
+      if (p.pulse > 0) {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 35 + (1 - p.pulse) * 25, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(245, 158, 11, ${p.pulse * 0.6})`;
+        ctx.lineWidth = 3;
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = p.missed ? '#ef4444' : (p.hit ? '#F59E0B' : '#1e293b');
+      ctx.strokeStyle = isTarget ? '#F59E0B' : 'rgba(255,255,255,0.2)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(p.x - padW / 2, p.y - padH / 2, padW, padH, 7);
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    // Draw trail
+    const isFever = combo >= 8;
+    for (let i = 0; i < trail.length; i++) {
+      const t = trail[i];
+      if (t.life <= 0) continue;
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, 12 * (i / trail.length), 0, Math.PI * 2);
+      ctx.fillStyle = isFever
+        ? `rgba(245, 158, 11, ${t.life * 0.45})`
+        : `rgba(56, 189, 248, ${t.life * 0.3})`;
+      ctx.fill();
+    }
+
+    // Draw ball
+    const p0 = pads.find(p => p.index === currentPadIndex) || pads[0];
+    const p1 = pads.find(p => p.index === currentPadIndex + 1) || p0;
+    const ballX = p0.x + (p1.x - p0.x) * beatProgress;
+    const arcHeight = Math.min(115, height * 0.2);
+    const ballY = p0.y + (p1.y - p0.y) * beatProgress - Math.sin(beatProgress * Math.PI) * arcHeight;
+
+    ctx.save();
+    ctx.shadowColor = isFever ? '#F59E0B' : '#38bdf8';
+    ctx.shadowBlur = isFever ? 22 : 14;
+    ctx.beginPath();
+    ctx.arc(ballX, ballY - 10, 13, 0, Math.PI * 2);
+    ctx.fillStyle = isFever ? '#F59E0B' : '#f8fafc';
+    ctx.fill();
+    ctx.restore();
+
+    // Particles
+    for (const pt of particles) {
+      ctx.globalAlpha = Math.max(0, pt.life);
+      ctx.fillStyle = pt.color;
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, pt.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // Popups
+    ctx.font = '800 15px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    for (const pop of popups) {
+      ctx.globalAlpha = Math.max(0, pop.life);
+      ctx.fillStyle = pop.color;
+      ctx.fillText(pop.text, pop.x, pop.y);
+    }
+    ctx.globalAlpha = 1;
+
+    ctx.restore();
+
+    // Top-left in-canvas status: Shields & Combo
+    if (state === 'playing' || state === 'paused') {
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '700 12px system-ui, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('SHIELDS', 18, 28);
+      for (let i = 0; i < 3; i++) {
+        ctx.beginPath();
+        ctx.arc(26 + i * 22, 44, 7, 0, Math.PI * 2);
+        ctx.fillStyle = i < shields ? '#F59E0B' : 'rgba(255,255,255,0.12)';
+        ctx.fill();
+      }
+
+      if (combo > 1) {
+        ctx.textAlign = 'right';
+        ctx.fillStyle = combo >= 8 ? '#F59E0B' : '#f8fafc';
+        ctx.font = '900 22px system-ui, sans-serif';
+        ctx.fillText(`${combo}x COMBO`, width - 18, 38);
+        if (combo >= 8) {
+          ctx.font = '800 11px system-ui, sans-serif';
+          ctx.fillStyle = '#F59E0B';
+          ctx.fillText('FEVER MODE 2X', width - 18, 54);
+        }
+      }
+    }
+  }
+
+  function loop(now) {
+    if (!lastTime) lastTime = now;
+    const dt = Math.min(0.05, (now - lastTime) / 1000);
+    lastTime = now;
+    update(dt);
+    draw();
+    requestAnimationFrame(loop);
+  }
+  resetGame();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

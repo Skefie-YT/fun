@@ -390,5 +390,13 @@
     "category": "Physics",
     "accent": "#8B5CF6",
     "addedAt": "2026-11-23T10:58:42Z"
+  },
+  {
+    "slug": "beat-bounce",
+    "title": "Beat Bounce",
+    "description": "Tap in sync with the shrinking beat rings as your orb lands on each pad to build combos and ride the rhythm!",
+    "category": "Reflex",
+    "accent": "#F59E0B",
+    "addedAt": "2026-11-23T11:51:24Z"
   }
 ]
