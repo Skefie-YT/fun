@@ -414,5 +414,13 @@
     "category": "Puzzle",
     "accent": "#EF4444",
     "addedAt": "2026-11-23T14:27:39Z"
+  },
+  {
+    "slug": "rhythm-resonator",
+    "title": "Rhythm Resonator",
+    "description": "Tap or press keys as notes cross the target line to keep the resonance alive and build your score!",
+    "category": "Reflex",
+    "accent": "#0EA5E9",
+    "addedAt": "2026-11-23T15:56:45Z"
   }
 ]

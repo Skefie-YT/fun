@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Rhythm Resonator</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #0EA5E9;
+            --bg: #030712;
+            --surface: #1f2937;
+            --text: #f8fafc;
+        }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Orbitron', sans-serif;
+            height: 100dvh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        #game-container {
+            position: relative;
+            flex: 1;
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            background: linear-gradient(to bottom, #030712 0%, #111827 100%);
+            border-left: 1px solid #334155;
+            border-right: 1px solid #334155;
+            overflow: hidden;
+        }
+        .hud {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 10;
+            background: rgba(3, 7, 18, 0.8);
+        }
+        .back-btn {
+            color: var(--text);
+            text-decoration: none;
+            font-size: 0.8rem;
+            border: 1px solid var(--accent);
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+        .stats {
+            text-align: center;
+        }
+        .score { font-size: 1.2rem; color: var(--accent); }
+        .best { font-size: 0.7rem; opacity: 0.8; }
+
+        #help-btn {
+            background: none;
+            border: 1px solid var(--text);
+            color: var(--text);
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            text-align: center;
+            z-index: 100;
+        }
+        .hidden { display: none !important; }
+        h1 { color: var(--accent); margin-bottom: 1rem; }
+        p { margin-bottom: 1.5rem; line-height: 1.5; }
+        .btn {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            font-family: 'Orbitron', sans-serif;
+            font-weight: bold;
+            border-radius: 4px;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .controls-hint {
+            position: absolute;
+            bottom: 20px;
+            width: 100%;
+            text-align: center;
+            font-size: 0.7rem;
+            opacity: 0.6;
+            pointer-events: none;
+        }
+
+        .feedback {
+            position: absolute;
+            top: 40%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 2rem;
+            font-weight: bold;
+            pointer-events: none;
+            text-shadow: 0 0 10px var(--accent);
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <div class="hud">
+            <a href="../../" class="back-btn">Back</a>
+            <div class="stats">
+                <div class="score" id="score-display">0</div>
+                <div class="best" id="best-display">Best: 0</div>
+            </div>
+            <button id="help-btn">?</button>
+        </div>
+
+        <canvas id="canvas"></canvas>
+        <div id="feedback" class="feedback">PERFECT!</div>
+        <div class="controls-hint">Lanes: D | F | J | K or Tap Bottom Lanes</div>
+
+        <!-- Start Screen -->
+        <div id="start-screen" class="overlay">
+            <h1>RHYTHM RESONATOR</h1>
+            <p>Notes will fall from the top. Hit the corresponding lane button exactly when the note crosses the neon target bar!</p>
+            <button class="btn" onclick="startGame()">Start Session</button>
+        </div>
+
+        <!-- Help Overlay -->
+        <div id="help-overlay" class="overlay hidden">
+            <h1>HOW TO PLAY</h1>
+            <p>Press D, F, J, or K (or tap the bottom of the screen) as the falling energy cores overlap the horizontal strike zone. Keep your combo high to maximize points!</p>
+            <button class="btn" onclick="toggleHelp()">Close</button>
+        </div>
+
+        <!-- Game Over -->
+        <div id="game-over" class="overlay hidden">
+            <h1>CONNECTION LOST</h1>
+            <p>Your resonance drifted too far.</p>
+            <div style="margin-bottom: 20px;">
+                <div>Final Score: <span id="final-score" style="color:var(--accent)">0</span></div>
+                <div>Best Score: <span id="final-best">0</span></div>
+            </div>
+            <button class="btn" onclick="startGame()">Try Again</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score-display');
+        const bestEl = document.getElementById('best-display');
+        const feedbackEl = document.getElementById('feedback');
+        const slug = 'rhythm-resonator';
+
+        let state = 'start';
+        let score = 0;
+        let multiplier = 1;
+        let health = 100;
+        let lastTime = 0;
+        let notes = [];
+        let lanes = 4;
+        let laneKeys = ['d', 'f', 'j', 'k'];
+        let laneColors = ['#F87171', '#34D399', '#60A5FA', '#FBBF24'];
+        let strikeZoneY = 0;
+        let noteSpeed = 300;
+        let spawnTimer = 0;
+        let spawnRate = 1000;
+
+        function init() {
+            resize();
+            window.addEventListener('resize', resize);
+            document.addEventListener('keydown', handleKey);
+            canvas.addEventListener('touchstart', handleTouch, {passive: false});
+            bestEl.innerText = 'Best: ' + (localStorage.getItem('fun_arcade_highscore_' + slug) || 0);
+        }
+
+        function resize() {
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+            strikeZoneY = canvas.height * 0.85;
+        }
+
+        function toggleHelp() {
+            document.getElementById('help-overlay').classList.toggle('hidden');
+        }
+
+        document.getElementById('help-btn').onclick = toggleHelp;
+
+        function startGame() {
+            score = 0;
+            health = 100;
+            multiplier = 1;
+            notes = [];
+            noteSpeed = 350;
+            spawnRate = 1200;
+            state = 'playing';
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('game-over').classList.add('hidden');
+            requestAnimationFrame(gameLoop);
+        }
+
+        function gameOver() {
+            state = 'gameover';
+            document.getElementById('game-over').classList.remove('hidden');
+            document.getElementById('final-score').innerText = Math.floor(score);
+            let high = localStorage.getItem('fun_arcade_highscore_' + slug) || 0;
+            if (score > high) {
+                localStorage.setItem('fun_arcade_highscore_' + slug, Math.floor(score));
+                high = Math.floor(score);
+            }
+            document.getElementById('final-best').innerText = high;
+            bestEl.innerText = 'Best: ' + high;
+        }
+
+        function handleKey(e) {
+            if (state !== 'playing') return;
+            const idx = laneKeys.indexOf(e.key.toLowerCase());
+            if (idx !== -1) checkHit(idx);
+        }
+
+        function handleTouch(e) {
+            if (state !== 'playing') return;
+            e.preventDefault();
+            const touch = e.changedTouches[0];
+            const rect = canvas.getBoundingClientRect();
+            const x = touch.clientX - rect.left;
+            const laneWidth = canvas.width / lanes;
+            const idx = Math.floor(x / laneWidth);
+            if (idx >= 0 && idx < lanes) checkHit(idx);
+        }
+
+        function checkHit(laneIdx) {
+            const hitWindow = 60;
+            let found = false;
+            for (let i = 0; i < notes.length; i++) {
+                if (notes[i].lane === laneIdx) {
+                    const dist = Math.abs(notes[i].y - strikeZoneY);
+                    if (dist < hitWindow) {
+                        showFeedback(dist < 25 ? 'PERFECT' : 'GOOD');
+                        score += (dist < 25 ? 100 : 50) * multiplier;
+                        multiplier = Math.min(multiplier + 0.1, 5);
+                        health = Math.min(health + 2, 100);
+                        notes.splice(i, 1);
+                        found = true;
+                        playTone(200 + laneIdx * 100, 0.1);
+                        break;
+                    }
+                }
+            }
+            if (!found) {
+                multiplier = 1;
+                health -= 5;
+            }
+        }
+
+        function showFeedback(txt) {
+            feedbackEl.innerText = txt;
+            feedbackEl.style.opacity = '1';
+            feedbackEl.style.color = txt === 'PERFECT' ? '#0EA5E9' : '#fff';
+            setTimeout(() => feedbackEl.style.opacity = '0', 300);
+        }
+
+        function playTone(freq, dur) {
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + dur);
+            } catch(e) {}
+        }
+
+        function gameLoop(time) {
+            if (state !== 'playing') return;
+            const dt = (time - lastTime) / 1000;
+            lastTime = time;
+
+            spawnTimer += dt * 1000;
+            if (spawnTimer > spawnRate) {
+                notes.push({ 
+                    lane: Math.floor(Math.random() * lanes), 
+                    y: -50 
+                });
+                spawnTimer = 0;
+                spawnRate = Math.max(400, spawnRate * 0.998);
+                noteSpeed += 0.5;
+            }
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Lanes background
+            const laneWidth = canvas.width / lanes;
+            for (let i = 0; i < lanes; i++) {
+                ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+                ctx.strokeRect(i * laneWidth, 0, laneWidth, canvas.height);
+            }
+
+            // Strike Zone
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#0EA5E9';
+            ctx.strokeStyle = '#0EA5E9';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(0, strikeZoneY);
+            ctx.lineTo(canvas.width, strikeZoneY);
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+
+            // Notes
+            for (let i = notes.length - 1; i >= 0; i--) {
+                notes[i].y += noteSpeed * dt;
+                
+                ctx.fillStyle = laneColors[notes[i].lane];
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = laneColors[notes[i].lane];
+                ctx.beginPath();
+                ctx.arc(notes[i].lane * laneWidth + laneWidth / 2, notes[i].y, 25, 0, Math.PI * 2);
+                ctx.fill();
+
+                if (notes[i].y > canvas.height + 50) {
+                    notes.splice(i, 1);
+                    health -= 15;
+                    multiplier = 1;
+                    showFeedback('MISS');
+                }
+            }
+
+            // Health bar
+            ctx.fillStyle = '#1f2937';
+            ctx.fillRect(0, canvas.height - 5, canvas.width, 5);
+            ctx.fillStyle = health > 30 ? '#0EA5E9' : '#ef4444';
+            ctx.fillRect(0, canvas.height - 5, (health / 100) * canvas.width, 5);
+
+            scoreEl.innerText = Math.floor(score);
+
+            if (health <= 0) gameOver();
+            else requestAnimationFrame(gameLoop);
+        }
+
+        init();
+    </script>
+</body>
+</html>
