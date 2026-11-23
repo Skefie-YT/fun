@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sling Shot Surge</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #10B981;
+            --bg: #0f172a;
+            --text: #f8fafc;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-touch-callout: none; }
+        body { background: var(--bg); color: var(--text); font-family: 'Outfit', sans-serif; overflow: hidden; height: 100dvh; }
+        #game-container { position: relative; width: 100%; height: 100%; max-width: 600px; margin: 0 auto; background: #020617; overflow: hidden; }
+        canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+        
+        .ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
+        .hud { display: flex; justify-content: space-between; align-items: center; padding: 1rem; pointer-events: auto; }
+        .back-btn { color: white; text-decoration: none; background: rgba(255,255,255,0.1); padding: 0.5rem 1rem; border-radius: 8px; font-weight: bold; }
+        .score-box { text-align: center; font-size: 1.5rem; font-weight: 700; text-shadow: 0 0 10px var(--accent); }
+        .btn-icon { background: rgba(255,255,255,0.1); border: none; color: white; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; }
+
+        .overlay { position: absolute; inset: 0; background: rgba(15, 23, 42, 0.9); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem; text-align: center; pointer-events: auto; z-index: 20; }
+        .hidden { display: none; }
+        h1 { font-size: 3rem; color: var(--accent); margin-bottom: 1rem; }
+        p { margin-bottom: 1.5rem; line-height: 1.6; opacity: 0.9; }
+        .main-btn { background: var(--accent); color: white; border: none; padding: 1rem 2.5rem; border-radius: 50px; font-size: 1.25rem; font-weight: 700; cursor: pointer; transition: transform 0.2s; }
+        .main-btn:active { transform: scale(0.95); }
+        
+        .controls-hint { position: absolute; bottom: 2rem; font-size: 0.8rem; opacity: 0.5; width: 100%; text-align: center; }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+
+        <div class="ui-layer">
+            <div class="hud">
+                <a href="../../" class="back-btn">Back</a>
+                <div class="score-box"><span id="currentScore">0</span>m</div>
+                <button class="btn-icon" onclick="toggleHelp()">?</button>
+            </div>
+
+            <div id="startScreen" class="overlay">
+                <h1>SLING SURGE</h1>
+                <p>Drag back to sling your energy orb between gravity anchors. Don't fall into the rising void!</p>
+                <button class="main-btn" onclick="startGame()">START MISSION</button>
+                <div class="controls-hint">Mouse Drag or Touch to Launch</div>
+            </div>
+
+            <div id="helpOverlay" class="overlay hidden">
+                <h2>How to Play</h2>
+                <p>Drag anywhere on screen to aim and set power. Release to launch your orb towards the glowing anchors. You can sling mid-air if you are near an anchor!</p>
+                <button class="main-btn" onclick="toggleHelp()">GOT IT</button>
+            </div>
+
+            <div id="gameOverScreen" class="overlay hidden">
+                <h1 style="color: #ef4444">VOID LOSS</h1>
+                <p>You reached <span id="finalScore">0</span> meters.<br>Best: <span id="bestScore">0</span>m</p>
+                <button class="main-btn" onclick="startGame()">RETRY</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('currentScore');
+        const slug = 'sling-shot-surge';
+
+        let state = {
+            playing: false,
+            score: 0,
+            cameraY: 0,
+            player: { x: 0, y: 0, vx: 0, vy: 0, radius: 12 },
+            anchors: [],
+            particles: [],
+            drag: { active: false, startX: 0, startY: 0, currentX: 0, currentY: 0 },
+            voidY: 0,
+            voidSpeed: 1.2
+        };
+
+        function resize() {
+            canvas.width = canvas.parentElement.clientWidth;
+            canvas.height = canvas.parentElement.clientHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        function spawnAnchor(y) {
+            return {
+                x: 50 + Math.random() * (canvas.width - 100),
+                y: y,
+                radius: 15 + Math.random() * 10,
+                pulse: 0
+            };
+        }
+
+        function init() {
+            state.score = 0;
+            state.cameraY = 0;
+            state.player = { x: canvas.width / 2, y: canvas.height - 100, vx: 0, vy: 0, radius: 12 };
+            state.voidY = canvas.height + 200;
+            state.voidSpeed = 1.2;
+            state.anchors = [];
+            for(let i=0; i<10; i++) {
+                state.anchors.push(spawnAnchor(canvas.height - i * 180 - 200));
+            }
+            updateScoreDisplay();
+        }
+
+        function updateScoreDisplay() {
+            scoreEl.innerText = Math.floor(state.score);
+        }
+
+        function startGame() {
+            document.getElementById('startScreen').classList.add('hidden');
+            document.getElementById('gameOverScreen').classList.add('hidden');
+            init();
+            state.playing = true;
+        }
+
+        function toggleHelp() {
+            document.getElementById('helpOverlay').classList.toggle('hidden');
+        }
+
+        // Inputs
+        const handleStart = (e) => {
+            if(!state.playing) return;
+            const pos = e.touches ? e.touches[0] : e;
+            const rect = canvas.getBoundingClientRect();
+            state.drag.active = true;
+            state.drag.startX = pos.clientX - rect.left;
+            state.drag.startY = pos.clientY - rect.top;
+            state.drag.currentX = state.drag.startX;
+            state.drag.currentY = state.drag.startY;
+        };
+
+        const handleMove = (e) => {
+            if(!state.drag.active) return;
+            const pos = e.touches ? e.touches[0] : e;
+            const rect = canvas.getBoundingClientRect();
+            state.drag.currentX = pos.clientX - rect.left;
+            state.drag.currentY = pos.clientY - rect.top;
+        };
+
+        const handleEnd = () => {
+            if(!state.drag.active) return;
+            state.drag.active = false;
+            const dx = state.drag.startX - state.drag.currentX;
+            const dy = state.drag.startY - state.drag.currentY;
+            const power = Math.min(Math.hypot(dx, dy) * 0.15, 20);
+            const angle = Math.atan2(dy, dx);
+            
+            state.player.vx = Math.cos(angle) * power;
+            state.player.vy = Math.sin(angle) * power;
+            
+            // Visual kick
+            for(let i=0; i<8; i++) spawnParticle(state.player.x, state.player.y, '#fff');
+        };
+
+        canvas.addEventListener('mousedown', handleStart);
+        window.addEventListener('mousemove', handleMove);
+        window.addEventListener('mouseup', handleEnd);
+        canvas.addEventListener('touchstart', handleStart);
+        window.addEventListener('touchmove', handleMove);
+        window.addEventListener('touchend', handleEnd);
+
+        function spawnParticle(x, y, color) {
+            state.particles.push({
+                x, y, 
+                vx: (Math.random() - 0.5) * 6,
+                vy: (Math.random() - 0.5) * 6,
+                life: 1,
+                color
+            });
+        }
+
+        function gameOver() {
+            state.playing = false;
+            const best = localStorage.getItem('fun_arcade_highscore_' + slug) || 0;
+            if (state.score > best) localStorage.setItem('fun_arcade_highscore_' + slug, Math.floor(state.score));
+            document.getElementById('finalScore').innerText = Math.floor(state.score);
+            document.getElementById('bestScore').innerText = Math.max(Math.floor(state.score), best);
+            document.getElementById('gameOverScreen').classList.remove('hidden');
+        }
+
+        function loop() {
+            ctx.fillStyle = '#020617';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if(state.playing) {
+                // Physics
+                state.player.vy += 0.25; // Gravity
+                state.player.x += state.player.vx;
+                state.player.y += state.player.vy;
+                state.player.vx *= 0.99;
+
+                // Camera
+                const targetCam = state.player.y - canvas.height * 0.6;
+                if(targetCam < state.cameraY) state.cameraY += (targetCam - state.cameraY) * 0.1;
+
+                // Score calculation (height based)
+                const heightScore = Math.max(0, (canvas.height - 100 - state.player.y) / 10);
+                if(heightScore > state.score) state.score = heightScore;
+                updateScoreDisplay();
+
+                // Bounds
+                if(state.player.x < 0 || state.player.x > canvas.width) state.player.vx *= -0.8;
+                
+                // Void logic
+                state.voidY -= state.voidSpeed;
+                state.voidSpeed += 0.0002;
+                if(state.player.y - state.cameraY > canvas.height + 50 || state.player.y > state.voidY) {
+                    gameOver();
+                }
+
+                // Anchors logic & generation
+                state.anchors.forEach(a => {
+                    a.pulse += 0.05;
+                    const dist = Math.hypot(state.player.x - a.x, state.player.y - a.y);
+                    if(dist < a.radius + state.player.radius) {
+                        // Bounce off anchors slightly if moving fast, or stick
+                        state.player.vy *= 0.5;
+                        state.player.vx *= 0.5;
+                    }
+                });
+
+                if(state.anchors[state.anchors.length-1].y - state.cameraY > -200) {
+                    state.anchors.push(spawnAnchor(state.anchors[state.anchors.length-1].y - 180 - Math.random() * 50));
+                }
+                if(state.anchors[0].y - state.cameraY > canvas.height + 100) state.anchors.shift();
+            }
+
+            // Draw Void
+            ctx.fillStyle = 'rgba(16, 185, 129, 0.2)';
+            ctx.fillRect(0, state.voidY - state.cameraY, canvas.width, canvas.height);
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = '#10B981';
+            ctx.strokeStyle = '#10B981';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(0, state.voidY - state.cameraY);
+            for(let i=0; i<=canvas.width; i+=20) {
+                ctx.lineTo(i, state.voidY - state.cameraY + Math.sin(Date.now()*0.005 + i*0.05) * 10);
+            }
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+
+            // Draw Anchors
+            state.anchors.forEach(a => {
+                const screenY = a.y - state.cameraY;
+                ctx.beginPath();
+                ctx.arc(a.x, screenY, a.radius + Math.sin(a.pulse)*3, 0, Math.PI*2);
+                ctx.strokeStyle = '#10B981';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.fillStyle = 'rgba(16, 185, 129, 0.3)';
+                ctx.fill();
+            });
+
+            // Draw Particles
+            state.particles.forEach((p, i) => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.02;
+                if(p.life <= 0) state.particles.splice(i, 1);
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.fillRect(p.x, p.y - state.cameraY, 4, 4);
+            });
+            ctx.globalAlpha = 1;
+
+            // Draw Drag Line
+            if(state.drag.active) {
+                ctx.setLineDash([5, 5]);
+                ctx.beginPath();
+                ctx.moveTo(state.player.x, state.player.y - state.cameraY);
+                const dx = state.drag.startX - state.drag.currentX;
+                const dy = state.drag.startY - state.drag.currentY;
+                ctx.lineTo(state.player.x + dx, state.player.y + dy - state.cameraY);
+                ctx.strokeStyle = 'white';
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+
+            // Draw Player
+            ctx.save();
+            ctx.translate(state.player.x, state.player.y - state.cameraY);
+            ctx.rotate(Math.atan2(state.player.vy, state.player.vx));
+            ctx.fillStyle = '#fff';
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#fff';
+            ctx.beginPath();
+            ctx.arc(0, 0, state.player.radius, 0, Math.PI*2);
+            ctx.fill();
+            ctx.restore();
+            ctx.shadowBlur = 0;
+
+            requestAnimationFrame(loop);
+        }
+
+        init();
+        loop();
+    </script>
+</body>
+</html>

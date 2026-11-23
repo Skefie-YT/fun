@@ -446,5 +446,13 @@
     "category": "Reflex",
     "accent": "#F59E0B",
     "addedAt": "2026-11-23T21:45:02Z"
+  },
+  {
+    "slug": "sling-shot-surge",
+    "title": "Sling Shot Surge",
+    "description": "Drag and release to sling your orb between gravity anchors. Climb as high as you can before the void catches you!",
+    "category": "Physics",
+    "accent": "#10B981",
+    "addedAt": "2026-11-23T22:44:15Z"
   }
 ]
