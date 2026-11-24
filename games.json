@@ -470,5 +470,13 @@
     "category": "Physics",
     "accent": "#E85D04",
     "addedAt": "2026-11-24T00:51:50Z"
+  },
+  {
+    "slug": "petal-pulse",
+    "title": "Petal Pulse",
+    "description": "Rotate and connect floral nodes to trigger explosive petal chain reactions and clear the board!",
+    "category": "Puzzle",
+    "accent": "#EC4899",
+    "addedAt": "2026-11-24T02:09:51Z"
   }
 ]
