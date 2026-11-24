@@ -478,5 +478,13 @@
     "category": "Puzzle",
     "accent": "#EC4899",
     "addedAt": "2026-11-24T02:09:51Z"
+  },
+  {
+    "slug": "banana-bounce-blitz",
+    "title": "Banana Bounce Blitz",
+    "description": "Tilt the paddle to bounce falling bananas into the fruit basket while avoiding the rotten peels!",
+    "category": "Physics",
+    "accent": "#E85D04",
+    "addedAt": "2026-11-24T03:00:15Z"
   }
 ]
