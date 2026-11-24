@@ -582,5 +582,13 @@
     "category": "Puzzle",
     "accent": "#EF4444",
     "addedAt": "2026-11-24T20:46:49Z"
+  },
+  {
+    "slug": "pulse-forge",
+    "title": "Pulse Forge",
+    "description": "Strike incoming molten beats on the left and right anvils in sync with the rhythm to build combos and ignite Forge Fever!",
+    "category": "Reflex",
+    "accent": "#E85D04",
+    "addedAt": "2026-11-24T21:49:07Z"
   }
 ]
