@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Stable Stack Flux</title>
+    <style>
+        :root {
+            --accent: #8B5CF6;
+            --bg: #0f172a;
+            --text: #f8fafc;
+        }
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            touch-action: none;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            overflow: hidden;
+            height: 100dvh;
+        }
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+        #ui-top {
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 10;
+            background: linear-gradient(to bottom, rgba(15,23,42,0.8), transparent);
+        }
+        .back-btn {
+            color: white;
+            text-decoration: none;
+            font-weight: bold;
+            background: rgba(255,255,255,0.1);
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 14px;
+        }
+        .stats {
+            text-align: center;
+            flex-grow: 1;
+        }
+        .score-val { font-size: 24px; font-weight: 800; color: var(--accent); }
+        .best-val { font-size: 12px; opacity: 0.8; }
+        .help-btn {
+            width: 35px; height: 35px;
+            border-radius: 50%;
+            border: 2px solid var(--accent);
+            background: transparent;
+            color: var(--accent);
+            cursor: pointer;
+            font-weight: bold;
+        }
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            background: radial-gradient(circle at 50% 50%, #1e1b4b 0%, #0f172a 100%);
+        }
+        .overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(15,23,42,0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            padding: 20px;
+            text-align: center;
+        }
+        .hidden { display: none !important; }
+        h1 { margin: 0 0 10px 0; color: var(--accent); text-transform: uppercase; letter-spacing: 2px; }
+        .btn-main {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            border-radius: 30px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 20px;
+            box-shadow: 0 0 20px rgba(139, 92, 246, 0.4);
+        }
+        .hint-bar {
+            position: absolute;
+            bottom: 20px;
+            width: 100%;
+            text-align: center;
+            opacity: 0.6;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div id="ui-top">
+        <a href="../../" class="back-btn">Back</a>
+        <div class="stats">
+            <div class="score-val" id="score">0</div>
+            <div class="best-val">BEST: <span id="best-score">0</span></div>
+        </div>
+        <button class="help-btn" id="help-trigger">?</button>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <div id="start-screen" class="overlay">
+        <h1>Stable Stack Flux</h1>
+        <p>A precision balancing challenge.<br>Drop blocks to build a stable tower on the shifting platform!</p>
+        <button class="btn-main" id="start-btn">INITIALIZE</button>
+        <div class="hint-bar">Tap or Space to drop blocks</div>
+    </div>
+
+    <div id="help-screen" class="overlay hidden">
+        <h1>How to Play</h1>
+        <p>1. A shape moves horizontally at the top.<br>2. Tap to drop it onto the platform.<br>3. Keep the tower balanced within the screen.<br>4. Don't let shapes fall off the edges!</p>
+        <button class="btn-main" id="close-help">GOT IT</button>
+    </div>
+
+    <div id="game-over-screen" class="overlay hidden">
+        <h1 style="color: #ef4444;">Tower Collapsed</h1>
+        <p id="final-score-msg">Score: 0</p>
+        <button class="btn-main" id="restart-btn">RETRY</button>
+    </div>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const scoreEl = document.getElementById('score');
+const bestEl = document.getElementById('best-score');
+const startScreen = document.getElementById('start-screen');
+const gameOverScreen = document.getElementById('game-over-screen');
+const helpScreen = document.getElementById('help-screen');
+
+// Game State
+let score = 0;
+let bestScore = localStorage.getItem('fun_arcade_highscore_stable-stack-flux') || 0;
+bestEl.innerText = bestScore;
+
+let gameActive = false;
+let world = {
+    gravity: 0.25,
+    friction: 0.98,
+    ground: { y: 0, x: 0, w: 150, h: 20, speed: 0.02, t: 0 },
+    blocks: [],
+    activeBlock: null,
+    cameraY: 0,
+    targetCameraY: 0
+};
+
+class Block {
+    constructor(x, y, w, h, isStatic = false) {
+        this.x = x;
+        this.y = y;
+        this.w = w;
+        this.h = h;
+        this.vx = 0;
+        this.vy = 0;
+        this.angle = 0;
+        this.va = 0;
+        this.isStatic = isStatic;
+        this.color = `hsl(${Math.random() * 60 + 260}, 70%, 60%)`;
+        this.settled = false;
+    }
+
+    update() {
+        if (this.isStatic) {
+            world.ground.t += world.ground.speed;
+            this.x = (canvas.width/2 - this.w/2) + Math.sin(world.ground.t) * (canvas.width * 0.2);
+            return;
+        }
+
+        this.vy += world.gravity;
+        this.vx *= world.friction;
+        this.x += this.vx;
+        this.y += this.vy;
+        this.angle += this.va;
+        this.va *= 0.95;
+
+        // Collision check with blocks below and ground
+        const allColliders = [world.ground, ...world.blocks.filter(b => b !== this && b.y > this.y - 100)];
+        
+        allColliders.forEach(other => {
+            if (this.checkCollision(other)) {
+                this.resolveCollision(other);
+            }
+        });
+
+        // Out of bounds
+        if (this.y > canvas.height + 500 || this.x < -this.w || this.x > canvas.width) {
+            endGame();
+        }
+    }
+
+    checkCollision(other) {
+        return this.x < other.x + other.w &&
+               this.x + this.w > other.x &&
+               this.y + this.h > other.y &&
+               this.y < other.y + other.h;
+    }
+
+    resolveCollision(other) {
+        const overlapY = (this.y + this.h) - other.y;
+        if (overlapY > 0 && this.vy > 0) {
+            this.y -= overlapY;
+            this.vy *= -0.2; // Bounce
+            
+            // Physics: Tilt based on offset from center
+            const centerSelf = this.x + this.w/2;
+            const centerOther = other.x + other.w/2;
+            const offset = (centerSelf - centerOther) / (other.w/2);
+            
+            this.vx += offset * 2;
+            this.va += offset * 0.02;
+            
+            if (!this.settled) {
+                this.settled = true;
+                score++;
+                scoreEl.innerText = score;
+                updateCamera();
+                spawnActiveBlock();
+            }
+        }
+    }
+
+    draw() {
+        ctx.save();
+        ctx.translate(this.x + this.w/2, this.y + this.h/2 - world.cameraY);
+        ctx.rotate(this.angle);
+        
+        // Glow
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = this.color;
+        
+        ctx.fillStyle = this.color;
+        ctx.fillRect(-this.w/2, -this.h/2, this.w, this.h);
+        
+        // Detail
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(-this.w/2 + 4, -this.h/2 + 4, this.w - 8, this.h - 8);
+        
+        ctx.restore();
+    }
+}
+
+function init() {
+    resize();
+    world.ground = new Block(canvas.width/2 - 75, canvas.height - 100, 150, 20, true);
+    world.ground.color = '#8B5CF6';
+    world.blocks = [];
+    world.cameraY = 0;
+    world.targetCameraY = 0;
+    score = 0;
+    scoreEl.innerText = 0;
+    gameActive = true;
+    spawnActiveBlock();
+    requestAnimationFrame(loop);
+}
+
+function spawnActiveBlock() {
+    const w = 40 + Math.random() * 40;
+    const h = 30 + Math.random() * 20;
+    world.activeBlock = {
+        x: 0, 
+        y: 80 + world.targetCameraY,
+        w: w, 
+        h: h, 
+        t: Math.random() * 10, 
+        speed: 0.03 + (score * 0.002)
+    };
+}
+
+function updateCamera() {
+    if (score > 3) {
+        world.targetCameraY = (score - 3) * -40;
+    }
+}
+
+function dropBlock() {
+    if (!gameActive || !world.activeBlock) return;
+    
+    const b = new Block(
+        world.activeBlock.x, 
+        world.activeBlock.y, 
+        world.activeBlock.w, 
+        world.activeBlock.h
+    );
+    world.blocks.push(b);
+    world.activeBlock = null;
+    
+    // Feedback
+    ctx.canvas.style.transform = 'translateY(5px)';
+    setTimeout(() => ctx.canvas.style.transform = 'translateY(0)', 50);
+}
+
+function loop() {
+    if (!gameActive) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Smooth Camera
+    world.cameraY += (world.targetCameraY - world.cameraY) * 0.1;
+
+    // Ground update
+    world.ground.update();
+    world.ground.draw();
+
+    // Active Preview
+    if (world.activeBlock) {
+        world.activeBlock.t += world.activeBlock.speed;
+        world.activeBlock.x = (canvas.width/2 - world.activeBlock.w/2) + Math.sin(world.activeBlock.t) * (canvas.width * 0.4);
+        
+        ctx.save();
+        ctx.globalAlpha = 0.5;
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(world.activeBlock.x, world.activeBlock.y - world.cameraY, world.activeBlock.w, world.activeBlock.h);
+        ctx.restore();
+    }
+
+    // Blocks
+    world.blocks.forEach(b => {
+        b.update();
+        b.draw();
+    });
+
+    requestAnimationFrame(loop);
+}
+
+function endGame() {
+    gameActive = false;
+    if (score > bestScore) {
+        bestScore = score;
+        localStorage.setItem('fun_arcade_highscore_stable-stack-flux', bestScore);
+        bestEl.innerText = bestScore;
+    }
+    document.getElementById('final-score-msg').innerText = `Final Score: ${score}`;
+    gameOverScreen.classList.remove('hidden');
+}
+
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    if (world.ground) {
+        world.ground.y = canvas.height - 100;
+    }
+}
+
+// Controls
+window.addEventListener('resize', resize);
+window.addEventListener('mousedown', (e) => {
+    if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'A') dropBlock();
+});
+window.addEventListener('touchstart', (e) => {
+    if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'A') dropBlock();
+});
+window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space') dropBlock();
+});
+
+document.getElementById('start-btn').onclick = () => {
+    startScreen.classList.add('hidden');
+    init();
+};
+document.getElementById('restart-btn').onclick = () => {
+    gameOverScreen.classList.add('hidden');
+    init();
+};
+document.getElementById('help-trigger').onclick = () => helpScreen.classList.remove('hidden');
+document.getElementById('close-help').onclick = () => helpScreen.classList.add('hidden');
+
+resize();
+</script>
+</body>
+</html>

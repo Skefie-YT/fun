@@ -566,5 +566,13 @@
     "category": "Puzzle",
     "accent": "#E85D04",
     "addedAt": "2026-11-24T15:57:47Z"
+  },
+  {
+    "slug": "stable-stack-flux",
+    "title": "Stable Stack Flux",
+    "description": "Drop neon shapes to build a balanced tower on a moving hover-platform. Don't let the flux tip your tower!",
+    "category": "Physics",
+    "accent": "#8B5CF6",
+    "addedAt": "2026-11-24T19:56:43Z"
   }
 ]
