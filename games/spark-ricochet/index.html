@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Spark Ricochet - Fun Arcade</title>
+<style>
+  :root {
+    --accent: #E85D04;
+    --accent-glow: rgba(232, 93, 4, 0.5);
+    --bg: #0b0d14;
+    --panel: #141824;
+    --text: #f4f6fb;
+    --muted: #8b95b0;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
+  html, body {
+    width: 100%;
+    height: 100dvh;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    display: flex;
+    flex-direction: column;
+  }
+  .topbar {
+    height: 52px;
+    padding: 0 14px;
+    background: rgba(20, 24, 36, 0.92);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+    z-index: 20;
+  }
+  .back-btn {
+    color: var(--text);
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.08);
+    transition: background 0.15s;
+  }
+  .back-btn:hover { background: rgba(255,255,255,0.16); }
+  .hud {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    font-size: 14px;
+    font-weight: 700;
+  }
+  .hud-item span { color: var(--muted); font-weight: 500; font-size: 12px; margin-right: 4px; }
+  .hud-val { color: var(--accent); }
+  .controls-right {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .icon-btn {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.06);
+    color: var(--text);
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s;
+  }
+  .icon-btn:hover { background: rgba(255,255,255,0.14); }
+  .stage-wrap {
+    flex: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px;
+    overflow: hidden;
+  }
+  canvas {
+    max-width: 100%;
+    max-height: 100%;
+    aspect-ratio: 480 / 720;
+    background: radial-gradient(circle at 50% 35%, #161b2e 0%, #0b0d14 100%);
+    border-radius: 14px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.08);
+    touch-action: none;
+    cursor: crosshair;
+  }
+  .overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(11, 13, 20, 0.86);
+    backdrop-filter: blur(6px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 15;
+    padding: 20px;
+  }
+  .overlay.hidden { display: none; }
+  .card {
+    background: var(--panel);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 18px;
+    padding: 28px 24px;
+    max-width: 360px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+  }
+  .card h1 {
+    font-size: 28px;
+    margin-bottom: 10px;
+    background: linear-gradient(135deg, #fff, var(--accent));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .card p {
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.5;
+    margin-bottom: 20px;
+  }
+  .btn-primary {
+    width: 100%;
+    padding: 13px 20px;
+    border: none;
+    border-radius: 12px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 6px 20px var(--accent-glow);
+    transition: transform 0.1s, filter 0.15s;
+  }
+  .btn-primary:hover { filter: brightness(1.1); }
+  .btn-primary:active { transform: scale(0.97); }
+  .hint-bar {
+    margin-top: 14px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .stat-row {
+    display: flex;
+    justify-content: space-around;
+    margin: 16px 0 22px;
+    padding: 12px;
+    background: rgba(0,0,0,0.25);
+    border-radius: 12px;
+  }
+  .stat-box div:first-child { font-size: 11px; color: var(--muted); text-transform: uppercase; }
+  .stat-box div:last-child { font-size: 22px; font-weight: 800; color: var(--text); margin-top: 2px; }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <a href="../../" class="back-btn">Back</a>
+    <div class="hud">
+      <div class="hud-item"><span>LVL</span><b id="hud-lvl" class="hud-val">1</b></div>
+      <div class="hud-item"><span>SCORE</span><b id="hud-score" class="hud-val">0</b></div>
+      <div class="hud-item"><span>BEST</span><b id="hud-best">0</b></div>
+    </div>
+    <div class="controls-right">
+      <button id="mute-btn" class="icon-btn" title="Toggle Sound">🔊</button>
+      <button id="help-btn" class="icon-btn" title="How to Play">?</button>
+    </div>
+  </div>
+
+  <div class="stage-wrap">
+    <canvas id="game" width="480" height="720"></canvas>
+
+    <div id="start-overlay" class="overlay">
+      <div class="card">
+        <h1>Spark Ricochet</h1>
+        <p>Pull back to aim and launch your plasma spark. Bank off walls to shatter every target core before your sparks run out!</p>
+        <button id="start-btn" class="btn-primary">Launch Game</button>
+        <div class="hint-bar">Drag &amp; release to shoot • R to restart</div>
+      </div>
+    </div>
+
+    <div id="help-overlay" class="overlay hidden">
+      <div class="card">
+        <h1>How to Play</h1>
+        <p><strong>Goal:</strong> Shatter all cyan target cores in each stage using your limited sparks.<br><br>
+        <strong>Controls:</strong> Drag anywhere on the board to pull back and aim. Release to fire!<br><br>
+        <strong>Tips:</strong> Bank shots &amp; multi-hits multiply your score. Avoid red Void Blocks—they destroy your spark!</p>
+        <button id="close-help-btn" class="btn-primary">Got It</button>
+      </div>
+    </div>
+
+    <div id="gameover-overlay" class="overlay hidden">
+      <div class="card">
+        <h1>Out of Sparks!</h1>
+        <p>Your plasma core ran dry. Ready for another run?</p>
+        <div class="stat-row">
+          <div class="stat-box"><div>Score</div><div id="final-score">0</div></div>
+          <div class="stat-box"><div>Best</div><div id="final-best">0</div></div>
+        </div>
+        <button id="retry-btn" class="btn-primary">Play Again</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const SLUG = 'spark-ricochet';
+  const HS_KEY = 'fun_arcade_highscore_' + SLUG;
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const W = 480, H = 720;
+
+  // UI Elements
+  const hudLvl = document.getElementById('hud-lvl');
+  const hudScore = document.getElementById('hud-score');
+  const hudBest = document.getElementById('hud-best');
+  const startOverlay = document.getElementById('start-overlay');
+  const helpOverlay = document.getElementById('help-overlay');
+  const gameoverOverlay = document.getElementById('gameover-overlay');
+  const finalScoreEl = document.getElementById('final-score');
+  const finalBestEl = document.getElementById('final-best');
+  const muteBtn = document.getElementById('mute-btn');
+
+  // Audio
+  let audioCtx = null;
+  let muted = false;
+  function initAudio() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  }
+  function playTone(freq, type = 'sine', dur = 0.1, vol = 0.15, slide = 0) {
+    if (muted || !audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    if (slide) osc.frequency.exponentialRampToValueAtTime(Math.max(40, freq + slide), audioCtx.currentTime + dur);
+    gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + dur);
+  }
+
+  muteBtn.onclick = () => {
+    muted = !muted;
+    muteBtn.textContent = muted ? '🔇' : '🔊';
+  };
+
+  // Game State
+  let bestScore = parseInt(localStorage.getItem(HS_KEY) || '0', 10);
+  hudBest.textContent = bestScore;
+
+  let score = 0;
+  let level = 1;
+  let sparksLeft = 3;
+  let combo = 0;
+  let shake = 0;
+  let gameState = 'START'; // START, AIM, FLYING, STAGE_CLEAR, GAMEOVER
+  let stageClearTimer = 0;
+
+  const launcher = { x: W / 2, y: H - 70 };
+  let spark = null;
+  let trail = [];
+  let targets = [];
+  let walls = [];
+  let particles = [];
+  let floatTexts = [];
+
+  // Drag Aiming
+  let isDragging = false;
+  let dragStart = { x: 0, y: 0 };
+  let dragCurr = { x: 0, y: 0 };
+  let aimAngle = -Math.PI / 2;
+  let aimPower = 0;
+
+  function spawnParticles(x, y, color, count = 14) {
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = 1.5 + Math.random() * 5;
+      particles.push({
+        x, y,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp,
+        life: 1,
+        decay: 0.025 + Math.random() * 0.025,
+        size: 2 + Math.random() * 4,
+        color
+      });
+    }
+  }
+
+  function addFloatText(x, y, text, color = '#fff') {
+    floatTexts.push({ x, y, text, color, life: 1 });
+  }
+
+  function buildLevel(lvl) {
+    targets = [];
+    walls = [];
+    sparksLeft = 3;
+    spark = null;
+    trail = [];
+    combo = 0;
+
+    // Procedural + structured level generator
+    const numTargets = Math.min(3 + Math.floor(lvl * 0.7), 8);
+    const pad = 65;
+
+    // Place targets in upper 60% of arena
+    for (let i = 0; i < numTargets; i++) {
+      let tx, ty, ok;
+      for (let tries = 0; tries < 40; tries++) {
+        tx = pad + Math.random() * (W - pad * 2);
+        ty = 90 + Math.random() * (H * 0.48);
+        ok = targets.every(t => Math.hypot(t.x - tx, t.y - ty) > 64);
+        if (ok) break;
+      }
+      const moving = lvl >= 4 && i % 3 === 0;
+      targets.push({
+        x: tx, y: ty, r: 18,
+        baseX: tx,
+        vx: moving ? (Math.random() < 0.5 ? 1.2 : -1.2) * (1 + lvl * 0.05) : 0,
+        pulse: Math.random() * Math.PI * 2
+      });
+    }
+
+    // Place reflector walls & void hazards
+    const numWalls = Math.min(2 + Math.floor(lvl * 0.6), 7);
+    for (let i = 0; i < numWalls; i++) {
+      const isVoid = lvl >= 2 && i === 0 || (lvl >= 5 && i % 3 === 0);
+      const w = 70 + Math.random() * 60;
+      const h = 16;
+      let wx, wy, ok;
+      for (let tries = 0; tries < 40; tries++) {
+        wx = 40 + Math.random() * (W - w - 80);
+        wy = 130 + Math.random() * (H - 310);
+        ok = targets.every(t => t.x < wx - 25 || t.x > wx + w + 25 || t.y < wy - 25 || t.y > wy + h + 25);
+        if (ok) break;
+      }
+      walls.push({ x: wx, y: wy, w, h, isVoid });
+    }
+  }
+
+  function startGame() {
+    initAudio();
+    score = 0;
+    level = 1;
+    updateHUD();
+    buildLevel(level);
+    gameState = 'AIM';
+    startOverlay.classList.add('hidden');
+    gameoverOverlay.classList.add('hidden');
+    helpOverlay.classList.add('hidden');
+  }
+
+  function updateHUD() {
+    hudLvl.textContent = level;
+    hudScore.textContent = score;
+    if (score > bestScore) {
+      bestScore = score;
+      localStorage.setItem(HS_KEY, bestScore);
+    }
+    hudBest.textContent = bestScore;
+  }
+
+  function getCanvasPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    return {
+      x: (clientX - rect.left) * (W / rect.width),
+      y: (clientY - rect.top) * (H / rect.height)
+    };
+  }
+
+  function onPointerDown(e) {
+    if (gameState !== 'AIM') return;
+    initAudio();
+    isDragging = true;
+    dragStart = getCanvasPos(e);
+    dragCurr = { ...dragStart };
+  }
+
+  function onPointerMove(e) {
+    if (!isDragging || gameState !== 'AIM') return;
+    dragCurr = getCanvasPos(e);
+    const dx = dragStart.x - dragCurr.x;
+    const dy = dragStart.y - dragCurr.y;
+    const dist = Math.hypot(dx, dy);
+    aimPower = Math.min(dist / 140, 1);
+    if (dist > 8) {
+      aimAngle = Math.atan2(dy, dx);
+    }
+  }
+
+  function onPointerUp() {
+    if (!isDragging || gameState !== 'AIM') return;
+    isDragging = false;
+    if (aimPower > 0.12) {
+      const speed = 11 + aimPower * 5;
+      spark = {
+        x: launcher.x,
+        y: launcher.y,
+        vx: Math.cos(aimAngle) * speed,
+        vy: Math.sin(aimAngle) * speed,
+        r: 9,
+        bounces: 0,
+        maxBounces: 9
+      };
+      trail = [];
+      combo = 0;
+      sparksLeft--;
+      gameState = 'FLYING';
+      playTone(320, 'triangle', 0.14, 0.18, 220);
+    }
+    aimPower = 0;
+  }
+
+  canvas.addEventListener('mousedown', onPointerDown);
+  window.addEventListener('mousemove', onPointerMove);
+  window.addEventListener('mouseup', onPointerUp);
+  canvas.addEventListener('touchstart', (e) => { e.preventDefault(); onPointerDown(e); }, { passive: false });
+  window.addEventListener('touchmove', (e) => { if (isDragging) { e.preventDefault(); onPointerMove(e); } }, { passive: false });
+  window.addEventListener('touchend', onPointerUp);
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'r' || e.key === 'R') {
+      if (gameState === 'AIM' || gameState === 'GAMEOVER') startGame();
+    }
+  });
+
+  document.getElementById('start-btn').onclick = startGame;
+  document.getElementById('retry-btn').onclick = startGame;
+  document.getElementById('help-btn').onclick = () => helpOverlay.classList.remove('hidden');
+  document.getElementById('close-help-btn').onclick = () => helpOverlay.classList.add('hidden');
+
+  function update() {
+    if (shake > 0) shake *= 0.85;
+    if (shake < 0.3) shake = 0;
+
+    // Update particles
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx; p.y += p.vy;
+      p.life -= p.decay;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+
+    // Update float texts
+    for (let i = floatTexts.length - 1; i >= 0; i--) {
+      const ft = floatTexts[i];
+      ft.y -= 0.9;
+      ft.life -= 0.02;
+      if (ft.life <= 0) floatTexts.splice(i, 1);
+    }
+
+    // Move targets
+    for (const t of targets) {
+      t.pulse += 0.06;
+      if (t.vx !== 0) {
+        t.x += t.vx;
+        if (t.x < 40 || t.x > W - 40) t.vx *= -1;
+      }
+    }
+
+    if (gameState === 'STAGE_CLEAR') {
+      stageClearTimer--;
+      if (stageClearTimer <= 0) {
+        level++;
+        updateHUD();
+        buildLevel(level);
+        gameState = 'AIM';
+      }
+      return;
+    }
+
+    if (gameState === 'FLYING' && spark) {
+      // Sub-stepping for accurate collisions
+      const steps = 3;
+      for (let s = 0; s < steps; s++) {
+        spark.x += spark.vx / steps;
+        spark.y += spark.vy / steps;
+
+        // Wall bounds
+        if (spark.x - spark.r < 0) { spark.x = spark.r; spark.vx *= -1; spark.bounces++; playTone(220, 'sine', 0.06, 0.1); }
+        if (spark.x + spark.r > W) { spark.x = W - spark.r; spark.vx *= -1; spark.bounces++; playTone(220, 'sine', 0.06, 0.1); }
+        if (spark.y - spark.r < 0) { spark.y = spark.r; spark.vy *= -1; spark.bounces++; playTone(220, 'sine', 0.06, 0.1); }
+        if (spark.y + spark.r > H) {
+          // Bottom out
+          spark = null;
+          break;
+        }
+
+        // Obstacle walls
+        let destroyed = false;
+        for (const w of walls) {
+          const cx = Math.max(w.x, Math.min(spark.x, w.x + w.w));
+          const cy = Math.max(w.y, Math.min(spark.y, w.y + w.h));
+          const dx = spark.x - cx;
+          const dy = spark.y - cy;
+          if (dx * dx + dy * dy < spark.r * spark.r) {
+            if (w.isVoid) {
+              spawnParticles(spark.x, spark.y, '#ef4444', 20);
+              playTone(120, 'sawtooth', 0.25, 0.2, -60);
+              shake = 8;
+              spark = null;
+              destroyed = true;
+              break;
+            } else {
+              if (Math.abs(dx) > Math.abs(dy)) spark.vx *= -1;
+              else spark.vy *= -1;
+              spark.x += spark.vx * 0.4;
+              spark.y += spark.vy * 0.4;
+              spark.bounces++;
+              spawnParticles(cx, cy, '#E85D04', 6);
+              playTone(280 + spark.bounces * 30, 'sine', 0.06, 0.12);
+            }
+          }
+        }
+        if (destroyed || !spark) break;
+
+        // Targets
+        for (let i = targets.length - 1; i >= 0; i--) {
+          const t = targets[i];
+          const dist = Math.hypot(spark.x - t.x, spark.y - t.y);
+          if (dist < spark.r + t.r) {
+            combo++;
+            const pts = 100 * combo + spark.bounces * 25;
+            score += pts;
+            updateHUD();
+            spawnParticles(t.x, t.y, '#00f5d4', 20);
+            addFloatText(t.x, t.y - 10, `+${pts}${combo > 1 ? ' x' + combo : ''}`, '#00f5d4');
+            playTone(440 + combo * 90, 'triangle', 0.15, 0.18, 150);
+            shake = 5;
+            targets.splice(i, 1);
+          }
+        }
+
+        if (spark && spark.bounces >= spark.maxBounces) {
+          spawnParticles(spark.x, spark.y, '#E85D04', 12);
+          spark = null;
+          break;
+        }
+      }
+
+      if (spark) {
+        trail.push({ x: spark.x, y: spark.y });
+        if (trail.length > 18) trail.shift();
+      }
+
+      // Check stage clear or next spark
+      if (targets.length === 0) {
+        const bonus = sparksLeft * 250;
+        if (bonus > 0) {
+          score += bonus;
+          updateHUD();
+          addFloatText(W / 2, H / 2, `CLEAR BONUS +${bonus}`, '#ffd166');
+        }
+        playTone(523, 'triangle', 0.3, 0.2, 260);
+        gameState = 'STAGE_CLEAR';
+        stageClearTimer = 55;
+        spark = null;
+      } else if (!spark) {
+        if (sparksLeft > 0) {
+          gameState = 'AIM';
+        } else {
+          gameState = 'GAMEOVER';
+          finalScoreEl.textContent = score;
+          finalBestEl.textContent = bestScore;
+          gameoverOverlay.classList.remove('hidden');
+        }
+      }
+    }
+  }
+
+  function draw() {
+    ctx.save();
+    if (shake > 0) {
+      ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
+    }
+    ctx.clearRect(0, 0, W, H);
+
+    // Subtle grid
+    ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+    ctx.lineWidth = 1;
+    for (let x = 0; x < W; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+    for (let y = 0; y < H; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+
+    // Draw walls
+    for (const w of walls) {
+      ctx.fillStyle = w.isVoid ? 'rgba(239, 68, 68, 0.25)' : 'rgba(255, 255, 255, 0.12)';
+      ctx.strokeStyle = w.isVoid ? '#ef4444' : 'rgba(255, 255, 255, 0.35)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(w.x, w.y, w.w, w.h, 6);
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    // Draw targets
+    for (const t of targets) {
+      const glow = 4 + Math.sin(t.pulse) * 3;
+      ctx.shadowColor = '#00f5d4';
+      ctx.shadowBlur = 12 + glow;
+      ctx.fillStyle = '#00f5d4';
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, t.r * 0.45, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Draw launcher & remaining sparks
+    for (let i = 0; i < sparksLeft; i++) {
+      ctx.fillStyle = i === 0 && gameState === 'AIM' ? '#E85D04' : 'rgba(232, 93, 4, 0.45)';
+      ctx.beginPath();
+      ctx.arc(launcher.x - 24 + i * 24, H - 24, 6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(launcher.x, launcher.y, 16, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Aim line
+    if (isDragging && aimPower > 0.12 && gameState === 'AIM') {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(232, 93, 4, 0.75)';
+      ctx.setLineDash([6, 6]);
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(launcher.x, launcher.y);
+      const len = 120 + aimPower * 160;
+      ctx.lineTo(launcher.x + Math.cos(aimAngle) * len, launcher.y + Math.sin(aimAngle) * len);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Trail
+    for (let i = 0; i < trail.length; i++) {
+      const pt = trail[i];
+      const alpha = (i / trail.length) * 0.5;
+      ctx.fillStyle = `rgba(232, 93, 4, ${alpha})`;
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, 8 * (i / trail.length), 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Spark
+    if (spark) {
+      ctx.shadowColor = '#E85D04';
+      ctx.shadowBlur = 16;
+      ctx.fillStyle = '#E85D04';
+      ctx.beginPath();
+      ctx.arc(spark.x, spark.y, spark.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc(spark.x, spark.y, spark.r * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Particles
+    for (const p of particles) {
+      ctx.globalAlpha = p.life;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // Float texts
+    ctx.font = 'bold 16px sans-serif';
+    ctx.textAlign = 'center';
+    for (const ft of floatTexts) {
+      ctx.globalAlpha = ft.life;
+      ctx.fillStyle = ft.color;
+      ctx.fillText(ft.text, ft.x, ft.y);
+    }
+    ctx.globalAlpha = 1;
+
+    ctx.restore();
+  }
+
+  function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+  }
+  loop();
+})();
+</script>
+</body>
+</html>

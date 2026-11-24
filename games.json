@@ -462,5 +462,13 @@
     "category": "Physics",
     "accent": "#14B8A6",
     "addedAt": "2026-11-23T23:44:19Z"
+  },
+  {
+    "slug": "spark-ricochet",
+    "title": "Spark Ricochet",
+    "description": "Pull back to aim and launch your plasma spark, banking off walls to shatter every target core before your sparks run out!",
+    "category": "Physics",
+    "accent": "#E85D04",
+    "addedAt": "2026-11-24T00:51:50Z"
   }
 ]
