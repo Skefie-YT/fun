@@ -510,5 +510,13 @@
     "category": "Action",
     "accent": "#8B5CF6",
     "addedAt": "2026-11-24T03:51:12Z"
+  },
+  {
+    "slug": "spark-cascade",
+    "title": "Spark Cascade",
+    "description": "Detonate tiles to fire 4-way spark waves that chain-react with matching colors across the grid!",
+    "category": "Puzzle",
+    "accent": "#F59E0B",
+    "addedAt": "2026-11-24T04:57:46Z"
   }
 ]
