@@ -558,5 +558,13 @@
     "category": "Reflex",
     "accent": "#EF4444",
     "addedAt": "2026-11-24T13:00:02Z"
+  },
+  {
+    "slug": "kinetic-fusion-chain",
+    "title": "Kinetic Fusion",
+    "description": "Tap to fuse adjacent colored atoms and trigger massive chain reactions before the energy board stabilizes!",
+    "category": "Puzzle",
+    "accent": "#E85D04",
+    "addedAt": "2026-11-24T15:57:47Z"
   }
 ]
