@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Cube Vault Dash</title>
+    <style>
+        :root {
+            --accent: #EC4899;
+            --bg: #0f172a;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Roboto, sans-serif; user-select: none; }
+        body { background: var(--bg); color: white; overflow: hidden; height: 100dvh; }
+        #game-container { position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; }
+        
+        /* HUD */
+        .hud { position: absolute; top: 0; left: 0; width: 100%; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; z-index: 10; }
+        .back-btn { color: white; text-decoration: none; background: rgba(255,255,255,0.1); padding: 6px 12px; border-radius: 4px; font-size: 14px; }
+        .stats { display: flex; gap: 20px; font-weight: bold; text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
+        .help-btn { width: 30px; height: 30px; border-radius: 50%; border: none; background: rgba(255,255,255,0.1); color: white; cursor: pointer; }
+
+        canvas { display: block; width: 100%; height: 100%; touch-action: none; background: linear-gradient(to bottom, #1e293b, #0f172a); }
+
+        /* Overlays */
+        .overlay { position: absolute; inset: 0; background: rgba(15, 23, 42, 0.85); display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; z-index: 20; padding: 20px; }
+        .hidden { display: none !important; }
+        h1 { font-size: 3rem; margin-bottom: 10px; color: var(--accent); text-transform: uppercase; letter-spacing: 2px; }
+        .btn-play { background: var(--accent); color: white; border: none; padding: 15px 40px; font-size: 1.5rem; border-radius: 50px; cursor: pointer; transition: transform 0.2s; margin-top: 20px; }
+        .btn-play:hover { transform: scale(1.05); }
+        .controls-hint { position: absolute; bottom: 30px; opacity: 0.6; font-size: 0.9rem; }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div class="hud">
+        <a href="../../" class="back-btn">Back</a>
+        <div class="stats">
+            <span>SCORE: <span id="score">0</span>%</span>
+            <span>BEST: <span id="best">0</span>%</span>
+        </div>
+        <button class="help-btn" id="helpBtn">?</button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="startScreen" class="overlay">
+        <h1>Cube Vault</h1>
+        <p>Jump over spikes and navigate gravity portals.<br>Tap, Click, or press Space to jump!</p>
+        <button class="btn-play" onclick="startGame()">START DASH</button>
+        <div class="controls-hint">Space / Tap to Jump</div>
+    </div>
+
+    <div id="helpOverlay" class="overlay hidden">
+        <h2>How to Play</h2>
+        <p style="margin: 15px 0; line-height: 1.6;">
+            1. The cube moves automatically.<br>
+            2. Tap or press Space to jump.<br>
+            3. Blue portals change gravity mode.<br>
+            4. Avoid the spikes! Reach 100% to win.
+        </p>
+        <button class="btn-play" onclick="toggleHelp()">CLOSE</button>
+    </div>
+
+    <div id="gameOverScreen" class="overlay hidden">
+        <h1 id="overTitle">CRASHED!</h1>
+        <p id="finalScore">Progress: 0%</p>
+        <button class="btn-play" onclick="startGame()">TRY AGAIN</button>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score');
+    const bestEl = document.getElementById('best');
+    const slug = 'cube-vault-dash';
+
+    // Game Constants
+    const GRAVITY = 0.65;
+    const JUMP_FORCE = -10;
+    const SHIP_THRUST = -0.4;
+    const GROUND_Y = 0.8; // Percentage from top
+    const PLAYER_SIZE = 40;
+
+    // State
+    let gameActive = false;
+    let score = 0;
+    let best = localStorage.getItem('fun_arcade_highscore_' + slug) || 0;
+    bestEl.textContent = best;
+
+    let player = { x: 100, y: 0, vy: 0, size: PLAYER_SIZE, rotation: 0, mode: 'cube' };
+    let obstacles = [];
+    let cameraX = 0;
+    let particles = [];
+    let trail = [];
+    let levelLength = 10000; // Total X distance
+
+    function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // Controls
+    let inputActive = false;
+    const handleInputDown = (e) => { 
+        if (e.code === 'Space' || e.type === 'mousedown' || e.type === 'touchstart') inputActive = true; 
+    };
+    const handleInputUp = (e) => { 
+        if (e.code === 'Space' || e.type === 'mouseup' || e.type === 'touchend') inputActive = false; 
+    };
+    window.addEventListener('keydown', handleInputDown);
+    window.addEventListener('keyup', handleInputUp);
+    window.addEventListener('mousedown', handleInputDown);
+    window.addEventListener('mouseup', handleInputUp);
+    window.addEventListener('touchstart', (e) => { e.preventDefault(); handleInputDown(e); }, {passive: false});
+    window.addEventListener('touchend', handleInputUp);
+
+    function createLevel() {
+        obstacles = [];
+        const groundPos = canvas.height * GROUND_Y;
+        // Procedural level generation based on seed-like logic
+        for (let x = 600; x < levelLength; x += 300 + Math.random() * 400) {
+            const type = Math.random() > 0.3 ? 'spike' : 'block';
+            if (type === 'spike') {
+                obstacles.push({ x, y: groundPos, type: 'spike', w: 40, h: 40 });
+            } else {
+                obstacles.push({ x, y: groundPos - 40, type: 'block', w: 40, h: 40 });
+                if (Math.random() > 0.5) obstacles.push({ x: x+40, y: groundPos - 40, type: 'block', w: 40, h: 40 });
+            }
+        }
+        // Add a few gravity portals
+        obstacles.push({ x: 2500, y: groundPos - 100, type: 'portal', w: 40, h: 120 });
+        obstacles.push({ x: 6000, y: groundPos - 100, type: 'portal', w: 40, h: 120 });
+    }
+
+    function spawnParticle(x, y, color) {
+        for(let i=0; i<5; i++) {
+            particles.push({
+                x, y, 
+                vx: (Math.random() - 0.5) * 10, 
+                vy: (Math.random() - 0.5) * 10, 
+                life: 1,
+                color: color || '#EC4899'
+            });
+        }
+    }
+
+    function startGame() {
+        document.getElementById('startScreen').classList.add('hidden');
+        document.getElementById('gameOverScreen').classList.add('hidden');
+        player = { x: 100, y: canvas.height * GROUND_Y - PLAYER_SIZE, vy: 0, size: PLAYER_SIZE, rotation: 0, mode: 'cube', onGround: true };
+        cameraX = 0;
+        score = 0;
+        particles = [];
+        trail = [];
+        createLevel();
+        gameActive = true;
+        requestAnimationFrame(update);
+    }
+
+    function die() {
+        gameActive = false;
+        spawnParticle(player.x + player.size/2, player.y + player.size/2, '#ffffff');
+        document.getElementById('gameOverScreen').classList.remove('hidden');
+        document.getElementById('overTitle').textContent = score >= 100 ? "LEVEL CLEAR!" : "CRASHED!";
+        document.getElementById('finalScore').textContent = `Progress: ${score}%`;
+        
+        if (score > best) {
+            best = score;
+            localStorage.setItem('fun_arcade_highscore_' + slug, best);
+            bestEl.textContent = best;
+        }
+    }
+
+    function update() {
+        if (!gameActive) return;
+
+        const groundPos = canvas.height * GROUND_Y;
+        
+        // Physics
+        if (player.mode === 'cube') {
+            player.vy += GRAVITY;
+            if (inputActive && player.onGround) {
+                player.vy = JUMP_FORCE;
+                player.onGround = false;
+            }
+            player.y += player.vy;
+
+            if (player.y + player.size > groundPos) {
+                player.y = groundPos - player.size;
+                player.vy = 0;
+                player.onGround = true;
+                // Snap rotation to 90deg increments when landing
+                player.rotation = Math.round(player.rotation / (Math.PI/2)) * (Math.PI/2);
+            } else {
+                player.rotation += 0.15;
+            }
+        } else {
+            // Ship mode logic (flappy style)
+            player.vy += inputActive ? SHIP_THRUST : GRAVITY * 0.5;
+            player.y += player.vy;
+            player.rotation = Math.atan2(player.vy, 10);
+            if (player.y < 0 || player.y + player.size > groundPos) die();
+        }
+
+        player.x += 8;
+        cameraX = player.x - 150;
+        score = Math.min(100, Math.floor((player.x / levelLength) * 100));
+        scoreEl.textContent = score;
+
+        if (score >= 100) die();
+
+        // Collision
+        for (let obs of obstacles) {
+            if (player.x + player.size > obs.x && player.x < obs.x + obs.w &&
+                player.y + player.size > obs.y && player.y < obs.y + obs.h) {
+                if (obs.type === 'portal') {
+                    player.mode = player.mode === 'cube' ? 'ship' : 'cube';
+                    obs.x = -1000; // Consume portal
+                } else {
+                    die();
+                }
+            }
+        }
+
+        // Trail
+        trail.push({x: player.x + player.size/2, y: player.y + player.size/2});
+        if (trail.length > 20) trail.shift();
+
+        draw();
+        requestAnimationFrame(update);
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const groundPos = canvas.height * GROUND_Y;
+
+        // Draw Background Grid
+        ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+        ctx.lineWidth = 1;
+        const gridSize = 100;
+        const offsetX = -cameraX % gridSize;
+        for (let x = offsetX; x < canvas.width; x += gridSize) {
+            ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+        }
+
+        // Ground
+        ctx.fillStyle = '#1e293b';
+        ctx.fillRect(0, groundPos, canvas.width, canvas.height - groundPos);
+        ctx.strokeStyle = '#EC4899';
+        ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.moveTo(0, groundPos); ctx.lineTo(canvas.width, groundPos); ctx.stroke();
+
+        // Obstacles
+        ctx.fillStyle = '#f8fafc';
+        for (let obs of obstacles) {
+            const screenX = obs.x - cameraX;
+            if (screenX < -100 || screenX > canvas.width + 100) continue;
+
+            if (obs.type === 'spike') {
+                ctx.beginPath();
+                ctx.moveTo(screenX, obs.y);
+                ctx.lineTo(screenX + obs.w/2, obs.y - obs.h);
+                ctx.lineTo(screenX + obs.w, obs.y);
+                ctx.fill();
+            } else if (obs.type === 'block') {
+                ctx.fillRect(screenX, obs.y, obs.w, obs.h);
+                ctx.strokeRect(screenX, obs.y, obs.w, obs.h);
+            } else if (obs.type === 'portal') {
+                ctx.fillStyle = '#3b82f6';
+                ctx.fillRect(screenX, obs.y, obs.w, obs.h);
+                ctx.fillStyle = '#f8fafc';
+            }
+        }
+
+        // Trail
+        ctx.strokeStyle = '#EC489955';
+        ctx.lineWidth = 10;
+        ctx.beginPath();
+        trail.forEach((p, i) => {
+            const sx = p.x - cameraX;
+            if (i === 0) ctx.moveTo(sx, p.y);
+            else ctx.lineTo(sx, p.y);
+        });
+        ctx.stroke();
+
+        // Player
+        ctx.save();
+        ctx.translate(player.x - cameraX + player.size/2, player.y + player.size/2);
+        ctx.rotate(player.rotation);
+        ctx.fillStyle = '#EC4899';
+        ctx.fillRect(-player.size/2, -player.size/2, player.size, player.size);
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(-player.size/2 + 5, -player.size/2 + 5, player.size - 10, player.size - 10);
+        ctx.restore();
+
+        // Particles
+        particles.forEach((p, i) => {
+            p.x += p.vx;
+            p.y += p.vy;
+            p.life -= 0.02;
+            ctx.fillStyle = p.color;
+            ctx.globalAlpha = p.life;
+            ctx.fillRect(p.x - cameraX, p.y, 4, 4);
+            if (p.life <= 0) particles.splice(i, 1);
+        });
+        ctx.globalAlpha = 1;
+    }
+
+    function toggleHelp() {
+        document.getElementById('helpOverlay').classList.toggle('hidden');
+    }
+
+    document.getElementById('helpBtn').onclick = toggleHelp;
+</script>
+</body>
+</html>

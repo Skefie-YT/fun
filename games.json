@@ -486,5 +486,13 @@
     "category": "Physics",
     "accent": "#E85D04",
     "addedAt": "2026-11-24T03:00:15Z"
+  },
+  {
+    "slug": "cube-vault-dash",
+    "title": "Cube Vault Dash",
+    "description": "Jump and fly through a rhythm-inspired obstacle course in this high-speed, one-tap platforming challenge.",
+    "category": "Reflex",
+    "accent": "#EC4899",
+    "addedAt": "2026-11-24T03:07:00Z"
   }
 ]
