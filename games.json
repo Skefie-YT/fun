@@ -526,5 +526,13 @@
     "category": "Puzzle",
     "accent": "#F59E0B",
     "addedAt": "2026-11-24T07:02:39Z"
+  },
+  {
+    "slug": "spectral-splash",
+    "title": "Spectral Splash",
+    "description": "Launch colorful droplets to trigger growing chain reactions and splash through waves of spectral tiles!",
+    "category": "Puzzle",
+    "accent": "#8B5CF6",
+    "addedAt": "2026-11-24T08:56:53Z"
   }
 ]

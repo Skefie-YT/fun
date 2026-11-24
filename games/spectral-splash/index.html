@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Spectral Splash</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #8B5CF6;
+            --bg: #0f172a;
+            --panel: #1e293b;
+            --text: #f8fafc;
+        }
+        * {
+            box-sizing: border-box;
+            margin: 0; padding: 0;
+            user-select: none;
+            touch-action: none;
+        }
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Outfit', sans-serif;
+            overflow: hidden;
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+        }
+        #ui-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 20px;
+            background: var(--panel);
+            z-index: 100;
+        }
+        .back-btn {
+            color: var(--text);
+            text-decoration: none;
+            font-weight: 700;
+            background: rgba(255,255,255,0.1);
+            padding: 6px 12px;
+            border-radius: 6px;
+        }
+        .stats {
+            display: flex;
+            gap: 20px;
+            font-weight: 700;
+        }
+        .help-btn {
+            background: var(--accent);
+            border: none;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        #game-container {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+            padding: 20px;
+            text-align: center;
+        }
+        .hidden { display: none !important; }
+        h1 { color: var(--accent); margin-bottom: 1rem; font-size: 2.5rem; }
+        p { margin-bottom: 2rem; max-width: 400px; line-height: 1.5; }
+        .btn {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            border-radius: 30px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4);
+        }
+        .btn:active { transform: scale(0.95); }
+        #mute-btn {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(255,255,255,0.1);
+            border: none;
+            color: white;
+            padding: 8px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui-bar">
+        <a href="../../" class="back-btn">Back</a>
+        <div class="stats">
+            <span>SCORE: <span id="score-val">0</span></span>
+            <span>BEST: <span id="best-val">0</span></span>
+        </div>
+        <button class="help-btn" onclick="toggleHelp()">?</button>
+    </div>
+
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+
+        <!-- Start Screen -->
+        <div id="start-screen" class="overlay">
+            <h1>SPECTRAL SPLASH</h1>
+            <p>Click anywhere to launch a droplet. When it hits a tile, it creates a splash that triggers other tiles. Clear the screen to advance levels!</p>
+            <button class="btn" onclick="startGame()">PLAY</button>
+        </div>
+
+        <!-- Help Overlay -->
+        <div id="help-overlay" class="overlay hidden">
+            <h1>HOW TO PLAY</h1>
+            <p>You have limited shots. Trigger tiles to create massive chain reactions. Splash circles of the same color cause extra damage. Use your shots wisely!</p>
+            <button class="btn" onclick="toggleHelp()">CLOSE</button>
+        </div>
+
+        <!-- Game Over Overlay -->
+        <div id="gameover-screen" class="overlay hidden">
+            <h1 id="over-title">GAME OVER</h1>
+            <p id="over-reason"></p>
+            <button class="btn" onclick="startGame()">RETRY</button>
+        </div>
+
+        <button id="mute-btn" onclick="toggleMute()">Mute</button>
+    </div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const scoreEl = document.getElementById('score-val');
+const bestEl = document.getElementById('best-val');
+
+let score = 0;
+let bestScore = localStorage.getItem('fun_arcade_highscore_spectral-splash') || 0;
+bestEl.innerText = bestScore;
+
+let gameState = 'START';
+let level = 1;
+let shots = 10;
+let tiles = [];
+let splashes = [];
+let particles = [];
+let muted = false;
+
+const COLORS = ['#8B5CF6', '#F43F5E', '#10B981', '#3B82F6', '#F59E0B'];
+
+function resize() {
+    canvas.width = canvas.offsetWidth * window.devicePixelRatio;
+    canvas.height = canvas.offsetHeight * window.devicePixelRatio;
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+}
+window.addEventListener('resize', resize);
+resize();
+
+class Tile {
+    constructor(x, y, color) {
+        this.x = x; this.y = y;
+        this.color = color;
+        this.size = 25;
+        this.active = true;
+        this.wiggle = Math.random() * Math.PI * 2;
+    }
+    draw(ctx) {
+        if (!this.active) return;
+        this.wiggle += 0.05;
+        let offset = Math.sin(this.wiggle) * 2;
+        ctx.fillStyle = this.color;
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = this.color;
+        ctx.beginPath();
+        ctx.roundRect(this.x - this.size/2, this.y - this.size/2 + offset, this.size, this.size, 6);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+    }
+}
+
+class Splash {
+    constructor(x, y, color) {
+        this.x = x; this.y = y;
+        this.color = color;
+        this.radius = 0;
+        this.maxRadius = 80;
+        this.life = 1;
+        this.done = false;
+    }
+    update() {
+        this.radius += 4;
+        this.life -= 0.02;
+        if (this.life <= 0) this.done = true;
+        
+        tiles.forEach(t => {
+            if (t.active) {
+                let dx = t.x - this.x;
+                let dy = t.y - this.y;
+                let dist = Math.sqrt(dx*dx + dy*dy);
+                if (dist < this.radius && dist > this.radius - 10) {
+                    t.active = false;
+                    splashes.push(new Splash(t.x, t.y, t.color));
+                    score += 10 * level;
+                    scoreEl.innerText = score;
+                    spawnParticles(t.x, t.y, t.color);
+                    playSound(400 + Math.random() * 600, 0.05);
+                }
+            }
+        });
+    }
+    draw(ctx) {
+        ctx.strokeStyle = this.color;
+        ctx.lineWidth = 4 * this.life;
+        ctx.globalAlpha = this.life;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = 1.0;
+    }
+}
+
+function spawnParticles(x, y, color) {
+    for (let i = 0; i < 5; i++) {
+        particles.push({
+            x, y,
+            vx: (Math.random() - 0.5) * 8,
+            vy: (Math.random() - 0.5) * 8,
+            life: 1.0,
+            color
+        });
+    }
+}
+
+function initLevel() {
+    tiles = [];
+    splashes = [];
+    const cols = Math.floor(canvas.offsetWidth / 50);
+    const rows = Math.floor(canvas.offsetHeight / 60);
+    const padding = 60;
+
+    for (let i = 0; i < cols - 1; i++) {
+        for (let j = 0; j < rows - 2; j++) {
+            if (Math.random() > 0.4) {
+                tiles.push(new Tile(
+                    padding + i * (canvas.offsetWidth - padding*2) / (cols - 2),
+                    padding + j * (canvas.offsetHeight - padding*3) / (rows - 3),
+                    COLORS[Math.floor(Math.random() * COLORS.length)]
+                ));
+            }
+        }
+    }
+    if (shots < 3) shots = 5;
+}
+
+function startGame() {
+    gameState = 'PLAYING';
+    score = 0;
+    level = 1;
+    shots = 10;
+    scoreEl.innerText = score;
+    document.getElementById('start-screen').classList.add('hidden');
+    document.getElementById('gameover-screen').classList.add('hidden');
+    initLevel();
+}
+
+function gameOver(reason) {
+    gameState = 'GAMEOVER';
+    document.getElementById('gameover-screen').classList.remove('hidden');
+    document.getElementById('over-reason').innerText = reason + " | Level: " + level;
+    if (score > bestScore) {
+        bestScore = score;
+        localStorage.setItem('fun_arcade_highscore_spectral-splash', bestScore);
+        bestEl.innerText = bestScore;
+    }
+}
+
+function toggleHelp() {
+    const h = document.getElementById('help-overlay');
+    h.classList.toggle('hidden');
+}
+
+function toggleMute() {
+    muted = !muted;
+    document.getElementById('mute-btn').innerText = muted ? 'Unmute' : 'Mute';
+}
+
+// Audio handling
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+function playSound(freq, dur) {
+    if (muted) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    gain.gain.setValueAtTime(dur, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + dur);
+    osc.start();
+    osc.stop(audioCtx.currentTime + dur);
+}
+
+canvas.addEventListener('mousedown', (e) => {
+    if (gameState !== 'PLAYING') return;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    if (shots > 0) {
+        shots--;
+        splashes.push(new Splash(x, y, '#ffffff'));
+        playSound(200, 0.1);
+    }
+});
+
+function loop() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    if (gameState === 'PLAYING') {
+        tiles.forEach(t => t.draw(ctx));
+        
+        splashes.forEach((s, index) => {
+            s.update();
+            s.draw(ctx);
+            if (s.done) splashes.splice(index, 1);
+        });
+
+        particles.forEach((p, index) => {
+            p.x += p.vx;
+            p.y += p.vy;
+            p.life -= 0.02;
+            ctx.fillStyle = p.color;
+            ctx.globalAlpha = p.life;
+            ctx.fillRect(p.x, p.y, 4, 4);
+            if (p.life <= 0) particles.splice(index, 1);
+        });
+        ctx.globalAlpha = 1.0;
+
+        // HUD in-game
+        ctx.fillStyle = 'white';
+        ctx.font = '700 18px Outfit';
+        ctx.fillText(`SHOTS: ${shots}`, 20, canvas.offsetHeight - 20);
+        ctx.fillText(`LEVEL: ${level}`, canvas.offsetWidth - 100, canvas.offsetHeight - 20);
+
+        // Check win/loss conditions
+        if (tiles.every(t => !t.active) && splashes.length === 0) {
+            level++;
+            shots += 3;
+            initLevel();
+        } else if (shots === 0 && splashes.length === 0 && tiles.some(t => t.active)) {
+            gameOver("Out of shots!");
+        }
+    }
+    requestAnimationFrame(loop);
+}
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
