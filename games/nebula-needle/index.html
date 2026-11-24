@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Nebula Needle</title>
+    <style>
+        :root {
+            --accent: #EC4899;
+            --bg: #0f172a;
+            --text: #f8fafc;
+        }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100dvh; 
+            overflow: hidden; background: var(--bg); font-family: 'Segoe UI', system-ui, sans-serif; color: var(--text);
+        }
+        #game-container {
+            position: relative; width: 100%; height: 100%; display: flex; flex-direction: column;
+        }
+        canvas { display: block; width: 100%; height: 100%; touch-action: none; background: radial-gradient(circle at center, #1e1b4b 0%, #0f172a 100%); }
+        .hud {
+            position: absolute; top: 0; left: 0; right: 0; padding: 15px; display: flex; justify-content: space-between; align-items: center; z-index: 10;
+            pointer-events: none;
+        }
+        .hud-btn { pointer-events: auto; background: rgba(255,255,255,0.1); border: 1px solid var(--accent); color: white; padding: 8px 15px; border-radius: 20px; text-decoration: none; font-size: 14px; cursor: pointer; transition: 0.2s; backdrop-filter: blur(5px); }
+        .hud-btn:hover { background: var(--accent); }
+        .scores { text-align: center; font-weight: bold; text-shadow: 0 0 10px var(--accent); }
+        
+        .overlay {
+            position: absolute; inset: 0; background: rgba(15, 23, 42, 0.9); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 20; padding: 20px; text-align: center;
+        }
+        h1 { font-size: 3rem; margin: 0; color: var(--accent); text-transform: uppercase; letter-spacing: 4px; }
+        .hidden { display: none !important; }
+        .btn-main { background: var(--accent); border: none; color: white; padding: 15px 40px; font-size: 1.2rem; border-radius: 50px; cursor: pointer; margin-top: 20px; font-weight: bold; transition: transform 0.2s; }
+        .btn-main:active { transform: scale(0.95); }
+        .how-to { max-width: 300px; line-height: 1.5; color: #94a3b8; font-size: 0.9rem; margin-top: 20px; }
+        .mute-btn { position: absolute; bottom: 20px; right: 20px; z-index: 30; background: none; border: none; font-size: 24px; cursor: pointer; opacity: 0.5; }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div class="hud">
+        <a href="../../" class="hud-btn back-btn">Back</a>
+        <div class="scores">
+            <div id="score-val">SCORE: 0</div>
+            <div id="best-val" style="font-size: 0.7rem; opacity: 0.8;">BEST: 0</div>
+        </div>
+        <button class="hud-btn" onclick="toggleHelp()">?</button>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <div id="start-screen" class="overlay">
+        <h1>NEBULA NEEDLE</h1>
+        <p>The cosmic gap is closing. Thread the needle.</p>
+        <button class="btn-main" onclick="startGame()">START MISSION</button>
+        <div class="how-to">Tap or Press SPACE to jump. Stay within the moving gates. Speed increases with every gate cleared.</div>
+    </div>
+
+    <div id="game-over-screen" class="overlay hidden">
+        <h2 style="font-size: 2rem;">SIGNAL LOST</h2>
+        <div id="final-score" style="font-size: 1.5rem; margin-bottom: 10px;">0</div>
+        <button class="btn-main" onclick="startGame()">RETRY</button>
+    </div>
+
+    <div id="help-overlay" class="overlay hidden" onclick="toggleHelp()">
+        <h2>HOW TO PLAY</h2>
+        <p>You control a needle probe. Gravity pulls you down.</p>
+        <p>Tap to pulse upwards. Navigate through the glowing gate openings.</p>
+        <p>Hitting a gate or the screen boundary ends the mission.</p>
+        <button class="btn-main">GOT IT</button>
+    </div>
+    
+    <button class="mute-btn" onclick="toggleMute()" id="mute-btn">🔊</button>
+</div>
+
+<script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score-val');
+    const bestEl = document.getElementById('best-val');
+    const finalScoreEl = document.getElementById('final-score');
+    const startScreen = document.getElementById('start-screen');
+    const gameOverScreen = document.getElementById('game-over-screen');
+    const helpOverlay = document.getElementById('help-overlay');
+    
+    let gameActive = false;
+    let score = 0;
+    let bestScore = localStorage.getItem('fun_arcade_highscore_nebula-needle') || 0;
+    let particles = [];
+    let gates = [];
+    let player = { x: 0, y: 0, vy: 0, radius: 8 };
+    let frame = 0;
+    let speed = 3;
+    let isMuted = false;
+
+    const ACCENT = '#EC4899';
+
+    // Audio Context Setup
+    let audioCtx;
+    function initAudio() {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+
+    function playTone(freq, type, duration) {
+        if (isMuted || !audioCtx) return;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+    }
+
+    function toggleMute() {
+        isMuted = !isMuted;
+        document.getElementById('mute-btn').innerText = isMuted ? '🔇' : '🔊';
+    }
+
+    function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    bestEl.innerText = `BEST: ${bestScore}`;
+
+    function startGame() {
+        initAudio();
+        gameActive = true;
+        score = 0;
+        speed = 3;
+        player = {
+            x: canvas.width * 0.25,
+            y: canvas.height / 2,
+            vy: 0,
+            radius: 10
+        };
+        gates = [];
+        particles = [];
+        startScreen.classList.add('hidden');
+        gameOverScreen.classList.add('hidden');
+        scoreEl.innerText = `SCORE: ${score}`;
+        spawnGate(canvas.width);
+        spawnGate(canvas.width + canvas.width * 0.6);
+        requestAnimationFrame(update);
+        playTone(440, 'sine', 0.1);
+    }
+
+    function spawnGate(x) {
+        const gapHeight = Math.max(160, 250 - score * 2);
+        const minY = 100;
+        const maxY = canvas.height - 100 - gapHeight;
+        const gapY = Math.random() * (maxY - minY) + minY;
+        gates.push({ x, gapY, gapHeight, width: 40, passed: false });
+    }
+
+    function jump() {
+        if (!gameActive) return;
+        player.vy = -7.5;
+        playTone(300 + Math.random() * 100, 'square', 0.05);
+        for(let i=0; i<5; i++) spawnParticle(player.x, player.y, '#fff');
+    }
+
+    window.addEventListener('keydown', (e) => { if(e.code === 'Space') jump(); });
+    canvas.addEventListener('touchstart', (e) => { e.preventDefault(); jump(); });
+    canvas.addEventListener('mousedown', jump);
+
+    function spawnParticle(x, y, color) {
+        particles.push({
+            x, y, 
+            vx: (Math.random() - 0.5) * 4,
+            vy: (Math.random() - 0.5) * 4,
+            life: 1,
+            color: color || ACCENT
+        });
+    }
+
+    function toggleHelp() {
+        helpOverlay.classList.toggle('hidden');
+    }
+
+    function gameOver() {
+        gameActive = false;
+        if (score > bestScore) {
+            bestScore = score;
+            localStorage.setItem('fun_arcade_highscore_nebula-needle', bestScore);
+            bestEl.innerText = `BEST: ${bestScore}`;
+        }
+        finalScoreEl.innerText = `SCORE: ${score}`;
+        gameOverScreen.classList.remove('hidden');
+        playTone(150, 'sawtooth', 0.5);
+    }
+
+    function update() {
+        if (!gameActive) return;
+
+        player.vy += 0.4; // Gravity
+        player.y += player.vy;
+
+        // Collision: Top/Bottom
+        if (player.y - player.radius < 0 || player.y + player.radius > canvas.height) {
+            gameOver();
+        }
+
+        // Gates
+        for (let i = gates.length - 1; i >= 0; i--) {
+            let g = gates[i];
+            g.x -= speed;
+
+            // Check Collision
+            if (player.x + player.radius > g.x && player.x - player.radius < g.x + g.width) {
+                if (player.y - player.radius < g.gapY || player.y + player.radius > g.gapY + g.gapHeight) {
+                    gameOver();
+                }
+            }
+
+            // Scored
+            if (!g.passed && g.x + g.width < player.x) {
+                g.passed = true;
+                score++;
+                speed += 0.08;
+                scoreEl.innerText = `SCORE: ${score}`;
+                playTone(600 + score * 20, 'sine', 0.1);
+            }
+
+            if (g.x + g.width < -50) gates.splice(i, 1);
+        }
+
+        if (gates.length < 3) {
+            const lastGateX = gates[gates.length - 1].x;
+            spawnGate(lastGateX + Math.max(300, 450 - speed * 5));
+        }
+
+        // Particles
+        for (let i = particles.length - 1; i >= 0; i--) {
+            let p = particles[i];
+            p.x += p.vx;
+            p.y += p.vy;
+            p.life -= 0.02;
+            if (p.life <= 0) particles.splice(i, 1);
+        }
+
+        draw();
+        requestAnimationFrame(update);
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Draw Background Stars (Simple)
+        ctx.fillStyle = "rgba(255,255,255,0.1)";
+        for(let i=0; i<20; i++) {
+            let x = (Math.sin(i + Date.now()*0.001) * 0.5 + 0.5) * canvas.width;
+            let y = (Math.cos(i * 1.5 + Date.now()*0.0005) * 0.5 + 0.5) * canvas.height;
+            ctx.beginPath();
+            ctx.arc(x, y, 1, 0, Math.PI*2);
+            ctx.fill();
+        }
+
+        // Draw Gates
+        gates.forEach(g => {
+            const grad = ctx.createLinearGradient(g.x, 0, g.x + g.width, 0);
+            grad.addColorStop(0, '#1e293b');
+            grad.addColorStop(0.5, '#334155');
+            grad.addColorStop(1, '#1e293b');
+            ctx.fillStyle = grad;
+            
+            // Top Bar
+            ctx.fillRect(g.x, 0, g.width, g.gapY);
+            // Bottom Bar
+            ctx.fillRect(g.x, g.gapY + g.gapHeight, g.width, canvas.height);
+            
+            // Glow edges
+            ctx.strokeStyle = ACCENT;
+            ctx.lineWidth = 2;
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = ACCENT;
+            ctx.beginPath();
+            ctx.moveTo(g.x, g.gapY); ctx.lineTo(g.x + g.width, g.gapY);
+            ctx.moveTo(g.x, g.gapY + g.gapHeight); ctx.lineTo(g.x + g.width, g.gapY + g.gapHeight);
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+        });
+
+        // Draw Player
+        ctx.save();
+        ctx.translate(player.x, player.y);
+        ctx.rotate(Math.min(Math.PI/4, Math.max(-Math.PI/4, player.vy * 0.05)));
+        
+        // Body
+        ctx.fillStyle = 'white';
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = ACCENT;
+        ctx.beginPath();
+        ctx.moveTo(15, 0);
+        ctx.lineTo(-10, -8);
+        ctx.lineTo(-10, 8);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Engine Flame
+        if (player.vy < 0) {
+            ctx.fillStyle = ACCENT;
+            ctx.beginPath();
+            ctx.moveTo(-10, 5); ctx.lineTo(-20, 0); ctx.lineTo(-10, -5); ctx.fill();
+        }
+        ctx.restore();
+        ctx.shadowBlur = 0;
+
+        // Draw Particles
+        particles.forEach(p => {
+            ctx.globalAlpha = p.life;
+            ctx.fillStyle = p.color;
+            ctx.fillRect(p.x, p.y, 3, 3);
+        });
+        ctx.globalAlpha = 1;
+    }
+
+    // Initial Draw Loop
+    function menuLoop() {
+        if (!gameActive) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // Subtle menu animation can go here
+            requestAnimationFrame(menuLoop);
+        }
+    }
+    menuLoop();
+</script>
+</body>
+</html>

@@ -534,5 +534,13 @@
     "category": "Puzzle",
     "accent": "#8B5CF6",
     "addedAt": "2026-11-24T08:56:53Z"
+  },
+  {
+    "slug": "nebula-needle",
+    "title": "Nebula Needle",
+    "description": "Tap to thread your needle through shrinking cosmic gates. Don't touch the edges as the nebula accelerates!",
+    "category": "Reflex",
+    "accent": "#EC4899",
+    "addedAt": "2026-11-24T09:59:50Z"
   }
 ]
