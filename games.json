@@ -542,5 +542,13 @@
     "category": "Reflex",
     "accent": "#EC4899",
     "addedAt": "2026-11-24T09:59:50Z"
+  },
+  {
+    "slug": "binary-bridge-logic",
+    "title": "Binary Bridge",
+    "description": "Toggle bridges to connect data hubs into a single network without any loose ends or crossings!",
+    "category": "Puzzle",
+    "accent": "#0EA5E9",
+    "addedAt": "2026-11-24T10:55:46Z"
   }
 ]

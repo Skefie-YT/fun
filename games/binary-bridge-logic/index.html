@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Binary Bridge</title>
+    <style>
+        :root {
+            --primary: #0EA5E9;
+            --bg: #0f172a;
+            --panel: #1e293b;
+            --text: #f8fafc;
+        }
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            height: 100dvh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 20px;
+            background: rgba(15, 23, 42, 0.9);
+            border-bottom: 1px solid #334155;
+            z-index: 10;
+        }
+        .back-btn {
+            color: var(--text);
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: bold;
+            opacity: 0.8;
+        }
+        .stats {
+            text-align: center;
+        }
+        .stats div {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            opacity: 0.7;
+        }
+        .stats span {
+            font-size: 18px;
+            font-weight: bold;
+            color: var(--primary);
+        }
+        .ui-btn {
+            background: none;
+            border: 1px solid #334155;
+            color: white;
+            padding: 5px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        #game-container {
+            flex-grow: 1;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        canvas {
+            max-width: 100%;
+            max-height: 100%;
+            background: var(--panel);
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            touch-action: none;
+        }
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 20;
+            text-align: center;
+            padding: 20px;
+        }
+        .hidden { display: none !important; }
+        h1 { color: var(--primary); margin: 0 0 15px; }
+        .msg { margin-bottom: 25px; line-height: 1.5; max-width: 400px; }
+        .cta-btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .cta-btn:active { transform: scale(0.95); }
+        .controls-hint {
+            position: absolute;
+            bottom: 20px;
+            opacity: 0.5;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <a href="../../" class="back-btn">Back</a>
+        <div class="stats">
+            <div>Level</div>
+            <span id="level-val">1</span>
+        </div>
+        <button class="ui-btn" id="help-btn">?</button>
+    </header>
+
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+
+        <!-- Start Screen -->
+        <div id="start-screen" class="overlay">
+            <h1>Binary Bridge</h1>
+            <p class="msg">Click on the grid between data hubs to build bridges. Connect all nodes into a single loop! Numbers indicate required connections.</p>
+            <button class="cta-btn" id="start-btn">INITIALIZE</button>
+            <div class="controls-hint">Click or Tap to place/remove connections</div>
+        </div>
+
+        <!-- Win Screen -->
+        <div id="win-screen" class="overlay hidden">
+            <h1 style="color: #10b981;">SYSTEM LINKED!</h1>
+            <p class="msg">All data hubs are synchronized. Network integrity: 100%.</p>
+            <button class="cta-btn" id="next-btn">NEXT LEVEL</button>
+        </div>
+
+        <!-- Help Screen -->
+        <div id="help-overlay" class="overlay hidden">
+            <h1>How to Play</h1>
+            <ul style="text-align: left; line-height: 1.8;">
+                <li>Numbers on nodes show total connections needed.</li>
+                <li>Click between two nodes to toggle a bridge.</li>
+                <li>Bridges cannot cross each other.</li>
+                <li>All nodes must eventually form one connected graph.</li>
+            </ul>
+            <button class="cta-btn" id="close-help">GOT IT</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const slug = 'binary-bridge-logic';
+
+        let level = 1;
+        let nodes = [];
+        let connections = []; // Stores strings "i-j" where i < j
+        let gridSize = 5;
+        let cellSize = 0;
+        let isGameOver = false;
+
+        const COLORS = {
+            primary: '#0EA5E9',
+            node: '#334155',
+            nodeActive: '#0EA5E9',
+            nodeFilled: '#1e293b',
+            line: '#475569',
+            lineActive: '#0EA5E9',
+            text: '#f8fafc'
+        };
+
+        function initGame() {
+            const saved = localStorage.getItem('fun_arcade_highscore_' + slug);
+            level = saved ? parseInt(saved) : 1;
+            updateLevelUI();
+            generateLevel();
+            resize();
+        }
+
+        function updateLevelUI() {
+            document.getElementById('level-val').innerText = level;
+        }
+
+        function generateLevel() {
+            nodes = [];
+            connections = [];
+            gridSize = Math.min(4 + Math.floor(level / 3), 8);
+            
+            // Simple procedural logic puzzle generation (Bridges/Hashi style logic)
+            // Create a random path to ensure connectivity
+            let points = [];
+            for(let y=0; y<gridSize; y++) {
+                for(let x=0; x<gridSize; x++) {
+                    if(Math.random() > 0.6) points.push({x, y, count: 0});
+                }
+            }
+            if(points.length < 3) return generateLevel(); // Ensure density
+            
+            nodes = points;
+            
+            // Randomly simulate valid bridges to calculate counts
+            let simConns = [];
+            for(let i=0; i < nodes.length * 1.5; i++) {
+                let aIdx = Math.floor(Math.random() * nodes.length);
+                let bIdx = Math.floor(Math.random() * nodes.length);
+                if(aIdx === bIdx) continue;
+                let a = nodes[aIdx];
+                let b = nodes[bIdx];
+                
+                if(a.x === b.x || a.y === b.y) {
+                    // Check for blockers
+                    let blocked = false;
+                    nodes.forEach((n, idx) => {
+                        if(idx === aIdx || idx === bIdx) return;
+                        if(a.x === b.x && n.x === a.x && n.y > Math.min(a.y, b.y) && n.y < Math.max(a.y, b.y)) blocked = true;
+                        if(a.y === b.y && n.y === a.y && n.x > Math.min(a.x, b.x) && n.x < Math.max(a.x, b.x)) blocked = true;
+                    });
+                    if(!blocked) {
+                        a.count++;
+                        b.count++;
+                    }
+                }
+            }
+            // Clean up zeros
+            nodes = nodes.filter(n => n.count > 0);
+            if(nodes.length < 3) return generateLevel();
+        }
+
+        function resize() {
+            const size = Math.min(window.innerWidth - 40, window.innerHeight - 150);
+            canvas.width = size;
+            canvas.height = size;
+            cellSize = size / gridSize;
+            draw();
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw grid lines (subtle)
+            ctx.strokeStyle = '#1e293b';
+            ctx.lineWidth = 1;
+            for(let i=0; i<=gridSize; i++) {
+                ctx.beginPath();
+                ctx.moveTo(i*cellSize, 0); ctx.lineTo(i*cellSize, canvas.height);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(0, i*cellSize); ctx.lineTo(canvas.width, i*cellSize);
+                ctx.stroke();
+            }
+
+            // Draw Connections
+            connections.forEach(conn => {
+                const [i, j] = conn.split('-').map(Number);
+                const n1 = nodes[i];
+                const n2 = nodes[j];
+                ctx.beginPath();
+                ctx.strokeStyle = COLORS.lineActive;
+                ctx.lineWidth = 6;
+                ctx.lineCap = 'round';
+                ctx.moveTo(n1.x * cellSize + cellSize/2, n1.y * cellSize + cellSize/2);
+                ctx.lineTo(n2.x * cellSize + cellSize/2, n2.y * cellSize + cellSize/2);
+                ctx.stroke();
+                
+                // Inner pulse effect
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 2;
+                ctx.globalAlpha = 0.3;
+                ctx.stroke();
+                ctx.globalAlpha = 1.0;
+            });
+
+            // Draw Nodes
+            nodes.forEach((node, idx) => {
+                const cx = node.x * cellSize + cellSize/2;
+                const cy = node.y * cellSize + cellSize/2;
+                const currentConns = getConnectedCount(idx);
+                
+                // Glow for satisfied nodes
+                if(currentConns === node.count) {
+                    ctx.shadowBlur = 15;
+                    ctx.shadowColor = COLORS.primary;
+                }
+
+                ctx.fillStyle = currentConns > node.count ? '#ef4444' : (currentConns === node.count ? COLORS.primary : COLORS.node);
+                ctx.beginPath();
+                ctx.arc(cx, cy, cellSize * 0.3, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+
+                ctx.fillStyle = 'white';
+                ctx.font = `bold ${cellSize * 0.25}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(node.count, cx, cy);
+            });
+        }
+
+        function getConnectedCount(idx) {
+            return connections.filter(c => c.split('-').includes(idx.toString())).length;
+        }
+
+        function checkWin() {
+            // 1. All counts must match
+            for(let i=0; i<nodes.length; i++) {
+                if(getConnectedCount(i) !== nodes[i].count) return false;
+            }
+            
+            // 2. Must be a single connected component (Flood fill)
+            if(connections.length === 0) return false;
+            let visited = new Set();
+            let queue = [0];
+            visited.add(0);
+            
+            while(queue.length > 0) {
+                let curr = queue.shift();
+                connections.forEach(conn => {
+                    let [a, b] = conn.split('-').map(Number);
+                    if(a === curr && !visited.has(b)) { visited.add(b); queue.push(b); }
+                    if(b === curr && !visited.has(a)) { visited.add(a); queue.push(a); }
+                });
+            }
+            
+            if(visited.size === nodes.length) {
+                isGameOver = true;
+                document.getElementById('win-screen').classList.remove('hidden');
+                level++;
+                localStorage.setItem('fun_arcade_highscore_' + slug, level);
+            }
+        }
+
+        canvas.addEventListener('mousedown', handleClick);
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            handleClick(touch);
+        });
+
+        function handleClick(e) {
+            if(isGameOver) return;
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            const gx = Math.floor(x / cellSize);
+            const gy = Math.floor(y / cellSize);
+
+            // Detect if clicking between two nodes
+            // We look for horizontal or vertical neighbors
+            nodes.forEach((n1, i) => {
+                nodes.forEach((n2, j) => {
+                    if(i >= j) return;
+                    if(n1.x === n2.x || n1.y === n2.y) {
+                        // Check if the click is roughly in the middle of this potential line
+                        const midX = (n1.x + n2.x) / 2 * cellSize + cellSize/2;
+                        const midY = (n1.y + n2.y) / 2 * cellSize + cellSize/2;
+                        const dist = Math.hypot(x - midX, y - midY);
+                        
+                        if(dist < cellSize * 0.4) {
+                            // Potential line found. Check if blocked by other nodes
+                            let blocked = false;
+                            nodes.forEach((n3, k) => {
+                                if(k === i || k === j) return;
+                                if(n1.x === n2.x && n3.x === n1.x && n3.y > Math.min(n1.y, n2.y) && n3.y < Math.max(n1.y, n2.y)) blocked = true;
+                                if(n1.y === n2.y && n3.y === n1.y && n3.x > Math.min(n1.x, n2.x) && n3.x < Math.max(n1.x, n2.x)) blocked = true;
+                            });
+
+                            if(!blocked) {
+                                const connKey = `${i}-${j}`;
+                                if(connections.includes(connKey)) {
+                                    connections = connections.filter(c => c !== connKey);
+                                } else {
+                                    // Cross-check: Ensure no lines cross
+                                    if(!isCrossing(n1, n2)) {
+                                        connections.push(connKey);
+                                    }
+                                }
+                                draw();
+                                checkWin();
+                            }
+                        }
+                    }
+                });
+            });
+        }
+
+        function isCrossing(p1, p2) {
+            // Simplified intersection check for axis-aligned Bridges logic
+            for(let conn of connections) {
+                let [idxA, idxB] = conn.split('-').map(Number);
+                let a = nodes[idxA], b = nodes[idxB];
+                
+                // Horizontal vs Vertical crossing check
+                let line1Horiz = p1.y === p2.y;
+                let line2Horiz = a.y === b.y;
+                
+                if(line1Horiz !== line2Horiz) {
+                    let h = line1Horiz ? {p1, p2} : {p1: a, p2: b};
+                    let v = line1Horiz ? {p1: a, p2: b} : {p1, p2};
+                    
+                    let hXmin = Math.min(h.p1.x, h.p2.x), hXmax = Math.max(h.p1.x, h.p2.x);
+                    let vYmin = Math.min(v.p1.y, v.p2.y), vYmax = Math.max(v.p1.y, v.p2.y);
+                    
+                    if(v.p1.x > hXmin && v.p1.x < hXmax && h.p1.y > vYmin && h.p1.y < vYmax) return true;
+                }
+            }
+            return false;
+        }
+
+        // UI Controls
+        document.getElementById('start-btn').onclick = () => {
+            document.getElementById('start-screen').classList.add('hidden');
+            initGame();
+        };
+        document.getElementById('next-btn').onclick = () => {
+            document.getElementById('win-screen').classList.add('hidden');
+            isGameOver = false;
+            updateLevelUI();
+            generateLevel();
+            draw();
+        };
+        document.getElementById('help-btn').onclick = () => document.getElementById('help-overlay').classList.remove('hidden');
+        document.getElementById('close-help').onclick = () => document.getElementById('help-overlay').classList.add('hidden');
+
+        window.addEventListener('resize', resize);
+        initGame();
+    </script>
+</body>
+</html>
