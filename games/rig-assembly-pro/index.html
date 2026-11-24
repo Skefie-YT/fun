@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Rig Assembly Pro</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #E85D04;
+            --bg: #0a0a0c;
+            --panel: #1a1a1f;
+            --text: #ffffff;
+        }
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body, html {
+            margin: 0; padding: 0;
+            width: 100%; height: 100dvh;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Orbitron', sans-serif;
+            overflow: hidden;
+        }
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+        }
+        header {
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 15px;
+            background: rgba(0,0,0,0.5);
+            z-index: 10;
+            border-bottom: 2px solid var(--accent);
+        }
+        .back-btn {
+            color: var(--text); text-decoration: none; font-size: 0.9rem; border: 1px solid var(--accent); padding: 5px 10px;
+        }
+        .score-box {
+            text-align: center;
+            flex-grow: 1;
+        }
+        #canvas {
+            flex-grow: 1;
+            touch-action: none;
+            cursor: crosshair;
+        }
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            padding: 20px;
+            text-align: center;
+        }
+        .hidden { display: none !important; }
+        h1 { color: var(--accent); margin: 0 0 10px 0; }
+        button {
+            background: var(--accent);
+            border: none; color: white;
+            padding: 15px 40px;
+            font-family: 'Orbitron';
+            font-size: 1.2rem;
+            cursor: pointer;
+            margin-top: 20px;
+            clip-path: polygon(10% 0, 100% 0, 90% 100%, 0% 100%);
+        }
+        button:hover { filter: brightness(1.2); }
+        .how-to-btn { background: none; border: 1px solid var(--accent); font-size: 1rem; width: 35px; height: 35px; padding: 0; display: flex; align-items: center; justify-content: center; clip-path: none; margin: 0; }
+        .footer-hint {
+            position: absolute; bottom: 10px; width: 100%; text-align: center; font-size: 0.7rem; opacity: 0.6;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <header>
+        <a href="../../" class="back-btn">Back</a>
+        <div class="score-box">
+            <div id="score-display">SCORE: 0</div>
+            <div id="best-display" style="font-size: 0.7rem; opacity: 0.8;">BEST: 0</div>
+        </div>
+        <button class="how-to-btn" id="help-trigger">?</button>
+    </header>
+
+    <canvas id="canvas"></canvas>
+
+    <div id="start-screen" class="overlay">
+        <h1>RIG ASSEMBLY PRO</h1>
+        <p>The tech belt is moving fast! Click or Tap the slot on the motherboard when the matching component aligns.</p>
+        <button id="start-button">START BUILD</button>
+        <div class="footer-hint">Click precisely as components overlap their sockets</div>
+    </div>
+
+    <div id="help-screen" class="overlay hidden">
+        <h1>HOW TO PLAY</h1>
+        <ul style="text-align: left; line-height: 1.6;">
+            <li>Components move across the top line.</li>
+            <li>Wait for a component to reach the center vertical line.</li>
+            <li>Click anywhere to "Snap" it into the motherboard.</li>
+            <li>Don't miss! 3 misses and the system shorts out.</li>
+            <li>Speed increases as you build!</li>
+        </ul>
+        <button id="close-help">GOT IT</button>
+    </div>
+
+    <div id="game-over-screen" class="overlay hidden">
+        <h1 id="status-text">SYSTEM SHORTED</h1>
+        <p>Your ultimate rig was nearly complete.</p>
+        <h2 id="final-score">0</h2>
+        <button id="restart-button">REBOOT</button>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const scoreDisplay = document.getElementById('score-display');
+    const bestDisplay = document.getElementById('best-display');
+    const finalScoreDisplay = document.getElementById('final-score');
+    const startScreen = document.getElementById('start-screen');
+    const helpScreen = document.getElementById('help-screen');
+    const gameOverScreen = document.getElementById('game-over-screen');
+
+    let score = 0;
+    let bestScore = localStorage.getItem('fun_arcade_highscore_rig-assembly-pro') || 0;
+    let lives = 3;
+    let isPlaying = false;
+    let components = [];
+    let lastSpawn = 0;
+    let gameSpeed = 3;
+    let particles = [];
+
+    const COMPONENTS = [
+        { name: 'CPU', color: '#00d2ff', icon: '■' },
+        { name: 'RAM', color: '#39ff14', icon: '▮' },
+        { name: 'GPU', color: '#ff0055', icon: '▰' },
+        { name: 'SSD', color: '#f3f315', icon: '▵' },
+        { name: 'FAN', color: '#E85D04', icon: '❂' }
+    ];
+
+    bestDisplay.innerText = `BEST: ${bestScore}`;
+
+    function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = canvas.offsetHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function spawnComponent() {
+        const type = COMPONENTS[Math.floor(Math.random() * COMPONENTS.length)];
+        components.push({
+            ...type,
+            x: -60,
+            y: 100,
+            w: 60,
+            h: 60,
+            hit: false
+        });
+    }
+
+    function createParticles(x, y, color) {
+        for(let i=0; i<15; i++) {
+            particles.push({
+                x, y,
+                vx: (Math.random() - 0.5) * 10,
+                vy: (Math.random() - 0.5) * 10,
+                life: 1,
+                color
+            });
+        }
+    }
+
+    function handleInput() {
+        if (!isPlaying) return;
+
+        const centerLine = canvas.width / 2;
+        let found = false;
+
+        for (let i = 0; i < components.length; i++) {
+            const c = components[i];
+            const dist = Math.abs((c.x + c.w/2) - centerLine);
+            
+            if (dist < 40 && !c.hit) {
+                c.hit = true;
+                score += 10 + Math.floor(gameSpeed);
+                scoreDisplay.innerText = `SCORE: ${score}`;
+                createParticles(centerLine, 250, c.color);
+                gameSpeed += 0.15;
+                found = true;
+                break;
+            }
+        }
+
+        if (!found) {
+            lives--;
+            createParticles(centerLine, 250, '#ff0000');
+            if (lives <= 0) endGame();
+        }
+    }
+
+    canvas.addEventListener('mousedown', (e) => { e.preventDefault(); handleInput(); });
+    canvas.addEventListener('touchstart', (e) => { e.preventDefault(); handleInput(); });
+
+    function update() {
+        if (!isPlaying) return;
+
+        const now = Date.now();
+        if (now - lastSpawn > 2000 / (gameSpeed/2)) {
+            spawnComponent();
+            lastSpawn = now;
+        }
+
+        for (let i = components.length - 1; i >= 0; i--) {
+            const c = components[i];
+            c.x += gameSpeed;
+
+            if (c.x > canvas.width) {
+                if (!c.hit) {
+                    lives--;
+                    if (lives <= 0) endGame();
+                }
+                components.splice(i, 1);
+            }
+        }
+
+        particles.forEach((p, i) => {
+            p.x += p.vx;
+            p.y += p.vy;
+            p.life -= 0.02;
+            if (p.life <= 0) particles.splice(i, 1);
+        });
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        const midX = canvas.width / 2;
+
+        // Draw conveyor belt
+        ctx.strokeStyle = '#333';
+        ctx.setLineDash([5, 5]);
+        ctx.beginPath();
+        ctx.moveTo(0, 130); ctx.lineTo(canvas.width, 130);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Target Slot
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = lives > 1 ? '#E85D04' : '#ff0000';
+        ctx.strokeRect(midX - 35, 95, 70, 70);
+        
+        // Target Connection Line
+        ctx.beginPath();
+        ctx.moveTo(midX, 165);
+        ctx.lineTo(midX, 220);
+        ctx.stroke();
+
+        // Draw Motherboard Base
+        ctx.fillStyle = '#0a2e1c';
+        ctx.fillRect(midX - 100, 220, 200, 180);
+        ctx.strokeStyle = '#1e5a3c';
+        ctx.strokeRect(midX - 100, 220, 200, 180);
+        
+        // Motherboard Details
+        ctx.fillStyle = '#1e5a3c';
+        for(let i=0; i<3; i++) ctx.fillRect(midX - 80, 240 + (i*40), 160, 10);
+
+        // Components
+        components.forEach(c => {
+            if (c.hit) {
+                // Draw snapped in component
+                ctx.fillStyle = c.color;
+                ctx.fillRect(midX - 25, 250, 50, 50);
+                ctx.fillStyle = 'white';
+                ctx.font = '20px Orbitron';
+                ctx.textAlign = 'center';
+                ctx.fillText(c.icon, midX, 285);
+            } else {
+                // Draw moving component
+                ctx.fillStyle = c.color;
+                ctx.fillRect(c.x, c.y, c.w, c.h);
+                ctx.fillStyle = 'white';
+                ctx.font = '24px Orbitron';
+                ctx.textAlign = 'center';
+                ctx.fillText(c.icon, c.x + c.w/2, c.y + c.h/2 + 8);
+            }
+        });
+
+        // HUD Lives
+        ctx.fillStyle = 'white';
+        ctx.font = '14px Orbitron';
+        ctx.textAlign = 'left';
+        ctx.fillText('STABILITY: ' + ('▮'.repeat(lives)), 20, 30);
+
+        // Particles
+        particles.forEach(p => {
+            ctx.globalAlpha = p.life;
+            ctx.fillStyle = p.color;
+            ctx.fillRect(p.x, p.y, 4, 4);
+        });
+        ctx.globalAlpha = 1.0;
+
+        requestAnimationFrame(() => {
+            update();
+            draw();
+        });
+    }
+
+    function startGame() {
+        score = 0;
+        lives = 3;
+        gameSpeed = 4;
+        components = [];
+        particles = [];
+        scoreDisplay.innerText = `SCORE: 0`;
+        isPlaying = true;
+        startScreen.classList.add('hidden');
+        gameOverScreen.classList.add('hidden');
+    }
+
+    function endGame() {
+        isPlaying = false;
+        if (score > bestScore) {
+            bestScore = score;
+            localStorage.setItem('fun_arcade_highscore_rig-assembly-pro', bestScore);
+            bestDisplay.innerText = `BEST: ${bestScore}`;
+        }
+        finalScoreDisplay.innerText = score;
+        gameOverScreen.classList.remove('hidden');
+    }
+
+    document.getElementById('start-button').addEventListener('click', startGame);
+    document.getElementById('restart-button').addEventListener('click', startGame);
+    document.getElementById('help-trigger').addEventListener('click', () => helpScreen.classList.remove('hidden'));
+    document.getElementById('close-help').addEventListener('click', () => helpScreen.classList.add('hidden'));
+
+    // Kick off animation loop
+    draw();
+</script>
+</body>
+</html>

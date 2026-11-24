@@ -494,5 +494,13 @@
     "category": "Reflex",
     "accent": "#EC4899",
     "addedAt": "2026-11-24T03:07:00Z"
+  },
+  {
+    "slug": "rig-assembly-pro",
+    "title": "Rig Assembly Pro",
+    "description": "Snap high-tech components into the motherboard as they fly by to build the ultimate gaming rig!",
+    "category": "Reflex",
+    "accent": "#E85D04",
+    "addedAt": "2026-11-24T03:11:02Z"
   }
 ]
