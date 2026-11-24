@@ -518,5 +518,13 @@
     "category": "Puzzle",
     "accent": "#F59E0B",
     "addedAt": "2026-11-24T04:57:46Z"
+  },
+  {
+    "slug": "echo-shade-recall",
+    "title": "Echo Shade Recall",
+    "description": "Memorize the sequence of glowing neon shades and repeat them to survive the increasing speed of the digital echo.",
+    "category": "Puzzle",
+    "accent": "#F59E0B",
+    "addedAt": "2026-11-24T07:02:39Z"
   }
 ]
