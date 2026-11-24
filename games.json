@@ -550,5 +550,13 @@
     "category": "Puzzle",
     "accent": "#0EA5E9",
     "addedAt": "2026-11-24T10:55:46Z"
+  },
+  {
+    "slug": "tempo-tile-dash",
+    "title": "Tempo Tile Dash",
+    "description": "Dash across the moving rhythmic tiles! Jump exactly when the beat bar hits the center to stay on track and build your combo.",
+    "category": "Reflex",
+    "accent": "#EF4444",
+    "addedAt": "2026-11-24T13:00:02Z"
   }
 ]

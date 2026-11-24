@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Tempo Tile Dash</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --accent: #EF4444; --bg: #0f172a; --text: #f8fafc; }
+        * { box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
+        body { margin: 0; background: var(--bg); color: var(--text); font-family: 'Outfit', sans-serif; overflow: hidden; touch-action: none; }
+        canvas { display: block; width: 100vw; height: 100dvh; }
+
+        .ui-layer { position: absolute; inset: 0; pointer-events: none; display: flex; flex-direction: column; }
+        .top-bar { padding: 15px; display: flex; justify-content: space-between; align-items: center; pointer-events: auto; }
+        .btn { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 8px 16px; border-radius: 8px; cursor: pointer; text-decoration: none; font-size: 14px; backdrop-filter: blur(5px); }
+        .btn:hover { background: rgba(255,255,255,0.2); }
+        .score-hud { text-align: center; font-weight: 700; pointer-events: none; flex: 1; }
+        .score-val { font-size: 32px; color: var(--accent); text-shadow: 0 0 15px var(--accent); }
+
+        .overlay { position: absolute; inset: 0; background: rgba(15, 23, 42, 0.9); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center; pointer-events: auto; z-index: 100; }
+        .overlay h1 { font-size: 42px; margin: 0 0 10px; color: var(--accent); }
+        .hidden { display: none !important; }
+        .controls-hint { margin-top: 20px; opacity: 0.7; font-size: 14px; }
+        .big-btn { background: var(--accent); color: white; border: none; padding: 15px 40px; font-size: 20px; font-weight: 700; border-radius: 50px; cursor: pointer; margin-top: 20px; transition: transform 0.2s; }
+        .big-btn:active { transform: scale(0.95); }
+
+        .combo-meter { position: absolute; bottom: 100px; left: 50%; transform: translateX(-50%); font-size: 24px; color: gold; font-weight: 700; opacity: 0; transition: opacity 0.3s; }
+    </style>
+</head>
+<body>
+    <div class="ui-layer">
+        <div class="top-bar">
+            <a href="../../" class="back-btn btn">Back</a>
+            <div class="score-hud">
+                <div id="scoreLabel">SCORE: 0</div>
+                <div id="bestLabel">BEST: 0</div>
+            </div>
+            <button class="btn" id="helpBtn">?</button>
+        </div>
+    </div>
+
+    <div id="startOverlay" class="overlay">
+        <h1>TEMPO TILE DASH</h1>
+        <p>Jump to the next tile when the moving beat bar hits the center circle! Don't miss a beat or fall off.</p>
+        <button class="big-btn" id="startBtn">START ENGINE</button>
+        <div class="controls-hint">Tap or Press Space to Jump</div>
+    </div>
+
+    <div id="gameOverOverlay" class="overlay hidden">
+        <h1 id="gameOverTitle">SYSTEM SYNC LOST</h1>
+        <p id="finalScore">Score: 0</p>
+        <button class="big-btn" id="restartBtn">RETRY</button>
+    </div>
+
+    <div id="helpOverlay" class="overlay hidden">
+        <h1>HOW TO PLAY</h1>
+        <p>1. Watch the rhythm bar at the bottom.<br>2. Tap when the scanning bar overlaps the center circle.<br>3. Timing determines your combo multiplier!<br>4. Missing the beat or timing it poorly ends the run.</p>
+        <button class="big-btn" id="closeHelpBtn">GOT IT</button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const slug = 'tempo-tile-dash';
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        let gameState = 'START';
+        let score = 0;
+        let bestScore = localStorage.getItem('fun_arcade_highscore_' + slug) || 0;
+        let combo = 0;
+        let cameraY = 0;
+        let gameTime = 0;
+        
+        // Game Settings
+        const TILE_W = 120;
+        const TILE_H = 20;
+        const BPM = 110;
+        const BEAT_DURATION = 60000 / BPM; // ms
+
+        class Tile {
+            constructor(y, xOffset) {
+                this.y = y;
+                this.x = canvas.width / 2 + xOffset;
+                this.w = TILE_W;
+                this.h = TILE_H;
+                this.active = true;
+                this.pulse = 0;
+            }
+            draw(ctx, currentY) {
+                const screenY = this.y - currentY + canvas.height * 0.7;
+                ctx.fillStyle = this.active ? '#334155' : '#1e293b';
+                ctx.fillRect(this.x - this.w/2, screenY, this.w, this.h);
+                if(this.active) {
+                    ctx.strokeStyle = '#EF4444';
+                    ctx.lineWidth = 2 + Math.sin(Date.now()/100) * 2;
+                    ctx.strokeRect(this.x - this.w/2, screenY, this.w, this.h);
+                }
+            }
+        }
+
+        let tiles = [];
+        let player = { x: 0, y: 0, targetY: 0, jumpProg: 1 };
+        let lastBeatTime = 0;
+
+        function initGame() {
+            score = 0;
+            combo = 0;
+            cameraY = 0;
+            player = { x: canvas.width/2, y: 0, targetY: 0, jumpProg: 1 };
+            tiles = [];
+            for(let i=0; i<5; i++) {
+                addTile(i * -150);
+            }
+            updateUI();
+        }
+
+        function addTile(y) {
+            const lastX = tiles.length > 0 ? tiles[tiles.length-1].xOffset : 0;
+            const xOff = (Math.random() - 0.5) * 150;
+            tiles.push(new Tile(y, xOff));
+        }
+
+        function updateUI() {
+            document.getElementById('scoreLabel').innerText = `SCORE: ${score}`;
+            document.getElementById('bestLabel').innerText = `BEST: ${bestScore}`;
+        }
+
+        function handleAction() {
+            if(gameState !== 'PLAYING') return;
+
+            const now = Date.now();
+            const diff = Math.abs(now - (lastBeatTime + BEAT_DURATION));
+            const tolerance = 150; // ms
+
+            if (diff < tolerance) {
+                // Successful Jump
+                const accuracy = 1 - (diff / tolerance);
+                score += Math.floor(10 * (1 + combo * 0.1));
+                combo++;
+                
+                // Move player to next tile
+                const currentTileIdx = tiles.findIndex(t => t.y === player.targetY);
+                const nextTile = tiles[currentTileIdx + 1];
+                
+                if (nextTile) {
+                    player.targetY = nextTile.y;
+                    player.jumpProg = 0;
+                    player.startX = player.x;
+                    player.targetX = nextTile.x;
+                    // Add new tile ahead
+                    addTile(tiles[tiles.length-1].y - 150);
+                    if (tiles.length > 10) tiles.shift();
+                }
+
+                lastBeatTime = now; // Reset beat cycle to player's successful tap rhythm
+                
+                if (score > bestScore) {
+                    bestScore = score;
+                    localStorage.setItem('fun_arcade_highscore_' + slug, bestScore);
+                }
+                updateUI();
+            } else {
+                gameOver();
+            }
+        }
+
+        function gameOver() {
+            gameState = 'GAMEOVER';
+            document.getElementById('gameOverOverlay').classList.remove('hidden');
+            document.getElementById('finalScore').innerText = `Score: ${score}`;
+        }
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        window.addEventListener('resize', resize);
+        window.addEventListener('keydown', e => { if(e.code === 'Space') handleAction(); });
+        window.addEventListener('touchstart', e => { e.preventDefault(); handleAction(); }, {passive:false});
+        window.addEventListener('mousedown', e => { if(e.button === 0) handleAction(); });
+
+        document.getElementById('startBtn').onclick = () => {
+            document.getElementById('startOverlay').classList.add('hidden');
+            gameState = 'PLAYING';
+            lastBeatTime = Date.now();
+            initGame();
+        };
+
+        document.getElementById('restartBtn').onclick = () => {
+            document.getElementById('gameOverOverlay').classList.add('hidden');
+            gameState = 'PLAYING';
+            lastBeatTime = Date.now();
+            initGame();
+        };
+
+        document.getElementById('helpBtn').onclick = () => document.getElementById('helpOverlay').classList.remove('hidden');
+        document.getElementById('closeHelpBtn').onclick = () => document.getElementById('helpOverlay').classList.add('hidden');
+
+        function loop() {
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (gameState === 'PLAYING' || gameState === 'GAMEOVER') {
+                const now = Date.now();
+                let progress = ((now - lastBeatTime) % BEAT_DURATION) / BEAT_DURATION;
+                
+                // Camera smoothing
+                cameraY += (player.y - cameraY) * 0.1;
+
+                // Draw Tiles
+                tiles.forEach(t => t.draw(ctx, cameraY));
+
+                // Update Player Jump
+                if (player.jumpProg < 1) {
+                    player.jumpProg += 0.1;
+                    if (player.jumpProg > 1) player.jumpProg = 1;
+                    player.x = player.startX + (player.targetX - player.startX) * player.jumpProg;
+                    player.y = player.targetY + Math.sin(player.jumpProg * Math.PI) * -50;
+                }
+
+                // Draw Player
+                const py = player.y - cameraY + canvas.height * 0.7;
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(player.x, py - 15, 12, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = '#EF4444';
+
+                // Rhythm HUD (Bottom)
+                const barW = 200;
+                const bx = canvas.width/2 - barW/2;
+                const by = canvas.height - 60;
+                
+                ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+                ctx.strokeRect(bx, by, barW, 20);
+                
+                // Target zone
+                ctx.fillStyle = 'rgba(239, 68, 68, 0.3)';
+                ctx.beginPath();
+                ctx.arc(canvas.width/2, by + 10, 15, 0, Math.PI*2);
+                ctx.fill();
+
+                // Moving cursor
+                const cursorX = bx + (progress * barW);
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(cursorX - 2, by - 5, 4, 30);
+
+                // Auto-fail if beat missed too long
+                if (now - lastBeatTime > BEAT_DURATION + 200 && gameState === 'PLAYING') {
+                    gameOver();
+                }
+            }
+
+            requestAnimationFrame(loop);
+        }
+
+        resize();
+        loop();
+    </script>
+</body>
+</html>
