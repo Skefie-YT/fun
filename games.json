@@ -598,5 +598,13 @@
     "category": "Action",
     "accent": "#F59E0B",
     "addedAt": "2026-11-24T22:50:27Z"
+  },
+  {
+    "slug": "rhythm-relay-snap",
+    "title": "Rhythm Relay Snap",
+    "description": "Switch lanes and snap the beat-nodes as they hit the strike zone to power your ship and outrun the void!",
+    "category": "Reflex",
+    "accent": "#14B8A6",
+    "addedAt": "2026-11-24T23:41:56Z"
   }
 ]

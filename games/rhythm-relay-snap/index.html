@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Rhythm Relay Snap</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Rajdhani:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #14B8A6;
+            --bg: #0a0a12;
+            --panel: rgba(20, 184, 166, 0.1);
+        }
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100dvh;
+            background: var(--bg);
+            color: white;
+            font-family: 'Rajdhani', sans-serif;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+        }
+        .ui-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+        .hud {
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            pointer-events: auto;
+        }
+        .back-btn {
+            color: white;
+            text-decoration: none;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 14px;
+            padding: 5px 10px;
+            border: 1px solid var(--accent);
+            border-radius: 4px;
+            background: var(--panel);
+        }
+        .score-box {
+            text-align: center;
+            font-family: 'Orbitron', sans-serif;
+        }
+        .score-val { font-size: 24px; color: var(--accent); }
+        .best-val { font-size: 12px; opacity: 0.7; }
+
+        .btn-icon {
+            background: var(--panel);
+            border: 1px solid var(--accent);
+            color: white;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 20px;
+            pointer-events: auto;
+            z-index: 20;
+        }
+        .hidden { display: none !important; }
+        
+        h1 { font-family: 'Orbitron', sans-serif; color: var(--accent); margin: 0 0 10px; }
+        .btn-main {
+            background: var(--accent);
+            color: var(--bg);
+            border: none;
+            padding: 15px 40px;
+            font-size: 18px;
+            font-weight: bold;
+            font-family: 'Orbitron', sans-serif;
+            border-radius: 30px;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+        .controls-hint {
+            position: absolute;
+            bottom: 30px;
+            font-size: 14px;
+            opacity: 0.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="ui-layer">
+        <div class="hud">
+            <a href="../../" class="back-btn">Back</a>
+            <div class="score-box">
+                <div class="score-val" id="score">0</div>
+                <div class="best-val">BEST: <span id="best">0</span></div>
+            </div>
+            <button class="btn-icon" id="help-btn">?</button>
+        </div>
+
+        <div id="start-screen" class="overlay">
+            <h1>RHYTHM RELAY</h1>
+            <p>Switch lanes to match the falling beat-nodes.<br>Tap or Space when they hit the target circle!</p>
+            <button class="btn-main" id="start-btn">INITIALIZE</button>
+            <div class="controls-hint">Lanes: Mouse/Touch Left/Right | Snap: Click/Space</div>
+        </div>
+
+        <div id="game-over-screen" class="overlay hidden">
+            <h1 id="over-title">SYSTEM FAILURE</h1>
+            <p id="over-msg">The rhythm was lost to the void.</p>
+            <div class="score-box">
+                <div class="score-val" id="final-score">0</div>
+            </div>
+            <button class="btn-main" id="restart-btn">REBOOT</button>
+        </div>
+
+        <div id="help-overlay" class="overlay hidden">
+            <h1>HOW TO PLAY</h1>
+            <ul style="text-align: left; line-height: 1.6;">
+                <li>Nodes fall down 3 lanes in rhythm.</li>
+                <li>Move your ship to the correct lane.</li>
+                <li>Tap/Space exactly when a node hits the circle.</li>
+                <li>Don't miss! 3 misses and it's game over.</li>
+            </ul>
+            <button class="btn-main" id="close-help">GOT IT</button>
+        </div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const slug = 'rhythm-relay-snap';
+        
+        let gameState = 'START';
+        let score = 0;
+        let bestScore = localStorage.getItem('fun_arcade_highscore_' + slug) || 0;
+        document.getElementById('best').innerText = bestScore;
+
+        let laneCount = 3;
+        let currentLane = 1;
+        let nodes = [];
+        let particles = [];
+        let lives = 3;
+        let lastBeatTime = 0;
+        let beatInterval = 800;
+        let gameSpeed = 5;
+        let combo = 0;
+
+        // Sfx
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playTone(freq, type, dur) {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + dur);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + dur);
+        }
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        function spawnNode() {
+            const lane = Math.floor(Math.random() * laneCount);
+            nodes.push({
+                lane: lane,
+                y: -50,
+                hit: false
+            });
+        }
+
+        function createParticles(x, y, color) {
+            for(let i=0; i<8; i++) {
+                particles.push({
+                    x: x, y: y,
+                    vx: (Math.random() - 0.5) * 10,
+                    vy: (Math.random() - 0.5) * 10,
+                    life: 1.0,
+                    color: color
+                });
+            }
+        }
+
+        function update(timestamp) {
+            if (gameState !== 'PLAYING') return;
+
+            if (timestamp - lastBeatTime > beatInterval) {
+                spawnNode();
+                lastBeatTime = timestamp;
+                beatInterval = Math.max(350, 800 - (score * 2));
+                gameSpeed = Math.min(12, 5 + (score / 20));
+            }
+
+            nodes.forEach((n, i) => {
+                n.y += gameSpeed;
+                // Miss check
+                if (n.y > canvas.height - 100 && !n.hit) {
+                    n.hit = true;
+                    lives--;
+                    playTone(150, 'sawtooth', 0.2);
+                    if (lives <= 0) endGame();
+                }
+            });
+            nodes = nodes.filter(n => n.y < canvas.height + 50);
+
+            particles.forEach(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.02;
+            });
+            particles = particles.filter(p => p.life > 0);
+
+            draw();
+            requestAnimationFrame(update);
+        }
+
+        function draw() {
+            ctx.fillStyle = '#0a0a12';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const laneW = canvas.width / laneCount;
+            
+            // Draw Lanes
+            for(let i=0; i<laneCount; i++) {
+                ctx.strokeStyle = 'rgba(20, 184, 166, 0.1)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(i * laneW, 0);
+                ctx.lineTo(i * laneW, canvas.height);
+                ctx.stroke();
+            }
+
+            const targetY = canvas.height - 150;
+
+            // Target Circles
+            for(let i=0; i<laneCount; i++) {
+                ctx.strokeStyle = i === currentLane ? '#14B8A6' : 'rgba(255,255,255,0.2)';
+                ctx.lineWidth = i === currentLane ? 4 : 2;
+                ctx.beginPath();
+                ctx.arc(i * laneW + laneW/2, targetY, 40, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+
+            // Nodes
+            nodes.forEach(n => {
+                if (n.hit) return;
+                ctx.fillStyle = '#14B8A6';
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = '#14B8A6';
+                ctx.beginPath();
+                ctx.arc(n.lane * laneW + laneW/2, n.y, 25, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            });
+
+            // Ship / Player Indicator
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.moveTo(currentLane * laneW + laneW/2, targetY - 20);
+            ctx.lineTo(currentLane * laneW + laneW/2 - 15, targetY + 15);
+            ctx.lineTo(currentLane * laneW + laneW/2 + 15, targetY + 15);
+            ctx.closePath();
+            ctx.fill();
+
+            // Particles
+            particles.forEach(p => {
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.fillRect(p.x, p.y, 4, 4);
+            });
+            ctx.globalAlpha = 1.0;
+
+            // Lives UI
+            ctx.fillStyle = '#ff4444';
+            for(let i=0; i<3; i++) {
+                ctx.globalAlpha = i < lives ? 1.0 : 0.2;
+                ctx.beginPath();
+                ctx.arc(30 + (i*25), 80, 8, 0, Math.PI*2);
+                ctx.fill();
+            }
+            ctx.globalAlpha = 1.0;
+        }
+
+        function handleInput(e) {
+            if (gameState !== 'PLAYING') return;
+            
+            // Mobile/Mouse Lane Change
+            const x = e.clientX || (e.touches && e.touches[0].clientX);
+            if (x !== undefined) {
+                const clickedLane = Math.floor(x / (canvas.width / laneCount));
+                if (clickedLane !== currentLane) {
+                    currentLane = clickedLane;
+                    playTone(440, 'sine', 0.05);
+                } else {
+                    attemptHit();
+                }
+            }
+        }
+
+        function attemptHit() {
+            const targetY = canvas.height - 150;
+            let hitAny = false;
+            
+            nodes.forEach(n => {
+                if (!n.hit && n.lane === currentLane) {
+                    const dist = Math.abs(n.y - targetY);
+                    if (dist < 60) {
+                        n.hit = true;
+                        hitAny = true;
+                        const accuracy = Math.max(0, 1 - (dist / 60));
+                        const points = Math.round(10 * accuracy) + 5;
+                        score += points;
+                        document.getElementById('score').innerText = score;
+                        createParticles(n.lane * (canvas.width/laneCount) + (canvas.width/laneCount/2), n.y, '#14B8A6');
+                        playTone(600 + (accuracy * 400), 'triangle', 0.1);
+                    }
+                }
+            });
+
+            if (!hitAny) {
+                // Penalty for blind clicking? Optional. 
+            }
+        }
+
+        function endGame() {
+            gameState = 'OVER';
+            document.getElementById('game-over-screen').classList.remove('hidden');
+            document.getElementById('final-score').innerText = score;
+            if (score > bestScore) {
+                bestScore = score;
+                localStorage.setItem('fun_arcade_highscore_' + slug, bestScore);
+                document.getElementById('best').innerText = bestScore;
+                document.getElementById('over-title').innerText = "NEW RECORD!";
+            } else {
+                document.getElementById('over-title').innerText = "SYSTEM FAILURE";
+            }
+        }
+
+        function resetGame() {
+            score = 0;
+            lives = 3;
+            nodes = [];
+            particles = [];
+            currentLane = 1;
+            gameState = 'PLAYING';
+            lastBeatTime = performance.now();
+            document.getElementById('score').innerText = '0';
+            document.getElementById('game-over-screen').classList.add('hidden');
+            document.getElementById('start-screen').classList.add('hidden');
+            requestAnimationFrame(update);
+        }
+
+        // Listeners
+        window.addEventListener('mousedown', handleInput);
+        window.addEventListener('touchstart', (e) => { handleInput(e); e.preventDefault(); }, {passive: false});
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                if (gameState === 'PLAYING') attemptHit();
+                else if (gameState === 'START' || gameState === 'OVER') resetGame();
+            }
+            if (e.key === 'ArrowLeft' && currentLane > 0) currentLane--;
+            if (e.key === 'ArrowRight' && currentLane < 2) currentLane++;
+        });
+
+        document.getElementById('start-btn').onclick = () => { audioCtx.resume(); resetGame(); };
+        document.getElementById('restart-btn').onclick = resetGame;
+        document.getElementById('help-btn').onclick = () => document.getElementById('help-overlay').classList.remove('hidden');
+        document.getElementById('close-help').onclick = () => document.getElementById('help-overlay').classList.add('hidden');
+
+        // Draw initial state
+        draw();
+    </script>
+</body>
+</html>
