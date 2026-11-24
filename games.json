@@ -574,5 +574,13 @@
     "category": "Physics",
     "accent": "#8B5CF6",
     "addedAt": "2026-11-24T19:56:43Z"
+  },
+  {
+    "slug": "pixel-path-logic",
+    "title": "Pixel Path Logic",
+    "description": "Connect all numbered nodes into a single continuous path without crossing over yourself or leaving empty tiles.",
+    "category": "Puzzle",
+    "accent": "#EF4444",
+    "addedAt": "2026-11-24T20:46:49Z"
   }
 ]

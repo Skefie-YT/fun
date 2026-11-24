@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pixel Path Logic</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0f172a;
+            --accent: #EF4444;
+            --card: #1e293b;
+            --text: #f8fafc;
+        }
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-touch-callout: none;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            height: 100dvh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* HUD */
+        .hud {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 20px;
+            background: rgba(0,0,0,0.3);
+            z-index: 10;
+        }
+        .back-btn {
+            color: var(--text);
+            text-decoration: none;
+            font-weight: bold;
+            padding: 8px 12px;
+            background: #334155;
+            border-radius: 8px;
+            font-size: 0.9rem;
+        }
+        .stats {
+            display: flex;
+            gap: 20px;
+            font-weight: 700;
+            font-size: 1.1rem;
+        }
+        .help-btn {
+            background: var(--accent);
+            border: none;
+            color: white;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        /* Game Container */
+        #game-area {
+            flex: 1;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        #grid {
+            display: grid;
+            gap: 4px;
+            background: #334155;
+            padding: 6px;
+            border-radius: 12px;
+            box-shadow: 0 0 40px rgba(0,0,0,0.5);
+            touch-action: none;
+        }
+
+        .cell {
+            width: 50px;
+            height: 50px;
+            background: var(--card);
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.4rem;
+            position: relative;
+            transition: background 0.1s, transform 0.1s;
+        }
+
+        .cell.active { background: var(--accent); }
+        .cell.end { border: 3px solid var(--text); }
+        .cell.node { color: white; text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
+
+        /* Overlays */
+        .overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.9);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            padding: 30px;
+            text-align: center;
+        }
+        .overlay.active { display: flex; }
+        .btn-main {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            border-radius: 10px;
+            cursor: pointer;
+            margin-top: 20px;
+            font-weight: bold;
+        }
+        
+        .hint-bar {
+            font-size: 0.8rem;
+            opacity: 0.7;
+            margin-top: 10px;
+        }
+
+        @media (max-width: 500px) {
+            .cell { width: 42px; height: 42px; font-size: 1.2rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="hud">
+        <a href="../../" class="back-btn">Back</a>
+        <div class="stats">
+            <div>Lvl: <span id="lvl-val">1</span></div>
+            <div>Best: <span id="best-val">0</span></div>
+        </div>
+        <button class="help-btn" onclick="toggleHelp()">?</button>
+    </div>
+
+    <div id="game-area">
+        <div id="grid"></div>
+    </div>
+
+    <div id="start-overlay" class="overlay active">
+        <h1>PIXEL PATH</h1>
+        <p>Connect the terminal nodes by dragging a path through every single tile without crossing or breaking the chain!</p>
+        <button class="btn-main" onclick="startGame()">START MISSION</button>
+        <div class="hint-bar">Mouse or Touch: Drag to draw the path</div>
+    </div>
+
+    <div id="win-overlay" class="overlay">
+        <h1 style="color: var(--accent)">SYSTEM RESTORED!</h1>
+        <p id="win-msg"></p>
+        <button class="btn-main" onclick="nextLevel()">NEXT LEVEL</button>
+    </div>
+
+    <div id="help-overlay" class="overlay" onclick="toggleHelp()">
+        <h2>How to Play</h2>
+        <ul style="text-align: left; line-height: 1.6;">
+            <li>Drag from the '1' node to start.</li>
+            <li>Visit every tile on the grid.</li>
+            <li>Connect to the highest number last.</li>
+            <li>Tiles turn red when part of your path.</li>
+            <li>Backtrack to erase your mistakes.</li>
+        </ul>
+        <p style="font-size: 0.9rem; margin-top: 20px;">Tap anywhere to close</p>
+    </div>
+
+    <script>
+        const SLUG = 'pixel-path-logic';
+        const gridEl = document.getElementById('grid');
+        let currentLevel = 1;
+        let bestLevel = localStorage.getItem('fun_arcade_highscore_' + SLUG) || 1;
+        let gridData = [];
+        let path = [];
+        let isDrawing = false;
+        let boardSize = 4;
+        let endNodeVal = 0;
+
+        document.getElementById('best-val').textContent = bestLevel;
+
+        function toggleHelp() {
+            document.getElementById('help-overlay').classList.toggle('active');
+        }
+
+        function startGame() {
+            document.getElementById('start-overlay').classList.remove('active');
+            generateLevel();
+        }
+
+        function generateLevel() {
+            // Difficulty curve
+            boardSize = 4 + Math.floor(currentLevel / 5);
+            if (boardSize > 7) boardSize = 7;
+
+            gridEl.style.gridTemplateColumns = `repeat(${boardSize}, 1fr)`;
+            gridEl.innerHTML = '';
+            path = [];
+            gridData = Array(boardSize * boardSize).fill(0);
+
+            // Generate a Hamiltonian path on a small grid is tricky,
+            // we'll use a snake/spiral generator or random walk for the puzzle
+            let startX = 0, startY = 0;
+            path = [];
+            
+            // Set Start and End
+            // Level 1-3 fixed for onboarding, others randomized slightly
+            const startIdx = 0;
+            const endIdx = gridData.length - 1;
+            
+            for (let i = 0; i < gridData.length; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+                cell.dataset.index = i;
+                
+                if (i === startIdx) {
+                    cell.textContent = '1';
+                    cell.classList.add('node');
+                }
+                if (i === endIdx) {
+                    endNodeVal = boardSize * boardSize;
+                    cell.textContent = endNodeVal;
+                    cell.classList.add('node', 'end');
+                }
+
+                cell.addEventListener('mousedown', (e) => handleInputStart(i));
+                cell.addEventListener('mouseenter', (e) => handleInputMove(i));
+                cell.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    handleInputStart(i);
+                });
+                gridEl.appendChild(cell);
+            }
+
+            window.addEventListener('toumove', (e) => {
+                const touch = e.touches[0];
+                const el = document.elementFromPoint(touch.clientX, touch.clientY);
+                if (el && el.classList.contains('cell')) {
+                    handleInputMove(parseInt(el.dataset.index));
+                }
+            }, {passive: false});
+
+            document.getElementById('lvl-val').textContent = currentLevel;
+        }
+
+        function handleInputStart(idx) {
+            if (idx === 0) {
+                isDrawing = true;
+                resetPath();
+                addToPath(idx);
+                playSfx(440, 0.05);
+            }
+        }
+
+        function handleInputMove(idx) {
+            if (!isDrawing) return;
+            
+            const lastIdx = path[path.length - 1];
+            if (idx === lastIdx) return;
+
+            // Check if idx is adjacent to lastIdx
+            const x1 = lastIdx % boardSize, y1 = Math.floor(lastIdx / boardSize);
+            const x2 = idx % boardSize, y2 = Math.floor(idx / boardSize);
+            const dist = Math.abs(x1 - x2) + Math.abs(y1 - y2);
+
+            if (dist === 1) {
+                // Check if backtracking
+                if (path.length > 1 && idx === path[path.length - 2]) {
+                    removeFromPath(lastIdx);
+                    playSfx(330, 0.05);
+                } else if (!path.includes(idx)) {
+                    addToPath(idx);
+                    playSfx(440 + (path.length * 20), 0.05);
+                    checkWin();
+                }
+            }
+        }
+
+        window.onmouseup = () => isDrawing = false;
+        window.ontouchend = () => isDrawing = false;
+
+        function addToPath(idx) {
+            path.push(idx);
+            const el = gridEl.children[idx];
+            el.classList.add('active');
+        }
+
+        function removeFromPath(idx) {
+            const el = gridEl.children[idx];
+            el.classList.remove('active');
+            path.pop();
+        }
+
+        function resetPath() {
+            path = [];
+            Array.from(gridEl.children).forEach(c => c.classList.remove('active'));
+        }
+
+        function checkWin() {
+            if (path.length === boardSize * boardSize) {
+                const lastIdx = path[path.length - 1];
+                if (lastIdx === gridData.length - 1) {
+                    isDrawing = false;
+                    showWin();
+                }
+            }
+        }
+
+        function showWin() {
+            document.getElementById('win-msg').textContent = `Level ${currentLevel} cleared with a perfect link!`;
+            document.getElementById('win-overlay').classList.add('active');
+            if (currentLevel > bestLevel) {
+                bestLevel = currentLevel;
+                localStorage.setItem('fun_arcade_highscore_' + SLUG, bestLevel);
+                document.getElementById('best-val').textContent = bestLevel;
+            }
+            playSfx(880, 0.1);
+            setTimeout(() => playSfx(1046, 0.2), 100);
+        }
+
+        function nextLevel() {
+            currentLevel++;
+            document.getElementById('win-overlay').classList.remove('active');
+            generateLevel();
+        }
+
+        // Basic Audio Synth
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playSfx(freq, duration) {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + duration);
+        }
+
+        // Touch move handling for mobile logic paths
+        gridEl.addEventListener('touchmove', (e) => {
+            if (!isDrawing) return;
+            e.preventDefault();
+            const touch = e.touches[0];
+            const target = document.elementFromPoint(touch.clientX, touch.clientY);
+            if (target && target.classList.contains('cell')) {
+                handleInputMove(parseInt(target.dataset.index));
+            }
+        }, { passive: false });
+
+    </script>
+</body>
+</html>
