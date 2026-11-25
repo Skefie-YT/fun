@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Circuit Snap Tactics</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #0EA5E9;
+            --bg: #020617;
+            --panel: #1e293b;
+            --text: #f8fafc;
+        }
+        * { box-sizing: border-box; touch-action: none; -webkit-tap-highlight-color: transparent; }
+        body {
+            margin: 0; padding: 0; background: var(--bg); color: var(--text);
+            font-family: 'Inter', sans-serif; overflow: hidden; height: 100dvh;
+            display: flex; flex-direction: column;
+        }
+        #ui-top {
+            padding: 15px 20px; display: flex; justify-content: space-between; align-items: center;
+            background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(10px); z-index: 10;
+        }
+        .back-btn { color: var(--text); text-decoration: none; font-weight: 600; font-size: 14px; border: 1px solid var(--primary); padding: 5px 12px; border-radius: 6px; }
+        .stats { display: flex; gap: 20px; font-family: 'Orbitron', sans-serif; font-size: 14px; }
+        .help-btn { background: none; border: 1px solid var(--text); color: var(--text); border-radius: 50%; width: 24px; height: 24px; cursor: pointer; }
+
+        #game-container {
+            flex: 1; position: relative; display: flex; justify-content: center; align-items: center;
+            perspective: 1000px; padding: 20px;
+        }
+        #grid-board {
+            display: grid; gap: 8px; background: #334155; padding: 12px; border-radius: 12px;
+            box-shadow: 0 0 40px rgba(14, 165, 233, 0.2); transition: transform 0.3s ease;
+        }
+        .tile {
+            width: 70px; height: 70px; background: #0f172a; border-radius: 8px;
+            display: flex; justify-content: center; align-items: center;
+            cursor: pointer; position: relative; transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .tile.active { background: #1e293b; border: 2px solid var(--primary); box-shadow: 0 0 15px var(--primary); }
+        .tile.empty { background: transparent; pointer-events: none; opacity: 0; }
+        .tile-content {
+            width: 80%; height: 80%; border-radius: 50%; border: 4px solid #475569;
+            display: flex; justify-content: center; align-items: center;
+        }
+        .tile.connected .tile-content { border-color: var(--primary); background: rgba(14, 165, 233, 0.2); }
+        .tile.target .tile-content { border-style: dashed; border-color: #f59e0b; }
+        .tile.target.connected .tile-content { border-style: solid; border-color: #10b981; background: rgba(16, 185, 129, 0.2); }
+
+        .overlay {
+            position: absolute; inset: 0; background: rgba(2, 6, 23, 0.95); 
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 100; text-align: center; padding: 40px;
+        }
+        .overlay h2 { font-family: 'Orbitron', sans-serif; font-size: 2rem; color: var(--primary); margin-bottom: 10px; }
+        .btn { 
+            background: var(--primary); color: white; border: none; padding: 12px 30px; 
+            font-family: 'Orbitron', sans-serif; font-weight: 700; border-radius: 8px; 
+            cursor: pointer; margin-top: 20px; transition: scale 0.2s;
+        }
+        .btn:active { scale: 0.95; }
+        .hidden { display: none !important; }
+        .timer-bar { position: absolute; bottom: 0; left: 0; height: 4px; background: var(--primary); width: 100%; transition: width 0.1s linear; }
+        
+        @media (max-width: 450px) {
+            .tile { width: 60px; height: 60px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="ui-top">
+        <a href="../../" class="back-btn">Back</a>
+        <div class="stats">
+            <div>Lvl: <span id="level-val">1</span></div>
+            <div>Best: <span id="best-val">0</span></div>
+        </div>
+        <button class="help-btn" onclick="toggleHelp()">?</button>
+    </div>
+
+    <div id="game-container">
+        <div id="grid-board"></div>
+        <div id="timer" class="timer-bar"></div>
+
+        <!-- Overlays -->
+        <div id="start-overlay" class="overlay">
+            <h2>CIRCUIT SNAP</h2>
+            <p>Slide tiles into the empty space to align the terminal nodes. Connect all yellow targets to solve the grid!</p>
+            <button class="btn" onclick="startGame()">INITIALIZE</button>
+        </div>
+
+        <div id="help-overlay" class="overlay hidden">
+            <h2>HOW TO PLAY</h2>
+            <p>• Tap tiles adjacent to the empty slot to move them.</p>
+            <p>• Power flows through connected adjacent tiles.</p>
+            <p>• Connect all marked target nodes to clear the level.</p>
+            <button class="btn" onclick="toggleHelp()">GOT IT</button>
+        </div>
+
+        <div id="gameover-overlay" class="overlay hidden">
+            <h2 id="over-title">SYSTEM CRASH</h2>
+            <p id="over-msg">Level reached: <span id="final-lvl">0</span></p>
+            <button class="btn" onclick="startGame()">REBOOT</button>
+        </div>
+    </div>
+
+    <script>
+        const SLUG = 'circuit-snap-tactics';
+        const gridEl = document.getElementById('grid-board');
+        const levelVal = document.getElementById('level-val');
+        const bestVal = document.getElementById('best-val');
+        const timerBar = document.getElementById('timer');
+
+        let state = {
+            size: 3,
+            tiles: [],
+            emptyIdx: 8,
+            level: 1,
+            timeLeft: 100,
+            active: false,
+            best: localStorage.getItem('fun_arcade_highscore_' + SLUG) || 0
+        };
+
+        bestVal.textContent = state.best;
+
+        function toggleHelp() {
+            document.getElementById('help-overlay').classList.toggle('hidden');
+        }
+
+        function startGame() {
+            state.level = 1;
+            state.active = true;
+            document.querySelectorAll('.overlay').forEach(o => o.classList.add('hidden'));
+            setupLevel();
+            gameLoop();
+        }
+
+        function setupLevel() {
+            state.size = state.level >= 5 ? 4 : 3;
+            const count = state.size * state.size;
+            state.tiles = Array.from({length: count}, (_, i) => ({
+                id: i,
+                isTarget: false,
+                connected: false
+            }));
+
+            // Assign targets
+            const targetCount = Math.min(state.level + 1, count - 2);
+            let assigned = 0;
+            while(assigned < targetCount) {
+                let r = Math.floor(Math.random() * count);
+                if (!state.tiles[r].isTarget) {
+                    state.tiles[r].isTarget = true;
+                    assigned++;
+                }
+            }
+
+            state.emptyIdx = count - 1;
+            shuffleBoard();
+            renderBoard();
+            state.timeLeft = 100;
+            levelVal.textContent = state.level;
+        }
+
+        function shuffleBoard() {
+            // Perform valid moves to ensure solvability
+            for(let i=0; i<100; i++) {
+                const neighbors = getNeighbors(state.emptyIdx);
+                const move = neighbors[Math.floor(Math.random() * neighbors.length)];
+                swap(move, state.emptyIdx, false);
+            }
+        }
+
+        function getNeighbors(idx) {
+            const neighbors = [];
+            const r = Math.floor(idx / state.size);
+            const c = idx % state.size;
+            if (r > 0) neighbors.push(idx - state.size);
+            if (r < state.size - 1) neighbors.push(idx + state.size);
+            if (c > 0) neighbors.push(idx - 1);
+            if (c < state.size - 1) neighbors.push(idx + 1);
+            return neighbors;
+        }
+
+        function swap(idx, empty, checkWin = true) {
+            const temp = state.tiles[idx];
+            state.tiles[idx] = state.tiles[empty];
+            state.tiles[empty] = temp;
+            state.emptyIdx = idx;
+            if (checkWin) {
+                calculateConnections();
+                renderBoard();
+                checkWinState();
+            }
+        }
+
+        function calculateConnections() {
+            // Simple BFS from center to find connectivity
+            state.tiles.forEach(t => t.connected = false);
+            const centerIdx = Math.floor((state.size * state.size) / 2);
+            const queue = [centerIdx];
+            const visited = new Set();
+
+            while(queue.length > 0) {
+                const curr = queue.shift();
+                if (visited.has(curr) || state.tiles[curr].id === state.size * state.size - 1) continue;
+                visited.add(curr);
+                state.tiles[curr].connected = true;
+
+                getNeighbors(curr).forEach(n => {
+                    if (!visited.has(n) && state.tiles[n].id !== state.size * state.size - 1) {
+                        queue.push(n);
+                    }
+                });
+            }
+        }
+
+        function renderBoard() {
+            gridEl.style.gridTemplateColumns = `repeat(${state.size}, 1fr)`;
+            gridEl.innerHTML = '';
+            state.tiles.forEach((tile, i) => {
+                const div = document.createElement('div');
+                div.className = `tile ${tile.id === (state.size*state.size-1) ? 'empty' : ''} ${tile.connected ? 'connected' : ''} ${tile.isTarget ? 'target' : ''}`;
+                div.innerHTML = `<div class="tile-content"></div>`;
+                div.onclick = () => handleTileClick(i);
+                gridEl.appendChild(div);
+            });
+        }
+
+        function handleTileClick(idx) {
+            if (!state.active) return;
+            const neighbors = getNeighbors(state.emptyIdx);
+            if (neighbors.includes(idx)) {
+                swap(idx, state.emptyIdx);
+                beep(200, 0.1);
+            }
+        }
+
+        function checkWinState() {
+            const allTargetsConnected = state.tiles.every(t => !t.isTarget || t.connected);
+            if (allTargetsConnected) {
+                state.active = false;
+                state.level++;
+                if (state.level > state.best) {
+                    state.best = state.level;
+                    localStorage.setItem('fun_arcade_highscore_' + SLUG, state.best);
+                    bestVal.textContent = state.best;
+                }
+                setTimeout(() => {
+                    state.active = true;
+                    setupLevel();
+                }, 500);
+                beep(600, 0.2);
+            }
+        }
+
+        function gameLoop() {
+            if (!state.active) return;
+            state.timeLeft -= 0.05 * (1 + state.level * 0.1);
+            timerBar.style.width = state.timeLeft + '%';
+
+            if (state.timeLeft <= 0) {
+                gameOver();
+            } else {
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        function gameOver() {
+            state.active = false;
+            document.getElementById('gameover-overlay').classList.remove('hidden');
+            document.getElementById('final-lvl').textContent = state.level;
+        }
+
+        // SFX Engine
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function beep(freq, dur) {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + dur);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + dur);
+        }
+    </script>
+</body>
+</html>

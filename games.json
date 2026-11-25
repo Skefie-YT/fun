@@ -630,5 +630,13 @@
     "category": "Reflex",
     "accent": "#14B8A6",
     "addedAt": "2026-11-25T04:59:32Z"
+  },
+  {
+    "slug": "circuit-snap-tactics",
+    "title": "Circuit Snap Tactics",
+    "description": "Slide the logic grid to align terminal nodes and complete the circuit before power depletes!",
+    "category": "Puzzle",
+    "accent": "#0EA5E9",
+    "addedAt": "2026-11-25T06:00:00Z"
   }
 ]
