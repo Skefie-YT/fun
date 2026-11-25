@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Prism Pulse</title>
+    <style>
+        :root {
+            --accent: #EC4899;
+            --bg: #0f172a;
+            --text: #f8fafc;
+        }
+        * { box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100dvh; background: var(--bg); color: var(--text); font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; }
+        #game-container { position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; }
+        header { height: 60px; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; z-index: 10; background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(5px); }
+        .back-btn { color: var(--text); text-decoration: none; font-weight: bold; border: 2px solid var(--accent); padding: 5px 12px; border-radius: 8px; font-size: 14px; transition: 0.2s; }
+        .back-btn:hover { background: var(--accent); }
+        #hud { font-size: 18px; font-weight: 800; display: flex; gap: 20px; }
+        .ctrl-btn { background: none; border: 2px solid #ffffff44; color: white; border-radius: 50%; width: 32px; height: 32px; cursor: pointer; }
+        
+        canvas { flex: 1; touch-action: none; display: block; }
+
+        .overlay { position: absolute; inset: 0; background: rgba(15, 23, 42, 0.95); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; padding: 30px; text-align: center; }
+        .hidden { display: none !important; }
+        h1 { color: var(--accent); font-size: 3rem; margin: 0 0 10px; }
+        p { max-width: 400px; line-height: 1.6; margin-bottom: 25px; }
+        .btn-main { background: var(--accent); border: none; color: white; padding: 15px 40px; font-size: 1.2rem; font-weight: bold; border-radius: 50px; cursor: pointer; transform: scale(1); transition: 0.1s; }
+        .btn-main:active { transform: scale(0.95); }
+        
+        .controls-hint { position: absolute; bottom: 20px; font-size: 0.8rem; opacity: 0.6; }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <header>
+        <a href="../../" class="back-btn">Back</a>
+        <div id="hud">
+            <span>Score: <span id="score-val">0</span></span>
+            <span>Best: <span id="best-val">0</span></span>
+        </div>
+        <button class="ctrl-btn" id="help-btn">?</button>
+    </header>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- Overlays -->
+    <div id="start-overlay" class="overlay">
+        <h1>PRISM PULSE</h1>
+        <p>A high-stakes timing reflex game. Tap or press Space exactly when the expanding inner ring reaches the glowing target zone!</p>
+        <button class="btn-main" id="start-btn">START PULSE</button>
+        <div class="controls-hint">TAP, CLICK, or SPACE to trigger</div>
+    </div>
+
+    <div id="gameover-overlay" class="overlay hidden">
+        <h2 id="status-text" style="font-size: 2.5rem; margin-bottom: 5px;">SYSTEM FAILURE</h2>
+        <p id="final-score-text">Final Score: 0</p>
+        <button class="btn-main" id="restart-btn">TRY AGAIN</button>
+    </div>
+
+    <div id="help-overlay" class="overlay hidden">
+        <h2>HOW TO PLAY</h2>
+        <p>1. Watch the inner ring expand.<br>2. Wait for it to hit the outlined target ring.<br>3. Tap to lock the frequency.<br>4. Be perfect or be fast—the window shrinks as you score!</p>
+        <button class="btn-main" id="close-help">GOT IT</button>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreVal = document.getElementById('score-val');
+    const bestVal = document.getElementById('best-val');
+    const startOverlay = document.getElementById('start-overlay');
+    const gameoverOverlay = document.getElementById('gameover-overlay');
+    const helpOverlay = document.getElementById('help-overlay');
+    const SLUG = 'prism-pulse-timing';
+
+    let score = 0;
+    let bestScore = localStorage.getItem('fun_arcade_highscore_' + SLUG) || 0;
+    bestVal.textContent = bestScore;
+
+    let gameActive = false;
+    let pulseRadius = 0;
+    let pulseSpeed = 2;
+    let targetRadius = 120;
+    let tolerance = 15; 
+    let baseTolerance = 25;
+    let particles = [];
+    let feedbackText = "";
+    let feedbackOpacity = 0;
+    let shakeAmount = 0;
+
+    function init() {
+        resize();
+        window.addEventListener('resize', resize);
+        document.addEventListener('keydown', e => { if(e.code === 'Space') handleInput(); });
+        canvas.addEventListener('mousedown', handleInput);
+        canvas.addEventListener('touchstart', e => { e.preventDefault(); handleInput(); }, {passive: false});
+        
+        document.getElementById('start-btn').onclick = startGame;
+        document.getElementById('restart-btn').onclick = startGame;
+        document.getElementById('help-btn').onclick = () => helpOverlay.classList.remove('hidden');
+        document.getElementById('close-help').onclick = () => helpOverlay.classList.add('hidden');
+        
+        animate();
+    }
+
+    function resize() {
+        canvas.width = canvas.clientWidth * window.devicePixelRatio;
+        canvas.height = canvas.clientHeight * window.devicePixelRatio;
+    }
+
+    function startGame() {
+        score = 0;
+        pulseRadius = 0;
+        pulseSpeed = 2;
+        tolerance = baseTolerance;
+        scoreVal.textContent = score;
+        gameActive = true;
+        startOverlay.classList.add('hidden');
+        gameoverOverlay.classList.add('hidden');
+    }
+
+    function handleInput() {
+        if (!gameActive) return;
+
+        const diff = Math.abs(pulseRadius - targetRadius);
+        if (diff < tolerance) {
+            // Success
+            const quality = diff < tolerance / 3 ? "PERFECT!" : "GOOD";
+            triggerFeedback(quality, diff < tolerance / 3 ? "#F472B6" : "#ffffff");
+            score++;
+            scoreVal.textContent = score;
+            
+            // Increase difficulty
+            pulseRadius = 0;
+            pulseSpeed = 2 + (score * 0.12);
+            tolerance = Math.max(10, baseTolerance - (score * 0.5));
+            
+            if (score > bestScore) {
+                bestScore = score;
+                bestVal.textContent = bestScore;
+                localStorage.setItem('fun_arcade_highscore_' + SLUG, bestScore);
+            }
+            
+            createParticles();
+        } else {
+            gameOver();
+        }
+    }
+
+    function gameOver() {
+        gameActive = false;
+        document.getElementById('final-score-text').textContent = "Final Score: " + score;
+        gameoverOverlay.classList.remove('hidden');
+        shakeAmount = 15;
+    }
+
+    function createParticles() {
+        for (let i = 0; i < 15; i++) {
+            particles.push({
+                x: canvas.width / 2,
+                y: canvas.height / 2,
+                vx: (Math.random() - 0.5) * 20,
+                vy: (Math.random() - 0.5) * 20,
+                r: Math.random() * 4 + 2,
+                life: 1.0
+            });
+        }
+    }
+
+    function triggerFeedback(txt, color) {
+        feedbackText = txt;
+        feedbackOpacity = 1.0;
+    }
+
+    function animate() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        const cx = canvas.width / 2;
+        const cy = canvas.height / 2;
+
+        if (shakeAmount > 0) {
+            ctx.translate((Math.random()-0.5)*shakeAmount, (Math.random()-0.5)*shakeAmount);
+            shakeAmount *= 0.9;
+        }
+
+        if (gameActive) {
+            pulseRadius += pulseSpeed;
+            if (pulseRadius > targetRadius + tolerance + 30) {
+                gameOver();
+            }
+
+            // Draw Target Ring
+            ctx.beginPath();
+            ctx.arc(cx, cy, targetRadius, 0, Math.PI * 2);
+            ctx.lineWidth = 4;
+            ctx.strokeStyle = `rgba(236, 72, 153, 0.2)`;
+            ctx.stroke();
+            
+            // Target Zone
+            ctx.beginPath();
+            ctx.arc(cx, cy, targetRadius, 0, Math.PI * 2);
+            ctx.setLineDash([10, 5]);
+            ctx.lineWidth = tolerance * 2;
+            ctx.strokeStyle = `rgba(236, 72, 153, 0.1)`;
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // The Pulse
+            ctx.beginPath();
+            ctx.arc(cx, cy, pulseRadius, 0, Math.PI * 2);
+            ctx.lineWidth = 6;
+            ctx.strokeStyle = "#EC4899";
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = "#EC4899";
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+        }
+
+        // Particles
+        particles.forEach((p, i) => {
+            p.x += p.vx;
+            p.y += p.vy;
+            p.life -= 0.02;
+            ctx.fillStyle = `rgba(236, 72, 153, ${p.life})`;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+            ctx.fill();
+            if (p.life <= 0) particles.splice(i, 1);
+        });
+
+        // Text Feedback
+        if (feedbackOpacity > 0) {
+            ctx.fillStyle = `rgba(255, 255, 255, ${feedbackOpacity})`;
+            ctx.font = "900 40px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText(feedbackText, cx, cy - targetRadius - 40);
+            feedbackOpacity -= 0.02;
+        }
+
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        requestAnimationFrame(animate);
+    }
+
+    init();
+</script>
+</body>
+</html>

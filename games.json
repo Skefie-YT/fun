@@ -686,5 +686,13 @@
     "category": "Physics",
     "accent": "#EC4899",
     "addedAt": "2026-11-25T16:58:44Z"
+  },
+  {
+    "slug": "prism-pulse-timing",
+    "title": "Prism Pulse",
+    "description": "Tap exactly when the expanding pulse overlaps the target ring to climb levels and shatter high scores!",
+    "category": "Reflex",
+    "accent": "#EC4899",
+    "addedAt": "2026-11-25T17:50:40Z"
   }
 ]
