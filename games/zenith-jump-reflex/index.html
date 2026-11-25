@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Zenith Jump</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #0EA5E9;
+            --bg: #0f172a;
+            --text: #f8fafc;
+        }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+        }
+        #game-container {
+            position: relative;
+            flex: 1;
+            width: 100%;
+            max-width: 500px;
+            margin: 0 auto;
+            background: #020617;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            image-rendering: pixelated;
+        }
+        .hud {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            z-index: 10;
+            pointer-events: none;
+        }
+        .hud-left {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .back-btn, .btn-circle {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(4px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: bold;
+            pointer-events: auto;
+            cursor: pointer;
+        }
+        .btn-circle {
+            width: 40px;
+            height: 40px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+        }
+        .score-display {
+            font-weight: 900;
+            font-size: 24px;
+            text-shadow: 0 0 10px rgba(14, 165, 233, 0.5);
+        }
+        .best-display {
+            font-size: 12px;
+            opacity: 0.7;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            padding: 40px;
+            text-align: center;
+        }
+        .hidden { display: none !important; }
+        h1 {
+            font-size: 42px;
+            margin-bottom: 10px;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: -2px;
+        }
+        .start-btn {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 16px 40px;
+            font-size: 20px;
+            font-weight: 900;
+            border-radius: 12px;
+            cursor: pointer;
+            margin-top: 20px;
+            box-shadow: 0 4px 0 #0369a1;
+        }
+        .start-btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #0369a1; }
+        .how-to-text { font-size: 14px; opacity: 0.8; margin-bottom: 30px; line-height: 1.5; }
+        .footer-hint { position: absolute; bottom: 20px; font-size: 12px; opacity: 0.4; letter-spacing: 1px; }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div class="hud">
+            <div class="hud-left">
+                <a href="../../" class="back-btn">Back</a>
+                <div class="best-display">Best: <span id="best-score">0</span></div>
+                <div class="score-display" id="current-score">0</div>
+            </div>
+            <button class="btn-circle" id="help-btn">?</button>
+        </div>
+
+        <canvas id="gameCanvas"></canvas>
+
+        <div id="start-overlay" class="overlay">
+            <h1>Zenith Jump</h1>
+            <p class="how-to-text">The higher you climb, the faster the abyss rises. Tap or Space to jump between sliding platforms. Land in the center for bonus points!</p>
+            <button class="start-btn" id="start-btn">PLAY</button>
+            <div class="footer-hint">CLICK, TAP OR SPACE TO JUMP</div>
+        </div>
+
+        <div id="gameover-overlay" class="overlay hidden">
+            <h1 style="color: #ef4444;">FAIL</h1>
+            <p id="final-score-text">Score: 0</p>
+            <button class="start-btn" id="restart-btn">TRY AGAIN</button>
+        </div>
+
+        <div id="info-overlay" class="overlay hidden">
+            <h1>How to Play</h1>
+            <p class="how-to-text">Wait for the platform to align with your character and jump! <br><br>• 1 Point for landing<br>• 3 Points for Perfect centers<br>• Game ends if you miss a platform or fall off screen.</p>
+            <button class="start-btn" id="close-info-btn">GOT IT</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const SLUG = 'zenith-jump-reflex';
+        
+        let gameState = 'START';
+        let score = 0;
+        let bestScore = localStorage.getItem('fun_arcade_highscore_' + SLUG) || 0;
+        
+        const config = {
+            playerSize: 24,
+            platformHeight: 12,
+            platformWidth: 100,
+            gravity: 0.5,
+            jumpPower: -12,
+            cameraLerp: 0.1
+        };
+
+        let player = { x: 0, y: 0, vy: 0, size: config.playerSize, onPlatform: true };
+        let platforms = [];
+        let particles = [];
+        let cameraY = 0;
+        let viewY = 0;
+        let difficulty = 1;
+        let screenShake = 0;
+
+        function init() {
+            document.getElementById('best-score').textContent = bestScore;
+            resize();
+            resetGame();
+        }
+
+        function resetGame() {
+            score = 0;
+            difficulty = 1;
+            updateScore(0);
+            player.x = canvas.width / 2;
+            player.y = canvas.height - 100;
+            player.vy = 0;
+            player.onPlatform = true;
+            platforms = [];
+            cameraY = player.y - canvas.height * 0.7;
+            viewY = cameraY;
+            
+            // Initial platform
+            platforms.push({
+                x: canvas.width / 2 - 50,
+                y: canvas.height - 80,
+                w: 100,
+                dir: 0,
+                speed: 0
+            });
+            
+            spawnPlatform();
+            spawnPlatform();
+        }
+
+        function spawnPlatform() {
+            const last = platforms[platforms.length - 1];
+            const y = last.y - 120;
+            const speed = (2 + Math.min(difficulty * 0.5, 6)) * (Math.random() > 0.5 ? 1 : -1);
+            platforms.push({
+                x: Math.random() * (canvas.width - 100),
+                y: y,
+                w: 100,
+                dir: speed,
+                speed: speed
+            });
+        }
+
+        function resize() {
+            const container = document.getElementById('game-container');
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+        }
+
+        window.addEventListener('resize', resize);
+
+        function jump() {
+            if (gameState !== 'PLAYING') return;
+            if (player.onPlatform) {
+                player.vy = config.jumpPower;
+                player.onPlatform = false;
+                createParticles(player.x, player.y, '#fff', 5);
+                playSound(200, 0.1, 'square');
+            }
+        }
+
+        function update() {
+            if (gameState !== 'PLAYING') return;
+
+            // Movement
+            player.vy += config.gravity;
+            player.y += player.vy;
+
+            // Move platforms
+            platforms.forEach(p => {
+                if (p.speed !== 0) {
+                    p.x += p.speed;
+                    if (p.x < 0 || p.x + p.w > canvas.width) {
+                        p.speed *= -1;
+                    }
+                }
+            });
+
+            // Collision detection
+            if (player.vy > 0) {
+                for (let p of platforms) {
+                    if (player.y + player.size/2 >= p.y && 
+                        player.y + player.size/2 <= p.y + config.platformHeight + player.vy &&
+                        player.x >= p.x && player.x <= p.x + p.w) {
+                        
+                        const isNew = p !== platforms[platforms.length - 2];
+                        if (isNew && p !== platforms[0]) {
+                            const centerDist = Math.abs(player.x - (p.x + p.w/2));
+                            if (centerDist < 15) {
+                                updateScore(3);
+                                screenShake = 5;
+                            } else {
+                                updateScore(1);
+                            }
+                            difficulty += 0.1;
+                            spawnPlatform();
+                        }
+
+                        player.y = p.y - player.size/2;
+                        player.vy = 0;
+                        player.onPlatform = true;
+                        // Stick to platform movement
+                        player.x += p.speed;
+                        break;
+                    }
+                }
+            }
+
+            // Camera follow
+            let targetCamera = player.y - canvas.height * 0.6;
+            viewY += (targetCamera - viewY) * config.cameraLerp;
+
+            // Death conditions
+            if (player.y > viewY + canvas.height + 100 || player.x < -20 || player.x > canvas.width + 20) {
+                gameOver();
+            }
+
+            // Cleanup platforms
+            if (platforms.length > 8) platforms.shift();
+            
+            // Particles
+            particles.forEach((p, i) => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.02;
+                if (p.life <= 0) particles.splice(i, 1);
+            });
+
+            if (screenShake > 0) screenShake *= 0.9;
+        }
+
+        function draw() {
+            ctx.fillStyle = '#020617';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.save();
+            if (screenShake > 0) {
+                ctx.translate(Math.random()*screenShake, Math.random()*screenShake);
+            }
+            ctx.translate(0, -viewY);
+
+            // Draw Grid Background lines
+            ctx.strokeStyle = 'rgba(14, 165, 233, 0.05)';
+            ctx.lineWidth = 1;
+            for (let i = 0; i < 20; i++) {
+                let lineY = Math.floor(viewY / 100) * 100 + (i * 100);
+                ctx.beginPath();
+                ctx.moveTo(0, lineY);
+                ctx.lineTo(canvas.width, lineY);
+                ctx.stroke();
+            }
+
+            // Platforms
+            platforms.forEach(p => {
+                const gradient = ctx.createLinearGradient(p.x, p.y, p.x, p.y + config.platformHeight);
+                gradient.addColorStop(0, '#0EA5E9');
+                gradient.addColorStop(1, '#0284c7');
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.roundRect(p.x, p.y, p.w, config.platformHeight, 4);
+                ctx.fill();
+                // Glow
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = '#0EA5E9';
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+            });
+
+            // Particles
+            particles.forEach(p => {
+                ctx.fillStyle = `rgba(14, 165, 233, ${p.life})`;
+                ctx.fillRect(p.x, p.y, 4, 4);
+            });
+
+            // Player
+            ctx.fillStyle = '#fff';
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#fff';
+            ctx.beginPath();
+            ctx.roundRect(player.x - player.size/2, player.y - player.size/2, player.size, player.size, 4);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            ctx.restore();
+
+            // Death line visual (Abyss)
+            ctx.fillStyle = 'rgba(14, 165, 233, 0.1)';
+            ctx.fillRect(0, (canvas.height - (viewY - player.y)) + 300, canvas.width, 500);
+
+            requestAnimationFrame(() => {
+                update();
+                draw();
+            });
+        }
+
+        function updateScore(pts) {
+            score += pts;
+            document.getElementById('current-score').textContent = score;
+            if (score > bestScore) {
+                bestScore = score;
+                localStorage.setItem('fun_arcade_highscore_' + SLUG, bestScore);
+                document.getElementById('best-score').textContent = bestScore;
+            }
+        }
+
+        function gameOver() {
+            if (gameState === 'GAMEOVER') return;
+            gameState = 'GAMEOVER';
+            document.getElementById('final-score-text').textContent = "Score: " + score;
+            document.getElementById('gameover-overlay').classList.remove('hidden');
+            playSound(100, 0.3, 'sawtooth');
+        }
+
+        function createParticles(x, y, color, count) {
+            for (let i = 0; i < count; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 6,
+                    vy: (Math.random() - 0.5) * 6,
+                    life: 1
+                });
+            }
+        }
+
+        // Audio
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playSound(freq, duration, type) {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+            osc.start();
+            osc.stop(audioCtx.currentTime + duration);
+        }
+
+        // Inputs
+        const startBtn = document.getElementById('start-btn');
+        const restartBtn = document.getElementById('restart-btn');
+        const helpBtn = document.getElementById('help-btn');
+        const closeInfoBtn = document.getElementById('close-info-btn');
+
+        const startGame = () => {
+            document.getElementById('start-overlay').classList.add('hidden');
+            document.getElementById('gameover-overlay').classList.add('hidden');
+            resetGame();
+            gameState = 'PLAYING';
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        };
+
+        startBtn.addEventListener('click', startGame);
+        restartBtn.addEventListener('click', startGame);
+        
+        helpBtn.addEventListener('click', () => {
+            document.getElementById('info-overlay').classList.remove('hidden');
+        });
+        
+        closeInfoBtn.addEventListener('click', () => {
+            document.getElementById('info-overlay').classList.add('hidden');
+        });
+
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                if (gameState === 'PLAYING') jump();
+                else if (gameState === 'START') startGame();
+            }
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            jump();
+        }, { passive: false });
+
+        canvas.addEventListener('mousedown', (e) => {
+            jump();
+        });
+
+        // Init
+        init();
+        draw();
+    </script>
+</body>
+</html>

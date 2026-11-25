@@ -646,5 +646,13 @@
     "category": "Reflex",
     "accent": "#E85D04",
     "addedAt": "2026-11-25T07:15:20Z"
+  },
+  {
+    "slug": "zenith-jump-reflex",
+    "title": "Zenith Jump",
+    "description": "Tap to leap between moving platforms! Stay centered and climb as high as you can before the screen catches up.",
+    "category": "Reflex",
+    "accent": "#0EA5E9",
+    "addedAt": "2026-11-25T08:56:55Z"
   }
 ]
