@@ -734,5 +734,13 @@
     "category": "Puzzle",
     "accent": "#14B8A6",
     "addedAt": "2026-11-25T22:47:15Z"
+  },
+  {
+    "slug": "pixel-bomb-sweep",
+    "title": "Pixel Bomb Sweep",
+    "description": "Reveal the hidden safe zones on the grid by using logic to avoid the concealed pixel bombs before time runs out!",
+    "category": "Puzzle",
+    "accent": "#EF4444",
+    "addedAt": "2026-11-25T23:45:21Z"
   }
 ]

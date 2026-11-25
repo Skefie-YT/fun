@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pixel Bomb Sweep</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Rajdhani:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #EF4444;
+            --bg: #0f172a;
+            --card: #1e293b;
+            --text: #f8fafc;
+        }
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Rajdhani', sans-serif;
+            height: 100dvh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .header {
+            height: 60px;
+            padding: 0 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(15, 23, 42, 0.9);
+            border-bottom: 2px solid var(--primary);
+            z-index: 100;
+        }
+        .back-btn {
+            color: var(--text);
+            text-decoration: none;
+            font-weight: bold;
+            border: 1px solid var(--primary);
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+        .stats {
+            display: flex;
+            gap: 1.5rem;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.9rem;
+        }
+        .stat-val { color: var(--primary); }
+        .ctrl-btn {
+            background: none;
+            border: 1px solid var(--text);
+            color: var(--text);
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+
+        #game-container {
+            flex: 1;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 10px;
+        }
+
+        .grid {
+            display: grid;
+            gap: 4px;
+            background: var(--card);
+            padding: 8px;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            max-width: 95vw;
+            max-height: 70dvh;
+        }
+
+        .cell {
+            width: 40px;
+            height: 40px;
+            background: #334155;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.2rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.1s;
+        }
+        .cell:active { transform: scale(0.9); }
+        .cell.revealed {
+            background: #cbd5e1;
+            color: #0f172a;
+            cursor: default;
+        }
+        .cell.flagged {
+            background: var(--primary) !important;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.3);
+        }
+        .cell.bomb {
+            background: #000 !important;
+            color: var(--primary);
+        }
+
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(15, 23, 42, 0.95);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+            text-align: center;
+            padding: 20px;
+        }
+        .hidden { display: none !important; }
+
+        .btn-main {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.1rem;
+            border-radius: 4px;
+            margin-top: 20px;
+            cursor: pointer;
+            text-transform: uppercase;
+        }
+
+        .mode-toggle {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            background: var(--card);
+            border-radius: 30px;
+            padding: 5px;
+            border: 2px solid var(--primary);
+            gap: 5px;
+        }
+        .mode-btn {
+            padding: 10px 20px;
+            border-radius: 25px;
+            border: none;
+            background: transparent;
+            color: #94a3b8;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .mode-btn.active {
+            background: var(--primary);
+            color: white;
+        }
+
+        .n1 { color: #2563eb; } .n2 { color: #16a34a; } .n3 { color: #dc2626; }
+        .n4 { color: #7c3aed; } .n5 { color: #92400e; } .n6 { color: #0891b2; }
+
+        @media (max-width: 500px) {
+            .cell { width: 32px; height: 32px; font-size: 1rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <a href="../../" class="back-btn">Back</a>
+        <div class="stats">
+            <div>TIME: <span id="time-val" class="stat-val">0</span></div>
+            <div>BEST: <span id="best-val" class="stat-val">0</span></div>
+        </div>
+        <button class="ctrl-btn" onclick="toggleHelp()">?</button>
+    </div>
+
+    <div id="game-container">
+        <div id="grid" class="grid"></div>
+
+        <div id="start-screen" class="overlay">
+            <h1 style="color:var(--primary); font-family:'Orbitron';">PIXEL BOMB SWEEP</h1>
+            <p>Clear the grid without hitting hidden pixel bombs. Numbers show how many bombs touch that square.</p>
+            <button class="btn-main" onclick="startGame()">Initialize Grid</button>
+        </div>
+
+        <div id="game-over" class="overlay hidden">
+            <h2 id="result-title" style="font-family:'Orbitron';">SYSTEM BREACHED</h2>
+            <p id="result-desc">You triggered a pixel bomb!</p>
+            <p>Time: <span id="final-time">0</span>s</p>
+            <button class="btn-main" onclick="startGame()">Reboot System</button>
+        </div>
+
+        <div id="help-overlay" class="overlay hidden" onclick="toggleHelp()">
+            <div style="max-width: 300px; background: var(--card); padding: 20px; border-radius: 10px; border: 1px solid var(--primary);">
+                <h3>HOW TO PLAY</h3>
+                <p>1. Tap cells to reveal them.<br>2. Numbers indicate adjacent bombs.<br>3. Toggle "FLAG" mode to mark bombs.<br>4. Reveal all safe cells to win!</p>
+                <p style="font-size: 0.8rem; color: #94a3b8;">Click anywhere to close</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="mode-toggle">
+        <button id="mode-dig" class="mode-btn active" onclick="setMode('dig')">REVEAL</button>
+        <button id="mode-flag" class="mode-btn" onclick="setMode('flag')">FLAG</button>
+    </div>
+
+    <script>
+        const SLUG = 'pixel-bomb-sweep';
+        const GRID_SIZE = 8;
+        const BOMB_COUNT = 10;
+        
+        let grid = [];
+        let cells = [];
+        let isGameOver = false;
+        let revealedCount = 0;
+        let timer = 0;
+        let timerInterval = null;
+        let inputMode = 'dig'; // 'dig' or 'flag'
+        let firstClick = true;
+
+        const gridEl = document.getElementById('grid');
+        const timeEl = document.getElementById('time-val');
+        const bestEl = document.getElementById('best-val');
+        
+        // Initialize scores
+        function loadBest() {
+            const best = localStorage.getItem('fun_arcade_highscore_' + SLUG);
+            bestEl.innerText = best ? best : '---';
+        }
+
+        function setMode(m) {
+            inputMode = m;
+            document.getElementById('mode-dig').classList.toggle('active', m === 'dig');
+            document.getElementById('mode-flag').classList.toggle('active', m === 'flag');
+        }
+
+        function toggleHelp() {
+            document.getElementById('help-overlay').classList.toggle('hidden');
+        }
+
+        function startGame() {
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('game-over').classList.add('hidden');
+            
+            gridEl.innerHTML = '';
+            gridEl.style.gridTemplateColumns = `repeat(${GRID_SIZE}, 1fr)`;
+            
+            grid = [];
+            cells = [];
+            isGameOver = false;
+            revealedCount = 0;
+            timer = 0;
+            firstClick = true;
+            timeEl.innerText = '0';
+            
+            if(timerInterval) clearInterval(timerInterval);
+            
+            for (let r = 0; r < GRID_SIZE; r++) {
+                grid[r] = [];
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.dataset.r = r;
+                    cell.dataset.c = c;
+                    cell.addEventListener('click', () => handleCellClick(r, c));
+                    // Right click for flagging
+                    cell.addEventListener('contextmenu', (e) => {
+                        e.preventDefault();
+                        toggleFlag(r, c);
+                    });
+                    
+                    gridEl.appendChild(cell);
+                    grid[r][c] = { isBomb: false, revealed: false, flagged: false, neighbors: 0 };
+                    cells.push(cell);
+                }
+            }
+            loadBest();
+        }
+
+        function initBombs(startR, startC) {
+            let placed = 0;
+            while (placed < BOMB_COUNT) {
+                let r = Math.floor(Math.random() * GRID_SIZE);
+                let c = Math.floor(Math.random() * GRID_SIZE);
+                // Ensure no bomb on first click and no duplicates
+                if (!grid[r][c].isBomb && (Math.abs(r - startR) > 1 || Math.abs(c - startC) > 1)) {
+                    grid[r][c].isBomb = true;
+                    placed++;
+                }
+            }
+
+            // Calc numbers
+            for (let r = 0; r < GRID_SIZE; r++) {
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    if (!grid[r][c].isBomb) {
+                        let count = 0;
+                        for (let dr = -1; dr <= 1; dr++) {
+                            for (let dc = -1; dc <= 1; dc++) {
+                                let nr = r + dr, nc = c + dc;
+                                if (nr >= 0 && nr < GRID_SIZE && nc >= 0 && nc < GRID_SIZE && grid[nr][nc].isBomb) count++;
+                            }
+                        }
+                        grid[r][c].neighbors = count;
+                    }
+                }
+            }
+            
+            timerInterval = setInterval(() => {
+                timer++;
+                timeEl.innerText = timer;
+            }, 1000);
+        }
+
+        function handleCellClick(r, c) {
+            if (isGameOver) return;
+            if (inputMode === 'flag') {
+                toggleFlag(r, c);
+                return;
+            }
+
+            if (grid[r][c].flagged || grid[r][c].revealed) return;
+
+            if (firstClick) {
+                firstClick = false;
+                initBombs(r, c);
+            }
+
+            if (grid[r][c].isBomb) {
+                gameOver(false);
+                return;
+            }
+
+            reveal(r, c);
+            checkWin();
+        }
+
+        function toggleFlag(r, c) {
+            if (grid[r][c].revealed || isGameOver) return;
+            grid[r][c].flagged = !grid[r][c].flagged;
+            const idx = r * GRID_SIZE + c;
+            cells[idx].classList.toggle('flagged', grid[r][c].flagged);
+            cells[idx].innerText = grid[r][c].flagged ? '!' : '';
+            beep(200, 50);
+        }
+
+        function reveal(r, c) {
+            if (r < 0 || r >= GRID_SIZE || c < 0 || c >= GRID_SIZE || grid[r][c].revealed || grid[r][c].flagged) return;
+
+            grid[r][c].revealed = true;
+            revealedCount++;
+            const idx = r * GRID_SIZE + c;
+            cells[idx].classList.add('revealed');
+            
+            if (grid[r][c].neighbors > 0) {
+                cells[idx].innerText = grid[r][c].neighbors;
+                cells[idx].className = 'cell revealed n' + grid[r][c].neighbors;
+            } else {
+                // Flood fill
+                for (let dr = -1; dr <= 1; dr++) {
+                    for (let dc = -1; dc <= 1; dc++) {
+                        reveal(r + dr, c + dc);
+                    }
+                }
+            }
+        }
+
+        function checkWin() {
+            if (revealedCount === (GRID_SIZE * GRID_SIZE) - BOMB_COUNT) {
+                gameOver(true);
+            }
+        }
+
+        function gameOver(won) {
+            isGameOver = true;
+            clearInterval(timerInterval);
+            
+            // Reveal all bombs
+            for (let r = 0; r < GRID_SIZE; r++) {
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    if (grid[r][c].isBomb) {
+                        const idx = r * GRID_SIZE + c;
+                        cells[idx].classList.add('bomb');
+                        cells[idx].innerText = '✖';
+                    }
+                }
+            }
+
+            const title = document.getElementById('result-title');
+            const desc = document.getElementById('result-desc');
+            const finalTimeEl = document.getElementById('final-time');
+            
+            finalTimeEl.innerText = timer;
+
+            if (won) {
+                title.innerText = "GRID SECURED";
+                title.style.color = "#16a34a";
+                desc.innerText = "Sector successfully scanned.";
+                saveScore(timer);
+                beep(600, 100);
+                setTimeout(() => beep(800, 150), 150);
+            } else {
+                title.innerText = "SYSTEM BREACH";
+                title.style.color = "#EF4444";
+                desc.innerText = "Pixel bomb triggered critical failure.";
+                beep(100, 400);
+            }
+
+            document.getElementById('game-over').classList.remove('hidden');
+        }
+
+        function saveScore(time) {
+            const currentBest = localStorage.getItem('fun_arcade_highscore_' + SLUG);
+            if (!currentBest || time < parseInt(currentBest)) {
+                localStorage.setItem('fun_arcade_highscore_' + SLUG, time);
+                loadBest();
+            }
+        }
+
+        // Web Audio API Synth
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function beep(freq, dur) {
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            oscillator.type = 'square';
+            oscillator.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gainNode.gain.setValueAtTime(0.05, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + dur/1000);
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            oscillator.start();
+            oscillator.stop(audioCtx.currentTime + dur/1000);
+        }
+
+        loadBest();
+    </script>
+</body>
+</html>
