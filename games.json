@@ -606,5 +606,13 @@
     "category": "Reflex",
     "accent": "#14B8A6",
     "addedAt": "2026-11-24T23:41:56Z"
+  },
+  {
+    "slug": "firebreak-tactics",
+    "title": "Firebreak",
+    "description": "Place cryo-barriers on the grid to contain the spreading inferno and protect every data vault.",
+    "category": "Puzzle",
+    "accent": "#EF4444",
+    "addedAt": "2026-11-25T02:17:53Z"
   }
 ]

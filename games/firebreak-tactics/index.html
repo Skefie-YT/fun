@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Firebreak - Fun Arcade</title>
+<style>
+  :root {
+    --bg: #0b0f17;
+    --panel: #131a26;
+    --border: #232f42;
+    --text: #f1f5f9;
+    --muted: #94a3b8;
+    --accent: #EF4444;
+    --ice: #38bdf8;
+    --vault: #10b981;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
+  html, body {
+    width: 100%; height: 100dvh; overflow: hidden;
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    display: flex; flex-direction: column;
+  }
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--border);
+    flex-shrink: 0; z-index: 10;
+  }
+  .back-btn {
+    color: var(--text); text-decoration: none; font-size: 14px; font-weight: 600;
+    padding: 6px 12px; border-radius: 8px; background: rgba(255,255,255,0.06);
+    border: 1px solid var(--border); transition: background 0.15s;
+  }
+  .back-btn:hover { background: rgba(255,255,255,0.12); }
+  .hud {
+    display: flex; gap: 16px; align-items: center; font-size: 14px; font-weight: 600;
+  }
+  .hud-item { display: flex; flex-direction: column; align-items: center; line-height: 1.1; }
+  .hud-label { font-size: 10px; text-transform: uppercase; color: var(--muted); letter-spacing: 0.5px; }
+  .hud-val { font-size: 16px; color: var(--text); font-variant-numeric: tabular-nums; }
+  .hud-val.accent { color: var(--accent); }
+  .top-actions { display: flex; gap: 8px; }
+  .icon-btn {
+    width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--border);
+    background: rgba(255,255,255,0.06); color: var(--text); font-size: 15px; font-weight: 700;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s;
+  }
+  .icon-btn:hover { background: rgba(255,255,255,0.14); }
+
+  .stage {
+    flex: 1; position: relative; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; padding: 12px; overflow: hidden;
+  }
+  .status-bar {
+    display: flex; gap: 16px; align-items: center; margin-bottom: 10px;
+    font-size: 13px; color: var(--muted); font-weight: 600;
+  }
+  .badge {
+    padding: 4px 10px; border-radius: 999px; background: var(--panel);
+    border: 1px solid var(--border); color: var(--text);
+  }
+  .badge span { color: var(--ice); }
+  canvas {
+    display: block; border-radius: 12px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+    touch-action: none; cursor: pointer;
+  }
+  .controls-hint {
+    margin-top: 10px; font-size: 12px; color: var(--muted); text-align: center;
+  }
+
+  .overlay {
+    position: absolute; inset: 0; background: rgba(11, 15, 23, 0.88);
+    backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center;
+    z-index: 20; padding: 20px;
+  }
+  .overlay.hidden { display: none; }
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
+    padding: 24px; max-width: 380px; width: 100%; text-align: center;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.7);
+  }
+  .card h1 { font-size: 28px; margin-bottom: 8px; color: var(--text); }
+  .card h1 span { color: var(--accent); }
+  .card h2 { font-size: 22px; margin-bottom: 10px; color: var(--text); }
+  .card p { font-size: 14px; color: var(--muted); line-height: 1.5; margin-bottom: 18px; }
+  .legend {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px; text-align: left;
+    margin-bottom: 18px; font-size: 12px; color: var(--muted);
+  }
+  .legend-item {
+    display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.03);
+    padding: 6px 8px; border-radius: 8px; border: 1px solid var(--border);
+  }
+  .dot { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+  .btn-primary {
+    width: 100%; padding: 12px 20px; border: none; border-radius: 10px;
+    background: var(--accent); color: #fff; font-size: 16px; font-weight: 700;
+    cursor: pointer; transition: transform 0.1s, filter 0.15s;
+  }
+  .btn-primary:hover { filter: brightness(1.1); }
+  .btn-primary:active { transform: scale(0.98); }
+  .stat-row {
+    display: flex; justify-content: space-around; margin-bottom: 18px;
+    padding: 12px; background: rgba(255,255,255,0.03); border-radius: 10px;
+    border: 1px solid var(--border);
+  }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <a href="../../" class="back-btn">Back</a>
+    <div class="hud">
+      <div class="hud-item">
+        <span class="hud-label">Wave</span>
+        <span class="hud-val" id="waveVal">1</span>
+      </div>
+      <div class="hud-item">
+        <span class="hud-label">Score</span>
+        <span class="hud-val accent" id="scoreVal">0</span>
+      </div>
+      <div class="hud-item">
+        <span class="hud-label">Best</span>
+        <span class="hud-val" id="bestVal">0</span>
+      </div>
+    </div>
+    <div class="top-actions">
+      <button class="icon-btn" id="muteBtn" title="Toggle Sound">🔊</button>
+      <button class="icon-btn" id="helpBtn" title="How to Play">?</button>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="status-bar">
+      <div class="badge">Cryo-Barriers: <span id="barriersPlaced">0</span></div>
+      <div class="badge">Vaults Safe: <span id="vaultsSafe">0</span></div>
+    </div>
+    <canvas id="gameCanvas"></canvas>
+    <div class="controls-hint">Tap / Click any empty tile to place a Cryo-Barrier • Arrow Keys + Space supported</div>
+  </div>
+
+  <!-- Start Overlay -->
+  <div class="overlay" id="startOverlay">
+    <div class="card">
+      <h1>FIRE<span>BREAK</span></h1>
+      <p>Contain the spreading inferno! Each turn, place a Cryo-Barrier on an empty tile before the fire spreads to your Data Vaults.</p>
+      <div class="legend">
+        <div class="legend-item"><div class="dot" style="background:#EF4444"></div><span>Inferno (Spreads)</span></div>
+        <div class="legend-item"><div class="dot" style="background:#38bdf8"></div><span>Cryo-Barrier</span></div>
+        <div class="legend-item"><div class="dot" style="background:#10b981"></div><span>Data Vault (Protect)</span></div>
+        <div class="legend-item"><div class="dot" style="background:#f59e0b"></div><span>Fuel (Burst!)</span></div>
+      </div>
+      <button class="btn-primary" id="startBtn">Deploy Barriers</button>
+    </div>
+  </div>
+
+  <!-- Help Overlay -->
+  <div class="overlay hidden" id="helpOverlay">
+    <div class="card">
+      <h2>How to Play</h2>
+      <p>1. Click or tap any empty tile to place a <b>Cryo-Barrier</b>.<br>2. Immediately after, the <b>Fire</b> spreads 1 tile orthogonally (up, down, left, right).<br>3. <b>Fuel</b> tiles explode outward in all 4 directions when ignited!<br>4. Completely trap the fire so it has nowhere to spread to clear the wave.</p>
+      <button class="btn-primary" id="closeHelpBtn">Got It</button>
+    </div>
+  </div>
+
+  <!-- Game Over Overlay -->
+  <div class="overlay hidden" id="gameOverOverlay">
+    <div class="card">
+      <h2 style="color:var(--accent)">VAULT BREACHED!</h2>
+      <p>The inferno reached a Data Vault.</p>
+      <div class="stat-row">
+        <div class="hud-item">
+          <span class="hud-label">Final Score</span>
+          <span class="hud-val accent" id="finalScore">0</span>
+        </div>
+        <div class="hud-item">
+          <span class="hud-label">Wave Reached</span>
+          <span class="hud-val" id="finalWave">1</span>
+        </div>
+      </div>
+      <button class="btn-primary" id="retryBtn">Play Again</button>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const SLUG = 'firebreak-tactics';
+  const HS_KEY = 'fun_arcade_highscore_' + SLUG;
+
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+
+  const waveVal = document.getElementById('waveVal');
+  const scoreVal = document.getElementById('scoreVal');
+  const bestVal = document.getElementById('bestVal');
+  const barriersPlacedEl = document.getElementById('barriersPlaced');
+  const vaultsSafeEl = document.getElementById('vaultsSafe');
+
+  const startOverlay = document.getElementById('startOverlay');
+  const helpOverlay = document.getElementById('helpOverlay');
+  const gameOverOverlay = document.getElementById('gameOverOverlay');
+
+  const startBtn = document.getElementById('startBtn');
+  const retryBtn = document.getElementById('retryBtn');
+  const helpBtn = document.getElementById('helpBtn');
+  const closeHelpBtn = document.getElementById('closeHelpBtn');
+  const muteBtn = document.getElementById('muteBtn');
+
+  // Tile types
+  const EMPTY = 0;
+  const FIRE = 1;
+  const BARRIER = 2;
+  const VAULT = 3;
+  const WALL = 4;
+  const FUEL = 5;
+
+  const GRID_SIZE = 7;
+  let cellSize = 56;
+  let grid = [];
+  let wave = 1;
+  let score = 0;
+  let bestScore = parseInt(localStorage.getItem(HS_KEY) || '0', 10);
+  let barriersPlaced = 0;
+  let state = 'start'; // start, playing, waveClear, gameOver
+  let cursor = { r: 3, c: 3 };
+  let hoverCell = null;
+  let particles = [];
+  let shakeTime = 0;
+  let shakeMag = 0;
+  let muted = false;
+  let audioCtx = null;
+
+  bestVal.textContent = bestScore;
+
+  function initAudio() {
+    if (!audioCtx) { 
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) audioCtx = new AC();
+    }
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  }
+
+  function playSound(type) {
+    if (muted || !audioCtx) return;
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    if (type === 'barrier') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(520, now);
+      osc.frequency.exponentialRampToValueAtTime(880, now + 0.08);
+      gain.gain.setValueAtTime(0.15, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+      osc.start(now); osc.stop(now + 0.12);
+    } else if (type === 'fire') {
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(140, now);
+      osc.frequency.exponentialRampToValueAtTime(70, now + 0.1);
+      gain.gain.setValueAtTime(0.08, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+      osc.start(now); osc.stop(now + 0.1);
+    } else if (type === 'clear') {
+      [523.25, 659.25, 783.99, 1046.5].forEach((freq, i) => {
+        const o = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        o.type = 'triangle';
+        o.frequency.setValueAtTime(freq, now + i * 0.06);
+        g.gain.setValueAtTime(0.14, now + i * 0.06);
+        g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.06 + 0.25);
+        o.connect(g); g.connect(audioCtx.destination);
+        o.start(now + i * 0.06); o.stop(now + i * 0.06 + 0.25);
+      });
+    } else if (type === 'gameover') {
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(220, now);
+      osc.frequency.exponentialRampToValueAtTime(55, now + 0.45);
+      gain.gain.setValueAtTime(0.2, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+      osc.start(now); osc.stop(now + 0.45);
+    }
+  }
+
+  function resize() {
+    const stage = document.querySelector('.stage');
+    const maxW = stage.clientWidth - 24;
+    const maxH = stage.clientHeight - 80;
+    const size = Math.max(240, Math.min(maxW, maxH, 440));
+    cellSize = Math.floor(size / GRID_SIZE);
+    const total = cellSize * GRID_SIZE;
+    canvas.width = total;
+    canvas.height = total;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function spawnParticles(r, c, color, count = 10) {
+    const cx = (c + 0.5) * cellSize;
+    const cy = (r + 0.5) * cellSize;
+    for (let i = 0; i < count; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 1 + Math.random() * 3.5;
+      particles.push({
+        x: cx, y: cy,
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd,
+        life: 1, decay: 0.03 + Math.random() * 0.03,
+        size: 2 + Math.random() * 3,
+        color
+      });
+    }
+  }
+
+  function generateWave(w) {
+    grid = Array.from({ length: GRID_SIZE }, () => Array(GRID_SIZE).fill(EMPTY));
+    barriersPlaced = 0;
+
+    // Place 1-2 Fires near center or edges
+    const fireCount = w >= 4 ? 2 : 1;
+    const firePositions = [];
+    for (let i = 0; i < fireCount; i++) {
+      let r, c;
+      do {
+        r = 1 + Math.floor(Math.random() * (GRID_SIZE - 2));
+        c = 1 + Math.floor(Math.random() * (GRID_SIZE - 2));
+      } while (grid[r][c] !== EMPTY);
+      grid[r][c] = FIRE;
+      firePositions.push({ r, c });
+    }
+
+    // Place 2-4 Vaults at least 2 tiles away from any fire
+    const vaultCount = Math.min(4, 2 + Math.floor(w / 3));
+    for (let i = 0; i < vaultCount; i++) {
+      let r, c, tries = 0;
+      do {
+        r = Math.floor(Math.random() * GRID_SIZE);
+        c = Math.floor(Math.random() * GRID_SIZE);
+        tries++;
+      } while (
+        (grid[r][c] !== EMPTY ||
+          firePositions.some(f => Math.abs(f.r - r) + Math.abs(f.c - c) < 3)) &&
+        tries < 50
+      );
+      if (grid[r][c] === EMPTY) grid[r][c] = VAULT;
+    }
+
+    // Place Walls
+    const wallCount = Math.min(8, 3 + Math.floor(w * 0.8));
+    for (let i = 0; i < wallCount; i++) {
+      const r = Math.floor(Math.random() * GRID_SIZE);
+      const c = Math.floor(Math.random() * GRID_SIZE);
+      if (grid[r][c] === EMPTY) grid[r][c] = WALL;
+    }
+
+    // Place Fuel cells
+    const fuelCount = Math.min(5, 1 + Math.floor(w / 2));
+    for (let i = 0; i < fuelCount; i++) {
+      const r = Math.floor(Math.random() * GRID_SIZE);
+      const c = Math.floor(Math.random() * GRID_SIZE);
+      if (grid[r][c] === EMPTY) grid[r][c] = FUEL;
+    }
+
+    updateHUD();
+  }
+
+  function updateHUD() {
+    waveVal.textContent = wave;
+    scoreVal.textContent = score;
+    bestVal.textContent = bestScore;
+    barriersPlacedEl.textContent = barriersPlaced;
+    let vaults = 0;
+    for (let r = 0; r < GRID_SIZE; r++) {
+      for (let c = 0; c < GRID_SIZE; c++) {
+        if (grid[r][c] === VAULT) vaults++;
+      }
+    }
+    vaultsSafeEl.textContent = vaults;
+  }
+
+  function placeBarrier(r, c) {
+    if (state !== 'playing') return;
+    if (r < 0 || r >= GRID_SIZE || c < 0 || c >= GRID_SIZE) return;
+    if (grid[r][c] !== EMPTY) return;
+
+    initAudio();
+    grid[r][c] = BARRIER;
+    barriersPlaced++;
+    playSound('barrier');
+    spawnParticles(r, c, '#38bdf8', 12);
+
+    spreadFire();
+    updateHUD();
+  }
+
+  function spreadFire() {
+    const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+    const newFires = [];
+    let vaultHit = false;
+
+    for (let r = 0; r < GRID_SIZE; r++) {
+      for (let c = 0; c < GRID_SIZE; c++) {
+        if (grid[r][c] === FIRE) {
+          for (const [dr, dc] of dirs) {
+            const nr = r + dr, nc = c + dc;
+            if (nr >= 0 && nr < GRID_SIZE && nc >= 0 && nc < GRID_SIZE) {
+              const target = grid[nr][nc];
+              if (target === EMPTY || target === FUEL || target === VAULT) {
+                newFires.push({ r: nr, c: nc, wasFuel: target === FUEL, wasVault: target === VAULT });
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if (newFires.length === 0) {
+      // Fire is completely contained! Wave Clear!
+      let emptyLeft = 0, vaultsLeft = 0;
+      for (let r = 0; r < GRID_SIZE; r++) {
+        for (let c = 0; c < GRID_SIZE; c++) {
+          if (grid[r][c] === EMPTY) emptyLeft++;
+          if (grid[r][c] === VAULT) vaultsLeft++;
+        }
+      }
+      const bonus = 100 * wave + emptyLeft * 20 + vaultsLeft * 50;
+      score += bonus;
+      if (score > bestScore) {
+        bestScore = score;
+        localStorage.setItem(HS_KEY, String(bestScore));
+      }
+      playSound('clear');
+      state = 'waveClear';
+      setTimeout(() => {
+        if (state === 'waveClear') {
+          wave++;
+          generateWave(wave);
+          state = 'playing';
+        }
+      }, 900);
+      return;
+    }
+
+    // Apply new fires
+    const fuelBursts = [];
+    for (const f of newFires) {
+      if (f.wasVault) vaultHit = true;
+      if (f.wasFuel) fuelBursts.push({ r: f.r, c: f.c });
+      grid[f.r][f.c] = FIRE;
+      spawnParticles(f.r, f.c, '#EF4444', 8);
+    }
+
+    // Fuel bursts spread 1 extra step immediately
+    for (const fb of fuelBursts) {
+      for (const [dr, dc] of dirs) {
+        const nr = fb.r + dr, nc = fb.c + dc;
+        if (nr >= 0 && nr < GRID_SIZE && nc >= 0 && nc < GRID_SIZE) {
+          if (grid[nr][nc] === VAULT) vaultHit = true;
+          if (grid[nr][nc] === EMPTY || grid[nr][nc] === VAULT) {
+            grid[nr][nc] = FIRE;
+            spawnParticles(nr, nc, '#f59e0b', 10);
+          }
+        }
+      }
+    }
+
+    playSound('fire');
+
+    if (vaultHit) {
+      state = 'gameOver';
+      shakeTime = 20;
+      shakeMag = 8;
+      playSound('gameover');
+      document.getElementById('finalScore').textContent = score;
+      document.getElementById('finalWave').textContent = wave;
+      setTimeout(() => {
+        gameOverOverlay.classList.remove('hidden');
+      }, 450);
+    }
+  }
+
+  function draw() {
+    ctx.save();
+    if (shakeTime > 0) {
+      const dx = (Math.random() - 0.5) * shakeMag;
+      const dy = (Math.random() - 0.5) * shakeMag;
+      ctx.translate(dx, dy);
+      shakeTime--;
+    }
+
+    ctx.fillStyle = '#0f1623';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const t = performance.now() * 0.004;
+
+    for (let r = 0; r < GRID_SIZE; r++) {
+      for (let c = 0; c < GRID_SIZE; c++) {
+        const x = c * cellSize;
+        const y = r * cellSize;
+        const pad = 3;
+        const w = cellSize - pad * 2;
+        const type = grid[r][c];
+
+        // Base tile
+        ctx.fillStyle = '#182234';
+        ctx.beginPath();
+        ctx.roundRect(x + pad, y + pad, w, w, 7);
+        ctx.fill();
+
+        if (type === FIRE) {
+          const pulse = 0.85 + Math.sin(t * 2 + r + c) * 0.15;
+          ctx.fillStyle = `rgba(239, 68, 68, ${pulse})`;
+          ctx.beginPath();
+          ctx.roundRect(x + pad + 2, y + pad + 2, w - 4, w - 4, 6);
+          ctx.fill();
+          ctx.fillStyle = '#fca5a5';
+          ctx.beginPath();
+          ctx.arc(x + cellSize / 2, y + cellSize / 2, w * 0.18, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (type === BARRIER) {
+          ctx.fillStyle = '#0284c7';
+          ctx.beginPath();
+          ctx.roundRect(x + pad + 2, y + pad + 2, w - 4, w - 4, 6);
+          ctx.fill();
+          ctx.strokeStyle = '#7dd3fc';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(x + pad + 6, y + pad + 6, w - 12, w - 12);
+        } else if (type === VAULT) {
+          ctx.fillStyle = '#059669';
+          ctx.beginPath();
+          ctx.roundRect(x + pad + 2, y + pad + 2, w - 4, w - 4, 6);
+          ctx.fill();
+          ctx.fillStyle = '#a7f3d0';
+          ctx.beginPath();
+          ctx.arc(x + cellSize / 2, y + cellSize / 2, w * 0.22, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (type === WALL) {
+          ctx.fillStyle = '#334155';
+          ctx.beginPath();
+          ctx.roundRect(x + pad + 2, y + pad + 2, w - 4, w - 4, 6);
+          ctx.fill();
+        } else if (type === FUEL) {
+          ctx.fillStyle = '#d97706';
+          ctx.beginPath();
+          ctx.roundRect(x + pad + 4, y + pad + 4, w - 8, w - 8, 6);
+          ctx.fill();
+          ctx.fillStyle = '#fde68a';
+          ctx.fillRect(x + cellSize / 2 - 3, y + cellSize / 2 - 3, 6, 6);
+        }
+
+        // Hover / Cursor highlight
+        const isHover = hoverCell && hoverCell.r === r && hoverCell.c === c;
+        const isCursor = cursor.r === r && cursor.c === c;
+        if ((isHover || isCursor) && type === EMPTY && state === 'playing') {
+          ctx.strokeStyle = 'rgba(56, 189, 248, 0.75)';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.roundRect(x + pad + 1, y + pad + 1, w - 2, w - 2, 7);
+          ctx.stroke();
+        }
+      }
+    }
+
+    // Particles
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.life -= p.decay;
+      if (p.life <= 0) {
+        particles.splice(i, 1);
+        continue;
+      }
+      ctx.globalAlpha = p.life;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    if (state === 'waveClear') {
+      ctx.fillStyle = 'rgba(16, 185, 129, 0.2)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#ecfdf5';
+      ctx.font = 'bold 26px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('FIRE CONTAINED!', canvas.width / 2, canvas.height / 2);
+    }
+
+    ctx.restore();
+    requestAnimationFrame(draw);
+  }
+
+  function getCellFromEvent(e) {
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const c = Math.floor((clientX - rect.left) / cellSize);
+    const r = Math.floor((clientY - rect.top) / cellSize);
+    return { r, c };
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    const { r, c } = getCellFromEvent(e);
+    cursor = { r, c };
+    placeBarrier(r, c);
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    hoverCell = getCellFromEvent(e);
+  });
+  canvas.addEventListener('pointerleave', () => { hoverCell = null; });
+
+  window.addEventListener('keydown', (e) => {
+    if (state !== 'playing') return;
+    if (e.key === 'ArrowUp' || e.key === 'w') cursor.r = Math.max(0, cursor.r - 1);
+    else if (e.key === 'ArrowDown' || e.key === 's') cursor.r = Math.min(GRID_SIZE - 1, cursor.r + 1);
+    else if (e.key === 'ArrowLeft' || e.key === 'a') cursor.c = Math.max(0, cursor.c - 1);
+    else if (e.key === 'ArrowRight' || e.key === 'd') cursor.c = Math.min(GRID_SIZE - 1, cursor.c + 1);
+    else if (e.key === ' ' || e.key === 'Enter') {
+      e.preventDefault();
+      placeBarrier(cursor.r, cursor.c);
+    }
+  });
+
+  function startGame() {
+    initAudio();
+    wave = 1;
+    score = 0;
+    generateWave(wave);
+    state = 'playing';
+    startOverlay.classList.add('hidden');
+    gameOverOverlay.classList.add('hidden');
+  }
+
+  startBtn.addEventListener('click', startGame);
+  retryBtn.addEventListener('click', startGame);
+  helpBtn.addEventListener('click', () => helpOverlay.classList.remove('hidden'));
+  closeHelpBtn.addEventListener('click', () => helpOverlay.classList.add('hidden'));
+  muteBtn.addEventListener('click', () => {
+    muted = !muted;
+    muteBtn.textContent = muted ? '🔇' : '🔊';
+  });
+
+  generateWave(1);
+  requestAnimationFrame(draw);
+})();
+</script>
+</body>
+</html>
