@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Glyph Duel — Fun Arcade</title>
+  <style>
+    :root {
+      --bg: #090b10;
+      --surface: #121622;
+      --surface-2: #1a2033;
+      --border: rgba(255, 255, 255, 0.1);
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #EF4444;
+      --cyan: #22d3ee;
+      --amber: #f59e0b;
+      --emerald: #10b981;
+      --violet: #a855f7;
+      --pink: #ec4899;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100dvh;
+      overflow: hidden;
+      background: radial-gradient(circle at 50% 0%, #1c1324 0%, var(--bg) 65%);
+      color: var(--text);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Top Bar */
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: rgba(18, 22, 34, 0.85);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+      z-index: 20;
+      flex-shrink: 0;
+    }
+
+    .back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.07);
+      color: var(--text);
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 600;
+      border: 1px solid var(--border);
+      transition: background 0.15s, transform 0.1s;
+    }
+    .back-btn:hover { background: rgba(255, 255, 255, 0.14); }
+    .back-btn:active { transform: scale(0.96); }
+
+    .hud-group {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .hud-stat {
+      text-align: center;
+      line-height: 1.1;
+    }
+    .hud-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      font-weight: 700;
+    }
+    .hud-val {
+      font-size: 16px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+    }
+    .hud-val.accent { color: var(--accent); }
+
+    .icon-btns {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .icon-btn {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.07);
+      color: var(--text);
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      display: grid;
+      place-items: center;
+      transition: background 0.15s, transform 0.1s;
+    }
+    .icon-btn:hover { background: rgba(255, 255, 255, 0.14); }
+    .icon-btn:active { transform: scale(0.94); }
+
+    /* Main Arena */
+    .arena {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px 14px;
+      max-width: 560px;
+      width: 100%;
+      margin: 0 auto;
+      position: relative;
+      min-height: 0;
+    }
+
+    .arena.shake {
+      animation: shake 0.35s cubic-bezier(.36,.07,.19,.97) both;
+    }
+    @keyframes shake {
+      10%, 90% { transform: translate3d(-3px, 0, 0); }
+      20%, 80% { transform: translate3d(5px, 0, 0); }
+      30%, 50%, 70% { transform: translate3d(-6px, 0, 0); }
+      40%, 60% { transform: translate3d(6px, 0, 0); }
+    }
+
+    /* Duelists Header */
+    .duel-bar {
+      width: 100%;
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      gap: 10px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 10px 14px;
+      flex-shrink: 0;
+    }
+
+    .fighter {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .fighter.ai { align-items: flex-end; text-align: right; }
+
+    .fighter-name {
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .fighter.player .fighter-name { color: var(--cyan); }
+    .fighter.ai .fighter-name { color: var(--accent); }
+
+    .shields {
+      display: flex;
+      gap: 5px;
+    }
+    .shield-pip {
+      width: 22px;
+      height: 8px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.12);
+      transition: all 0.25s ease;
+    }
+    .fighter.player .shield-pip.active {
+      background: var(--cyan);
+      box-shadow: 0 0 10px rgba(34, 211, 238, 0.6);
+    }
+    .fighter.ai .shield-pip.active {
+      background: var(--accent);
+      box-shadow: 0 0 10px rgba(239, 68, 68, 0.6);
+    }
+
+    .vs-badge {
+      font-size: 11px;
+      font-weight: 900;
+      color: var(--muted);
+      background: rgba(255,255,255,0.05);
+      padding: 4px 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+
+    /* Phase & Timer Banner */
+    .status-panel {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      margin: 6px 0;
+      flex-shrink: 0;
+    }
+
+    .phase-text {
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text);
+      text-shadow: 0 0 14px rgba(255,255,255,0.2);
+      min-height: 22px;
+    }
+    .phase-text.watch { color: var(--accent); }
+    .phase-text.strike { color: var(--cyan); }
+    .phase-text.win { color: var(--emerald); }
+
+    .timer-track {
+      width: 100%;
+      height: 7px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 99px;
+      overflow: hidden;
+    }
+    .timer-fill {
+      height: 100%;
+      width: 100%;
+      background: linear-gradient(90deg, var(--cyan), var(--emerald));
+      border-radius: 99px;
+      transform-origin: left;
+      transition: background 0.2s;
+    }
+    .timer-fill.danger {
+      background: linear-gradient(90deg, var(--accent), var(--amber));
+    }
+
+    .progress-dots {
+      display: flex;
+      gap: 6px;
+      min-height: 10px;
+      align-items: center;
+    }
+    .p-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.15);
+      transition: all 0.15s;
+    }
+    .p-dot.done {
+      background: var(--cyan);
+      box-shadow: 0 0 8px var(--cyan);
+      transform: scale(1.15);
+    }
+
+    /* Glyph Pad Grid */
+    .glyph-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      width: 100%;
+      max-width: 420px;
+      flex: 1;
+      max-height: 290px;
+      align-content: center;
+      margin: auto 0;
+    }
+
+    .glyph-btn {
+      position: relative;
+      aspect-ratio: 1 / 1;
+      border-radius: 18px;
+      background: var(--surface-2);
+      border: 2px solid rgba(255, 255, 255, 0.1);
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.08s ease, border-color 0.15s, box-shadow 0.15s, background 0.15s;
+      overflow: hidden;
+    }
+
+    .glyph-btn:active:not(:disabled) {
+      transform: scale(0.93);
+    }
+    .glyph-btn:disabled {
+      cursor: default;
+    }
+
+    .glyph-btn svg {
+      width: 48%;
+      height: 48%;
+      transition: transform 0.15s, filter 0.15s;
+    }
+
+    .key-hint {
+      position: absolute;
+      bottom: 6px;
+      right: 9px;
+      font-size: 10px;
+      font-weight: 700;
+      color: rgba(255,255,255,0.28);
+      pointer-events: none;
+    }
+
+    .glyph-btn.lit {
+      transform: scale(1.04);
+      border-color: var(--g-color);
+      background: rgba(255, 255, 255, 0.12);
+      box-shadow: 0 0 26px var(--g-glow), inset 0 0 18px var(--g-glow);
+    }
+    .glyph-btn.lit svg {
+      transform: scale(1.12);
+      filter: drop-shadow(0 0 10px var(--g-color));
+    }
+
+    .glyph-btn.error {
+      border-color: var(--accent);
+      background: rgba(239, 68, 68, 0.28);
+      box-shadow: 0 0 24px rgba(239, 68, 68, 0.7);
+    }
+
+    /* Bottom Controls Hint */
+    .controls-hint {
+      font-size: 12px;
+      color: var(--muted);
+      text-align: center;
+      padding-top: 6px;
+      flex-shrink: 0;
+    }
+
+    /* Overlays */
+    .overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(9, 11, 16, 0.86);
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      z-index: 50;
+      opacity: 1;
+      transition: opacity 0.2s ease;
+    }
+    .overlay.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 26px 24px;
+      max-width: 390px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+    }
+
+    .card-badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--accent);
+      background: rgba(239, 68, 68, 0.14);
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      padding: 4px 10px;
+      border-radius: 99px;
+      margin-bottom: 10px;
+    }
+
+    .card h1 {
+      font-size: 28px;
+      font-weight: 900;
+      letter-spacing: -0.02em;
+      margin-bottom: 10px;
+    }
+
+    .card p {
+      font-size: 14px;
+      line-height: 1.55;
+      color: var(--muted);
+      margin-bottom: 18px;
+    }
+
+    .rules-list {
+      text-align: left;
+      background: rgba(255,255,255,0.04);
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin-bottom: 18px;
+      font-size: 13px;
+      color: #cbd5e1;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .btn-primary {
+      width: 100%;
+      padding: 13px 20px;
+      border-radius: 12px;
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      cursor: pointer;
+      box-shadow: 0 8px 20px rgba(239, 68, 68, 0.35);
+      transition: transform 0.1s, filter 0.15s;
+    }
+    .btn-primary:hover { filter: brightness(1.1); }
+    .btn-primary:active { transform: scale(0.97); }
+
+    .stat-row {
+      display: flex;
+      justify-content: space-around;
+      background: rgba(255,255,255,0.04);
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 18px;
+    }
+    .stat-box .s-lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; }
+    .stat-box .s-val { font-size: 22px; font-weight: 900; color: var(--text); }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <a href="../../" class="back-btn">← Back</a>
+    <div class="hud-group">
+      <div class="hud-stat">
+        <div class="hud-label">Score</div>
+        <div class="hud-val accent" id="hud-score">0</div>
+      </div>
+      <div class="hud-stat">
+        <div class="hud-label">Streak</div>
+        <div class="hud-val" id="hud-streak">x1</div>
+      </div>
+      <div class="hud-stat">
+        <div class="hud-label">Best</div>
+        <div class="hud-val" id="hud-best">0</div>
+      </div>
+    </div>
+    <div class="icon-btns">
+      <button class="icon-btn" id="mute-btn" title="Toggle Sound">🔊</button>
+      <button class="icon-btn" id="help-btn" title="How to Play">?</button>
+    </div>
+  </header>
+
+  <main class="arena" id="arena">
+    <div class="duel-bar">
+      <div class="fighter player">
+        <div class="fighter-name">YOU</div>
+        <div class="shields" id="player-shields"></div>
+      </div>
+      <div class="vs-badge" id="sector-badge">SECTOR 1</div>
+      <div class="fighter ai">
+        <div class="fighter-name" id="ai-name">CIPHER-1</div>
+        <div class="shields" id="ai-shields"></div>
+      </div>
+    </div>
+
+    <div class="status-panel">
+      <div class="phase-text" id="phase-text">READY TO DUEL</div>
+      <div class="timer-track"><div class="timer-fill" id="timer-fill"></div></div>
+      <div class="progress-dots" id="progress-dots"></div>
+    </div>
+
+    <div class="glyph-grid" id="glyph-grid"></div>
+
+    <div class="controls-hint">Tap glyphs or press keys <b>1–6</b> to counter-strike</div>
+  </main>
+
+  <!-- Start Overlay -->
+  <div class="overlay" id="start-overlay">
+    <div class="card">
+      <div class="card-badge">Memory &amp; Reflex Duel</div>
+      <h1>GLYPH DUEL</h1>
+      <p>Outsmart rogue AI challengers in a high-speed pattern duel. Watch the glowing glyph sequence, then repeat it before the timer runs out to shatter their shields!</p>
+      <button class="btn-primary" id="start-btn">Enter Arena</button>
+    </div>
+  </div>
+
+  <!-- How to Play Overlay -->
+  <div class="overlay hidden" id="help-overlay">
+    <div class="card">
+      <div class="card-badge">How to Play</div>
+      <h1>Rules of the Duel</h1>
+      <div class="rules-list">
+        <div><b>1. Watch:</b> The AI fires a sequence of glowing glyphs. Memorize the exact order.</div>
+        <div><b>2. Counter-Strike:</b> Repeat the pattern before the timer bar empties to break 1 AI Shield.</div>
+        <div><b>3. Survive:</b> A wrong glyph or timeout costs you 1 Shield. Defeat each AI to advance Sectors!</div>
+        <div><b>Controls:</b> Tap/Click any glyph, or use keyboard keys <b>1 – 6</b>.</div>
+      </div>
+      <button class="btn-primary" id="close-help-btn">Got It</button>
+    </div>
+  </div>
+
+  <!-- Game Over Overlay -->
+  <div class="overlay hidden" id="gameover-overlay">
+    <div class="card">
+      <div class="card-badge">Connection Severed</div>
+      <h1>DUEL LOST</h1>
+      <div class="stat-row">
+        <div class="stat-box">
+          <div class="s-lbl">Final Score</div>
+          <div class="s-val" id="final-score">0</div>
+        </div>
+        <div class="stat-box">
+          <div class="s-lbl">Best</div>
+          <div class="s-val" id="final-best">0</div>
+        </div>
+        <div class="stat-box">
+          <div class="s-lbl">Sector</div>
+          <div class="s-val" id="final-sector">1</div>
+        </div>
+      </div>
+      <button class="btn-primary" id="retry-btn">Play Again</button>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      const SLUG = 'glyph-duel';
+      const STORAGE_KEY = 'fun_arcade_highscore_' + SLUG;
+
+      const GLYPHS = [
+        { id: 0, key: '1', color: '#EF4444', glow: 'rgba(239,68,68,0.55)', freq: 261.63, svg: '<polygon points="50,14 88,82 12,82" fill="none" stroke="#EF4444" stroke-width="7" stroke-linejoin="round"/>' },
+        { id: 1, key: '2', color: '#22d3ee', glow: 'rgba(34,211,238,0.55)', freq: 329.63, svg: '<rect x="18" y="18" width="64" height="64" rx="8" fill="none" stroke="#22d3ee" stroke-width="7"/>' },
+        { id: 2, key: '3', color: '#f59e0b', glow: 'rgba(245,158,11,0.55)', freq: 392.00, svg: '<polygon points="50,12 88,50 50,88 12,50" fill="none" stroke="#f59e0b" stroke-width="7" stroke-linejoin="round"/>' },
+        { id: 3, key: '4', color: '#10b981', glow: 'rgba(16,185,129,0.55)', freq: 440.00, svg: '<circle cx="50" cy="50" r="33" fill="none" stroke="#10b981" stroke-width="7"/>' },
+        { id: 4, key: '5', color: '#a855f7', glow: 'rgba(168,85,247,0.55)', freq: 523.25, svg: '<polygon points="50,12 83,31 83,69 50,88 17,69 17,31" fill="none" stroke="#a855f7" stroke-width="7" stroke-linejoin="round"/>' },
+        { id: 5, key: '6', color: '#ec4899', glow: 'rgba(236,72,153,0.55)', freq: 587.33, svg: '<path d="M50 12 L61 38 L89 38 L66 55 L75 83 L50 66 L25 83 L34 55 L11 38 L39 38 Z" fill="none" stroke="#ec4899" stroke-width="6" stroke-linejoin="round"/>' }
+      ];
+
+      const AI_NAMES = ['CIPHER-1', 'VORTEX-2', 'NEXUS-3', 'SPECTER-4', 'OMEGA-X', 'APEX-9'];
+
+      // Audio Synth
+      let audioCtx = null;
+      let muted = false;
+      function initAudio() {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+      }
+      function playTone(freq, duration = 0.14, type = 'sine', gainVal = 0.18) {
+        if (muted || !audioCtx) return;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(gainVal, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      }
+      function playErrorSound() {
+        playTone(130, 0.25, 'sawtooth', 0.2);
+        setTimeout(() => playTone(98, 0.25, 'sawtooth', 0.2), 90);
+      }
+      function playWinSound() {
+        [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => {
+          setTimeout(() => playTone(f, 0.16, 'triangle', 0.16), i * 70);
+        });
+      }
+
+      // DOM Elements
+      const gridEl = document.getElementById('glyph-grid');
+      const arenaEl = document.getElementById('arena');
+      const hudScore = document.getElementById('hud-score');
+      const hudStreak = document.getElementById('hud-streak');
+      const hudBest = document.getElementById('hud-best');
+      const playerShieldsEl = document.getElementById('player-shields');
+      const aiShieldsEl = document.getElementById('ai-shields');
+      const sectorBadge = document.getElementById('sector-badge');
+      const aiNameEl = document.getElementById('ai-name');
+      const phaseText = document.getElementById('phase-text');
+      const timerFill = document.getElementById('timer-fill');
+      const progressDots = document.getElementById('progress-dots');
+
+      const startOverlay = document.getElementById('start-overlay');
+      const helpOverlay = document.getElementById('help-overlay');
+      const gameoverOverlay = document.getElementById('gameover-overlay');
+
+      // State
+      let score = 0;
+      let bestScore = parseInt(localStorage.getItem(STORAGE_KEY) || '0', 10);
+      let streak = 1;
+      let sector = 1;
+      let playerShields = 3;
+      let aiShields = 3;
+      let pattern = [];
+      let playerIndex = 0;
+      let phase = 'IDLE'; // IDLE, WATCH, INPUT, TRANSITION
+      let timerId = null;
+      let timeLeft = 0;
+      let maxTime = 0;
+      let lastFrame = 0;
+
+      hudBest.textContent = bestScore;
+
+      // Build Grid
+      const glyphBtns = [];
+      GLYPHS.forEach((g) => {
+        const btn = document.createElement('button');
+        btn.className = 'glyph-btn';
+        btn.style.setProperty('--g-color', g.color);
+        btn.style.setProperty('--g-glow', g.glow);
+        btn.innerHTML = `<svg viewBox="0 0 100 100">${g.svg}</svg><span class="key-hint">${g.key}</span>`;
+        btn.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
+          handlePlayerInput(g.id);
+        });
+        gridEl.appendChild(btn);
+        glyphBtns.push(btn);
+      });
+
+      function renderShields() {
+        playerShieldsEl.innerHTML = '';
+        aiShieldsEl.innerHTML = '';
+        for (let i = 0; i < 3; i++) {
+          const p = document.createElement('div');
+          p.className = 'shield-pip' + (i < playerShields ? ' active' : '');
+          playerShieldsEl.appendChild(p);
+
+          const a = document.createElement('div');
+          a.className = 'shield-pip' + (i < aiShields ? ' active' : '');
+          aiShieldsEl.appendChild(a);
+        }
+      }
+
+      function renderDots() {
+        progressDots.innerHTML = '';
+        pattern.forEach((_, idx) => {
+          const d = document.createElement('div');
+          d.className = 'p-dot' + (idx < playerIndex ? ' done' : '');
+          progressDots.appendChild(d);
+        });
+      }
+
+      function updateHUD() {
+        hudScore.textContent = score;
+        hudStreak.textContent = 'x' + streak;
+        if (score > bestScore) {
+          bestScore = score;
+          localStorage.setItem(STORAGE_KEY, bestScore);
+        }
+        hudBest.textContent = bestScore;
+        sectorBadge.textContent = 'SECTOR ' + sector;
+        aiNameEl.textContent = AI_NAMES[(sector - 1) % AI_NAMES.length];
+        renderShields();
+      }
+
+      function flashGlyph(id, duration = 260, isError = false) {
+        const btn = glyphBtns[id];
+        btn.classList.add(isError ? 'error' : 'lit');
+        if (!isError) playTone(GLYPHS[id].freq, duration / 1000, 'triangle', 0.18);
+        setTimeout(() => {
+          btn.classList.remove('lit', 'error');
+        }, duration);
+      }
+
+      function startNewGame() {
+        initAudio();
+        score = 0;
+        streak = 1;
+        sector = 1;
+        playerShields = 3;
+        aiShields = 3;
+        startOverlay.classList.add('hidden');
+        gameoverOverlay.classList.add('hidden');
+        updateHUD();
+        startRound();
+      }
+
+      function startRound() {
+        phase = 'WATCH';
+        playerIndex = 0;
+        const seqLen = Math.min(3 + Math.floor((sector - 1) * 0.8) + (3 - aiShields), 8);
+        pattern = [];
+        for (let i = 0; i < seqLen; i++) {
+          pattern.push(Math.floor(Math.random() * GLYPHS.length));
+        }
+        renderDots();
+        timerFill.style.transform = 'scaleX(1)';
+        timerFill.classList.remove('danger');
+        phaseText.textContent = 'WATCH PATTERN...';
+        phaseText.className = 'phase-text watch';
+
+        const stepDelay = Math.max(290, 520 - (sector - 1) * 35);
+        const flashDur = Math.max(180, stepDelay - 110);
+
+        pattern.forEach((gId, idx) => {
+          setTimeout(() => {
+            if (phase !== 'WATCH') return;
+            flashGlyph(gId, flashDur);
+            if (idx === pattern.length - 1) {
+              setTimeout(() => {
+                if (phase === 'WATCH') beginInputPhase();
+              }, flashDur + 120);
+            }
+          }, 450 + idx * stepDelay);
+        });
+      }
+
+      function beginInputPhase() {
+        phase = 'INPUT';
+        phaseText.textContent = 'COUNTER-STRIKE!';
+        phaseText.className = 'phase-text strike';
+        maxTime = Math.max(2200, pattern.length * 850 - (sector - 1) * 180);
+        timeLeft = maxTime;
+        lastFrame = performance.now();
+        cancelAnimationFrame(timerId);
+        timerId = requestAnimationFrame(tickTimer);
+      }
+
+      function tickTimer(now) {
+        if (phase !== 'INPUT') return;
+        const dt = now - lastFrame;
+        lastFrame = now;
+        timeLeft -= dt;
+        const ratio = Math.max(0, timeLeft / maxTime);
+        timerFill.style.transform = `scaleX(${ratio})`;
+        if (ratio < 0.35) timerFill.classList.add('danger');
+
+        if (timeLeft <= 0) {
+          handleMistake(null);
+          return;
+        }
+        timerId = requestAnimationFrame(tickTimer);
+      }
+
+      function handlePlayerInput(id) {
+        if (phase !== 'INPUT') return;
+        initAudio();
+        const expected = pattern[playerIndex];
+        if (id === expected) {
+          flashGlyph(id, 180);
+          playerIndex++;
+          score += 25 * streak;
+          renderDots();
+          updateHUD();
+
+          if (playerIndex >= pattern.length) {
+            // Round Won!
+            cancelAnimationFrame(timerId);
+            phase = 'TRANSITION';
+            const speedBonus = Math.round((timeLeft / maxTime) * 100) * streak;
+            score += speedBonus;
+            streak = Math.min(streak + 1, 8);
+            aiShields--;
+            playWinSound();
+            updateHUD();
+
+            if (aiShields <= 0) {
+              phaseText.textContent = 'SECTOR CLEARED!';
+              phaseText.className = 'phase-text win';
+              score += 250 * sector;
+              sector++;
+              aiShields = 3;
+              playerShields = Math.min(3, playerShields + 1);
+              updateHUD();
+              setTimeout(startRound, 1200);
+            } else {
+              phaseText.textContent = 'DIRECT HIT!';
+              phaseText.className = 'phase-text win';
+              setTimeout(startRound, 850);
+            }
+          }
+        } else {
+          handleMistake(id);
+        }
+      }
+
+      function handleMistake(wrongId) {
+        cancelAnimationFrame(timerId);
+        phase = 'TRANSITION';
+        if (wrongId !== null) flashGlyph(wrongId, 300, true);
+        playErrorSound();
+        arenaEl.classList.remove('shake');
+        void arenaEl.offsetWidth;
+        arenaEl.classList.add('shake');
+
+        streak = 1;
+        playerShields--;
+        updateHUD();
+
+        if (playerShields <= 0) {
+          phaseText.textContent = 'SHIELD SHATTERED!';
+          phaseText.className = 'phase-text watch';
+          setTimeout(() => {
+            document.getElementById('final-score').textContent = score;
+            document.getElementById('final-best').textContent = bestScore;
+            document.getElementById('final-sector').textContent = sector;
+            gameoverOverlay.classList.remove('hidden');
+          }, 700);
+        } else {
+          phaseText.textContent = wrongId === null ? 'TIME EXPIRED!' : 'WRONG GLYPH!';
+          phaseText.className = 'phase-text watch';
+          setTimeout(startRound, 1000);
+        }
+      }
+
+      // Keyboard Controls
+      window.addEventListener('keydown', (e) => {
+        if (e.repeat) return;
+        const num = parseInt(e.key, 10);
+        if (num >= 1 && num <= 6) {
+          handlePlayerInput(num - 1);
+        }
+      });
+
+      // UI Buttons
+      document.getElementById('start-btn').addEventListener('click', startNewGame);
+      document.getElementById('retry-btn').addEventListener('click', startNewGame);
+      document.getElementById('help-btn').addEventListener('click', () => {
+        helpOverlay.classList.remove('hidden');
+      });
+      document.getElementById('close-help-btn').addEventListener('click', () => {
+        helpOverlay.classList.add('hidden');
+      });
+      document.getElementById('mute-btn').addEventListener('click', (e) => {
+        muted = !muted;
+        e.currentTarget.textContent = muted ? '🔇' : '🔊';
+      });
+
+      renderShields();
+    })();
+  </script>
+</body>
+</html>

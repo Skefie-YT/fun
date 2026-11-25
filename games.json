@@ -710,5 +710,13 @@
     "category": "Reflex",
     "accent": "#10B981",
     "addedAt": "2026-11-25T19:49:24Z"
+  },
+  {
+    "slug": "glyph-duel",
+    "title": "Glyph Duel",
+    "description": "Memorize the AI's glowing glyph pattern and strike back before the timer runs out in this fast-paced memory duel!",
+    "category": "Arcade",
+    "accent": "#EF4444",
+    "addedAt": "2026-11-25T20:48:00Z"
   }
 ]
