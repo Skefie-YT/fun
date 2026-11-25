@@ -622,5 +622,13 @@
     "category": "Reflex",
     "accent": "#14B8A6",
     "addedAt": "2026-11-25T03:54:06Z"
+  },
+  {
+    "slug": "surge-evade",
+    "title": "Surge Evade",
+    "description": "Weave through sweeping energy surges, phase-dash past hazards, and collect cores to build your survival combo.",
+    "category": "Reflex",
+    "accent": "#14B8A6",
+    "addedAt": "2026-11-25T04:59:32Z"
   }
 ]
