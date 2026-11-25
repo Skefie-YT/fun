@@ -678,5 +678,13 @@
     "category": "Reflex",
     "accent": "#E85D04",
     "addedAt": "2026-11-25T14:55:08Z"
+  },
+  {
+    "slug": "momentum-mantis",
+    "title": "Momentum Mantis",
+    "description": "Fling your mantis between energy hooks to escape the rising toxic flood in this high-speed momentum climber.",
+    "category": "Physics",
+    "accent": "#EC4899",
+    "addedAt": "2026-11-25T16:58:44Z"
   }
 ]

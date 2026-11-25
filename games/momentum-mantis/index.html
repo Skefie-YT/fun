@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Momentum Mantis</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #EC4899;
+            --bg: #0f172a;
+            --text: #f8fafc;
+        }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
+            background: var(--bg); font-family: 'Outfit', sans-serif; color: var(--text);
+        }
+        #game-container {
+            position: relative; width: 100%; height: 100dvh; display: flex; flex-direction: column;
+        }
+        #ui-bar {
+            height: 60px; padding: 0 15px; display: flex; align-items: center; justify-content: space-between;
+            background: rgba(15, 23, 42, 0.8); z-index: 20;
+        }
+        .back-btn { text-decoration: none; color: #fff; background: rgba(255,255,255,0.1); padding: 6px 12px; border-radius: 8px; font-size: 14px; transition: 0.2s; }
+        .back-btn:hover { background: rgba(255,255,255,0.2); }
+        .stats { display: flex; gap: 20px; font-weight: 700; }
+        .btn-round { width: 35px; height: 35px; border-radius: 50%; border: none; background: rgba(255,255,255,0.1); color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        
+        #canvas-wrap { flex: 1; position: relative; background: radial-gradient(circle at 50% 50%, #1e293b, #0f172a); overflow: hidden; }
+        canvas { width: 100%; height: 100%; display: block; touch-action: none; }
+
+        .overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            background: rgba(15, 23, 42, 0.9); display: flex; flex-direction: column;
+            align-items: center; justify-content: center; z-index: 100; text-align: center; padding: 20px;
+        }
+        h1 { font-size: 3rem; margin: 0; color: var(--accent); text-shadow: 0 0 20px rgba(236, 72, 153, 0.5); }
+        p { max-width: 400px; line-height: 1.6; margin: 15px 0 25px; color: #cbd5e1; }
+        .cta-btn { 
+            background: var(--accent); border: none; padding: 15px 40px; color: white;
+            font-size: 1.2rem; font-weight: 700; border-radius: 50px; cursor: pointer; transition: 0.3s transform;
+        }
+        .cta-btn:hover { transform: scale(1.05); }
+        .hidden { display: none !important; }
+        .hint-bar { position: absolute; bottom: 20px; font-size: 0.8rem; opacity: 0.6; }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="ui-bar">
+            <a href="../../" class="back-btn">Back</a>
+            <div class="stats">
+                <span>SCORE: <span id="score">0</span></span>
+                <span>BEST: <span id="best">0</span></span>
+            </div>
+            <button class="btn-round" onclick="toggleHelp()">?</button>
+        </div>
+
+        <div id="canvas-wrap">
+            <canvas id="gameCanvas"></canvas>
+
+            <!-- Start Screen -->
+            <div id="start-screen" class="overlay">
+                <h1>Momentum Mantis</h1>
+                <p>Drag and release to sling your mantis between energy hooks. Climb as fast as you can to stay above the toxic neon rising from below!</p>
+                <button class="cta-btn" onclick="startGame()">START CLIMB</button>
+                <div class="hint-bar">Mouse/Touch: Click and Drag to Sling</div>
+            </div>
+
+            <!-- Game Over Screen -->
+            <div id="game-over" class="overlay hidden">
+                <h2 style="font-size:2.5rem; margin-bottom:10px;">WIPED OUT</h2>
+                <p id="final-score-text"></p>
+                <button class="cta-btn" onclick="startGame()">RETRY</button>
+            </div>
+
+            <!-- Help Screen -->
+            <div id="help-screen" class="overlay hidden" onclick="toggleHelp()">
+                <h2>How to Play</h2>
+                <ul style="text-align: left; line-height: 2;">
+                    <li>Drag anywhere to set direction and power.</li>
+                    <li>Release to launch your mantis.</li>
+                    <li>Land on glowing Hooks to reset your sling.</li>
+                    <li>Don't let the toxic floor touch you!</li>
+                </ul>
+                <p style="font-size: 0.8rem; margin-top: 20px;">Tap to close</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const bestEl = document.getElementById('best');
+        const startScreen = document.getElementById('start-screen');
+        const gameOverScreen = document.getElementById('game-over');
+        const finalScoreText = document.getElementById('final-score-text');
+        const helpScreen = document.getElementById('help-screen');
+
+        const ACCENT = '#EC4899';
+        let score = 0;
+        let best = localStorage.getItem('fun_arcade_highscore_momentum-mantis') || 0;
+        bestEl.textContent = best;
+
+        let gameState = 'START';
+        let player = { x: 0, y: 0, vx: 0, vy: 0, radius: 10, canJump: true };
+        let hooks = [];
+        let particles = [];
+        let toxicY = 0;
+        let toxicSpeed = 1.2;
+        let dragStart = null;
+        let currentDrag = null;
+        let cameraY = 0;
+        let lastHookY = 0;
+
+        function resize() {
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        function spawnHook(y) {
+            return {
+                x: Math.random() * (canvas.width - 60) + 30,
+                y: y,
+                radius: 12,
+                pulse: 0
+            };
+        }
+
+        function initGame() {
+            score = 0;
+            scoreEl.textContent = '0';
+            player = { 
+                x: canvas.width / 2, 
+                y: canvas.height - 100, 
+                vx: 0, 
+                vy: 0, 
+                radius: 12, 
+                canJump: true 
+            };
+            cameraY = 0;
+            toxicY = canvas.height + 200;
+            toxicSpeed = 1.2;
+            hooks = [];
+            // Initial hooks
+            for (let i = 0; i < 8; i++) {
+                hooks.push(spawnHook(canvas.height - 150 - (i * 120)));
+            }
+            lastHookY = hooks[hooks.length - 1].y;
+        }
+
+        function startGame() {
+            initGame();
+            gameState = 'PLAYING';
+            startScreen.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+        }
+
+        function toggleHelp() {
+            helpScreen.classList.toggle('hidden');
+        }
+
+        // Input Handlers
+        function handleStart(x, y) {
+            if (gameState !== 'PLAYING' || !player.canJump) return;
+            dragStart = { x, y };
+        }
+        function handleMove(x, y) {
+            if (dragStart) currentDrag = { x, y };
+        }
+        function handleEnd() {
+            if (dragStart && currentDrag) {
+                const dx = dragStart.x - currentDrag.x;
+                const dy = dragStart.y - currentDrag.y;
+                const dist = Math.min(Math.sqrt(dx*dx + dy*dy), 150);
+                const angle = Math.atan2(dy, dx);
+                
+                player.vx = Math.cos(angle) * dist * 0.15;
+                player.vy = Math.sin(angle) * dist * 0.15;
+                player.canJump = false;
+                createExplosion(player.x, player.y, ACCENT, 8);
+            }
+            dragStart = null;
+            currentDrag = null;
+        }
+
+        canvas.addEventListener('mousedown', e => handleStart(e.clientX, e.clientY));
+        canvas.addEventListener('mousemove', e => handleMove(e.clientX, e.clientY));
+        window.addEventListener('mouseup', handleEnd);
+        canvas.addEventListener('touchstart', e => {
+            const t = e.touches[0];
+            handleStart(t.clientX, t.clientY);
+        }, {passive:false});
+        canvas.addEventListener('touchmove', e => {
+            const t = e.touches[0];
+            handleMove(t.clientX, t.clientY);
+            e.preventDefault();
+        }, {passive:false});
+        window.addEventListener('touchend', handleEnd);
+
+        function createExplosion(x, y, color, count) {
+            for (let i = 0; i < count; i++) {
+                particles.push({
+                    x, y,
+                    vx: (Math.random() - 0.5) * 6,
+                    vy: (Math.random() - 0.5) * 6,
+                    life: 1.0,
+                    color: color
+                });
+            }
+        }
+
+        function update() {
+            if (gameState !== 'PLAYING') return;
+
+            // Physics
+            player.vy += 0.25; // Gravity
+            player.x += player.vx;
+            player.y += player.vy;
+            player.vx *= 0.98; // Friction
+
+            // Walls
+            if (player.x < player.radius) { player.x = player.radius; player.vx *= -0.6; }
+            if (player.x > canvas.width - player.radius) { player.x = canvas.width - player.radius; player.vx *= -0.6; }
+
+            // Hook Collision
+            hooks.forEach(h => {
+                const dx = player.x - h.x;
+                const dy = player.y - h.y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+                if (dist < player.radius + h.radius && player.vy > 0) {
+                    player.y = h.y - player.radius;
+                    player.vy = 0;
+                    player.vx = 0;
+                    player.canJump = true;
+                    h.pulse = 10;
+                }
+                h.pulse *= 0.9;
+            });
+
+            // Camera and Score
+            const targetCam = -player.y + canvas.height * 0.6;
+            if (targetCam > cameraY) cameraY += (targetCam - cameraY) * 0.1;
+            
+            let currentScore = Math.floor(Math.abs(Math.min(0, player.y - (canvas.height - 100))) / 10);
+            if (currentScore > score) {
+                score = currentScore;
+                scoreEl.textContent = score;
+            }
+
+            // Spawn new hooks
+            if (player.y < lastHookY + 400) {
+                lastHookY -= 120 + Math.random() * 40;
+                hooks.push(spawnHook(lastHookY));
+                if (hooks.length > 20) hooks.shift();
+            }
+
+            // Toxic Floor
+            toxicY -= toxicSpeed;
+            toxicSpeed += 0.0002;
+            if (player.y > toxicY - cameraY + 20) {
+                endGame();
+            }
+
+            // Particles
+            particles.forEach((p, i) => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.02;
+                if (p.life <= 0) particles.splice(i, 1);
+            });
+        }
+
+        function endGame() {
+            gameState = 'GAMEOVER';
+            if (score > best) {
+                best = score;
+                localStorage.setItem('fun_arcade_highscore_momentum-mantis', best);
+                bestEl.textContent = best;
+            }
+            finalScoreText.textContent = `You climbed ${score} meters before the toxic flood caught up.`;
+            gameOverScreen.classList.remove('hidden');
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.save();
+            ctx.translate(0, cameraY);
+
+            // Hooks
+            hooks.forEach(h => {
+                ctx.beginPath();
+                ctx.arc(h.x, h.y, h.radius + h.pulse, 0, Math.PI * 2);
+                ctx.fillStyle = h.pulse > 1 ? '#fff' : ACCENT;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = ACCENT;
+                ctx.fill();
+                ctx.closePath();
+            });
+
+            // Particles
+            particles.forEach(p => {
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.fillRect(p.x, p.y, 4, 4);
+            });
+            ctx.globalAlpha = 1.0;
+
+            // Player
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#fff';
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Sling Line
+            if (dragStart && currentDrag && player.canJump) {
+                const dx = dragStart.x - currentDrag.x;
+                const dy = dragStart.y - currentDrag.y;
+                const dist = Math.min(Math.sqrt(dx*dx + dy*dy), 150);
+                const angle = Math.atan2(dy, dx);
+                
+                ctx.beginPath();
+                ctx.moveTo(player.x, player.y);
+                ctx.lineTo(player.x + Math.cos(angle) * dist * 0.5, player.y + Math.sin(angle) * dist * 0.5);
+                ctx.strokeStyle = '#fff';
+                ctx.setLineDash([5, 5]);
+                ctx.lineWidth = 3;
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+
+            ctx.restore();
+
+            // Toxic Floor
+            const grad = ctx.createLinearGradient(0, toxicY + cameraY, 0, toxicY + cameraY + 400);
+            grad.addColorStop(0, '#22c55e');
+            grad.addColorStop(1, '#064e3b');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, toxicY + cameraY, canvas.width, canvas.height * 2);
+            
+            // Floor Glow
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = '#22c55e';
+            ctx.lineWidth = 4;
+            ctx.strokeStyle = '#4ade80';
+            ctx.beginPath();
+            ctx.moveTo(0, toxicY + cameraY);
+            ctx.lineTo(canvas.width, toxicY + cameraY);
+            ctx.stroke();
+
+            requestAnimationFrame(() => {
+                update();
+                draw();
+            });
+        }
+
+        draw();
+    </script>
+</body>
+</html>
