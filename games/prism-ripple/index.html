@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Prism Ripple - Fun Arcade</title>
+<style>
+  :root {
+    --bg: #090d16;
+    --surface: #111827;
+    --surface-2: #1e293b;
+    --text: #f8fafc;
+    --muted: #94a3b8;
+    --accent: #14B8A6;
+    --accent-glow: rgba(20, 184, 166, 0.35);
+  }
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+  html, body {
+    width: 100%;
+    height: 100dvh;
+    overflow: hidden;
+    background: radial-gradient(circle at 50% 20%, #131c2e 0%, var(--bg) 75%);
+    color: var(--text);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    display: flex;
+    flex-direction: column;
+  }
+  /* Top Bar */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    background: rgba(17, 24, 39, 0.85);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    z-index: 20;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text);
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: background 0.15s, transform 0.1s;
+  }
+  .back-btn:hover { background: rgba(255, 255, 255, 0.14); }
+  .back-btn:active { transform: scale(0.96); }
+  .hud-group {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .hud-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    line-height: 1.1;
+  }
+  .hud-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .hud-val {
+    font-size: 16px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+  }
+  .hud-val.accent { color: var(--accent); }
+  .icon-btns {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .icon-btn {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.07);
+    color: var(--text);
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, transform 0.1s;
+  }
+  .icon-btn:hover { background: rgba(255, 255, 255, 0.15); }
+  .icon-btn:active { transform: scale(0.94); }
+
+  /* Sub-HUD bar */
+  .subhud {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    padding: 8px 14px 2px;
+    flex-shrink: 0;
+    z-index: 10;
+  }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(30, 41, 59, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 5px 14px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .pill span.lbl { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; }
+  .pill span.val { color: #fff; font-variant-numeric: tabular-nums; }
+  .pill span.val.warn { color: #f43f5e; animation: pulseWarn 0.8s infinite alternate; }
+  @keyframes pulseWarn { from { opacity: 1; } to { opacity: 0.55; } }
+
+  /* Main Stage */
+  .stage {
+    flex: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    padding: 8px;
+  }
+  canvas {
+    display: block;
+    border-radius: 16px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.07);
+    background: rgba(15, 23, 42, 0.75);
+    cursor: pointer;
+    touch-action: none;
+  }
+
+  /* Bottom Hint */
+  .hint-bar {
+    text-align: center;
+    padding: 6px 12px 10px;
+    font-size: 12px;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+
+  /* Overlays */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(9, 13, 22, 0.82);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+    padding: 20px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.22s ease;
+  }
+  .overlay.active {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .card {
+    width: 100%;
+    max-width: 390px;
+    background: var(--surface);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 20px;
+    padding: 26px 22px;
+    text-align: center;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.65), 0 0 40px var(--accent-glow);
+  }
+  .card h1 {
+    font-size: 28px;
+    font-weight: 900;
+    letter-spacing: -0.02em;
+    margin-bottom: 8px;
+    background: linear-gradient(135deg, #fff 20%, var(--accent) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .card h2 {
+    font-size: 22px;
+    font-weight: 800;
+    margin-bottom: 10px;
+    color: #fff;
+  }
+  .card p {
+    font-size: 14px;
+    line-height: 1.55;
+    color: var(--muted);
+    margin-bottom: 18px;
+  }
+  .btn-primary {
+    width: 100%;
+    padding: 13px 20px;
+    border: none;
+    border-radius: 12px;
+    background: linear-gradient(135deg, var(--accent), #0d9488);
+    color: #042f2e;
+    font-size: 16px;
+    font-weight: 800;
+    cursor: pointer;
+    box-shadow: 0 8px 24px var(--accent-glow);
+    transition: transform 0.12s, filter 0.15s;
+  }
+  .btn-primary:hover { filter: brightness(1.08); }
+  .btn-primary:active { transform: scale(0.97); }
+  .rules-list {
+    text-align: left;
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 18px;
+    font-size: 13px;
+    color: #cbd5e1;
+    line-height: 1.55;
+  }
+  .rules-list li {
+    margin-left: 16px;
+    margin-bottom: 6px;
+  }
+  .rules-list li:last-child { margin-bottom: 0; }
+  .stat-row {
+    display: flex;
+    justify-content: space-around;
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 18px;
+  }
+  .stat-box .lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; }
+  .stat-box .val { font-size: 22px; font-weight: 800; color: #fff; margin-top: 2px; }
+  .stat-box .val.accent { color: var(--accent); }
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a href="../../" class="back-btn">&#8592; Back</a>
+    <div class="hud-group">
+      <div class="hud-stat">
+        <span class="hud-label">Score</span>
+        <span class="hud-val" id="scoreVal">0</span>
+      </div>
+      <div class="hud-stat">
+        <span class="hud-label">Best</span>
+        <span class="hud-val accent" id="bestVal">0</span>
+      </div>
+    </div>
+    <div class="icon-btns">
+      <button class="icon-btn" id="muteBtn" title="Toggle Sound">&#128266;</button>
+      <button class="icon-btn" id="helpBtn" title="How to Play">?</button>
+    </div>
+  </header>
+
+  <div class="subhud">
+    <div class="pill">
+      <span class="lbl">Level</span>
+      <span class="val" id="levelVal">1</span>
+    </div>
+    <div class="pill">
+      <span class="lbl">Moves</span>
+      <span class="val" id="movesVal">10</span>
+    </div>
+    <div class="pill">
+      <span class="lbl">Left</span>
+      <span class="val" id="leftVal">49</span>
+    </div>
+  </div>
+
+  <main class="stage" id="stage">
+    <canvas id="gameCanvas"></canvas>
+  </main>
+
+  <div class="hint-bar">Tap any tile (or use Arrow Keys + Space) to detonate 4-way color ripples</div>
+
+  <!-- Start Overlay -->
+  <div class="overlay active" id="startOverlay">
+    <div class="card">
+      <h1>Prism Ripple</h1>
+      <p>Detonate any tile to fire 4-way color ripples across the grid. Matching tiles hit by a ripple explode too, sparking massive chain reactions!</p>
+      <button class="btn-primary" id="startBtn">Play Now</button>
+    </div>
+  </div>
+
+  <!-- How to Play Overlay -->
+  <div class="overlay" id="helpOverlay">
+    <div class="card">
+      <h2>How to Play</h2>
+      <ul class="rules-list">
+        <li><strong>Detonate:</strong> Tap or click any tile to pop it and send 4-way ripple beams (up, down, left, right).</li>
+        <li><strong>Chain Reaction:</strong> Any tile of the <em>same color</em> hit by a ripple also detonates and fires its own ripples!</li>
+        <li><strong>Prism Wildcard:</strong> Rainbow tiles match <em>all</em> colors and supercharge your chain.</li>
+        <li><strong>Clear the Board:</strong> Pop all tiles before running out of moves to advance and earn bonus moves!</li>
+      </ul>
+      <button class="btn-primary" id="closeHelpBtn">Got It</button>
+    </div>
+  </div>
+
+  <!-- Game Over Overlay -->
+  <div class="overlay" id="gameOverOverlay">
+    <div class="card">
+      <h2>Out of Moves!</h2>
+      <p id="gameOverMsg">Great chain reactions! Ready for another run?</p>
+      <div class="stat-row">
+        <div class="stat-box">
+          <div class="lbl">Score</div>
+          <div class="val" id="finalScore">0</div>
+        </div>
+        <div class="stat-box">
+          <div class="lbl">Best</div>
+          <div class="val accent" id="finalBest">0</div>
+        </div>
+        <div class="stat-box">
+          <div class="lbl">Level</div>
+          <div class="val" id="finalLevel">1</div>
+        </div>
+      </div>
+      <button class="btn-primary" id="restartBtn">Play Again</button>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const SLUG = 'prism-ripple';
+  const HS_KEY = 'fun_arcade_highscore_' + SLUG;
+
+  const COLORS = [
+    { name: 'teal',   hex: '#14B8A6', glow: 'rgba(20, 184, 166, 0.55)' },
+    { name: 'coral',  hex: '#F43F5E', glow: 'rgba(244, 63, 94, 0.55)' },
+    { name: 'amber',  hex: '#F59E0B', glow: 'rgba(245, 158, 11, 0.55)' },
+    { name: 'violet', hex: '#8B5CF6', glow: 'rgba(139, 92, 246, 0.55)' }
+  ];
+  const WILD_COLOR = { name: 'wild', hex: '#FFFFFF', glow: 'rgba(255, 255, 255, 0.7)' };
+
+  const GRID_SIZE = 7;
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+  const stage = document.getElementById('stage');
+
+  // HUD Elements
+  const scoreEl = document.getElementById('scoreVal');
+  const bestEl = document.getElementById('bestVal');
+  const levelEl = document.getElementById('levelVal');
+  const movesEl = document.getElementById('movesVal');
+  const leftEl = document.getElementById('leftVal');
+
+  // Overlays
+  const startOverlay = document.getElementById('startOverlay');
+  const helpOverlay = document.getElementById('helpOverlay');
+  const gameOverOverlay = document.getElementById('gameOverOverlay');
+  const muteBtn = document.getElementById('muteBtn');
+
+  // Audio
+  let audioCtx = null;
+  let muted = false;
+  function initAudio() {
+    if (!audioCtx) { 
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) audioCtx = new AC();
+    }
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  }
+  function playTone(freq, type = 'sine', dur = 0.12, vol = 0.12) {
+    if (muted || !audioCtx) return;
+    try {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+      gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + dur);
+    } catch (e) {}
+  }
+  function playPop(chain) {
+    const base = 280 + Math.min(chain, 15) * 42;
+    playTone(base, 'triangle', 0.13, 0.14);
+  }
+  function playLevelUp() {
+    [440, 554, 659, 880].forEach((f, i) => {
+      setTimeout(() => playTone(f, 'sine', 0.18, 0.13), i * 70);
+    });
+  }
+  function playGameOver() {
+    [300, 240, 180].forEach((f, i) => {
+      setTimeout(() => playTone(f, 'sawtooth', 0.22, 0.08), i * 110);
+    });
+  }
+
+  // State
+  let grid = [];
+  let ripples = [];
+  let particles = [];
+  let popups = [];
+  let score = 0;
+  let bestScore = parseInt(localStorage.getItem(HS_KEY) || '0', 10);
+  let level = 1;
+  let moves = 10;
+  let chainCount = 0;
+  let isResolving = false;
+  let gameState = 'start'; // start | playing | gameover
+  let cursor = { r: 3, c: 3, active: false };
+  let shake = 0;
+  let boardPx = 360;
+  let cellPx = 48;
+  let padPx = 8;
+
+  bestEl.textContent = bestScore;
+
+  function resize() {
+    const rect = stage.getBoundingClientRect();
+    const size = Math.floor(Math.min(rect.width - 12, rect.height - 12, 480));
+    boardPx = Math.max(260, size);
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.style.width = boardPx + 'px';
+    canvas.style.height = boardPx + 'px';
+    canvas.width = boardPx * dpr;
+    canvas.height = boardPx * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    padPx = Math.round(boardPx * 0.035);
+    cellPx = (boardPx - padPx * 2) / GRID_SIZE;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function buildLevel(lvl) {
+    grid = [];
+    ripples = [];
+    particles = [];
+    popups = [];
+    isResolving = false;
+    const numColors = lvl >= 4 ? 4 : (lvl >= 2 ? 4 : 3);
+    for (let r = 0; r < GRID_SIZE; r++) {
+      const row = [];
+      for (let c = 0; c < GRID_SIZE; c++) {
+        const isWild = lvl >= 2 && Math.random() < 0.05;
+        row.push({
+          r, c,
+          colorIdx: isWild ? -1 : Math.floor(Math.random() * numColors),
+          alive: true,
+          scale: 0,
+          targetScale: 1,
+          hitDelay: 0
+        });
+      }
+      grid.push(row);
+    }
+    updateHUD();
+  }
+
+  function countAlive() {
+    let n = 0;
+    for (let r = 0; r < GRID_SIZE; r++)
+      for (let c = 0; c < GRID_SIZE; c++)
+        if (grid[r][c].alive) n++;
+    return n;
+  }
+
+  function updateHUD() {
+    scoreEl.textContent = score;
+    if (score > bestScore) {
+      bestScore = score;
+      localStorage.setItem(HS_KEY, bestScore);
+      bestEl.textContent = bestScore;
+    }
+    levelEl.textContent = level;
+    movesEl.textContent = moves;
+    movesEl.classList.toggle('warn', moves <= 3 && gameState === 'playing');
+    leftEl.textContent = countAlive();
+  }
+
+  function spawnParticles(x, y, colorHex, count = 12) {
+    for (let i = 0; i < count; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 1.5 + Math.random() * 4.5;
+      particles.push({
+        x, y,
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd,
+        r: 2 + Math.random() * 3.5,
+        color: colorHex,
+        alpha: 1
+      });
+    }
+  }
+
+  function addPopup(x, y, text, color) {
+    popups.push({ x, y, text, color, alpha: 1, vy: -1.1 });
+  }
+
+  function cellCenter(r, c) {
+    return {
+      x: padPx + c * cellPx + cellPx / 2,
+      y: padPx + r * cellPx + cellPx / 2
+    };
+  }
+
+  function detonateTile(r, c) {
+    const tile = grid[r][c];
+    if (!tile || !tile.alive) return;
+    tile.alive = false;
+    chainCount++;
+    const pts = 10 * chainCount;
+    score += pts;
+    const { x, y } = cellCenter(r, c);
+    const col = tile.colorIdx === -1 ? WILD_COLOR : COLORS[tile.colorIdx];
+
+    spawnParticles(x, y, col.hex, 14);
+    addPopup(x, y - 6, chainCount > 1 ? `+${pts} x${chainCount}` : `+${pts}`, col.hex);
+    playPop(chainCount);
+    if (chainCount >= 4) shake = Math.min(8, chainCount * 0.8);
+
+    // Send 4-way ripples
+    const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+    for (const [dr, dc] of dirs) {
+      ripples.push({
+        x, y,
+        r, c,
+        dr, dc,
+        colorIdx: tile.colorIdx,
+        hex: col.hex,
+        speed: cellPx * 0.22,
+        dist: 0,
+        maxDist: boardPx,
+        visited: new Set([`${r},${c}`]),
+        alive: true
+      });
+    }
+    updateHUD();
+  }
+
+  function triggerMove(r, c) {
+    if (gameState !== 'playing' || isResolving) return;
+    const tile = grid[r] && grid[r][c];
+    if (!tile || !tile.alive) return;
+
+    initAudio();
+    moves--;
+    chainCount = 0;
+    isResolving = true;
+    detonateTile(r, c);
+  }
+
+  function startGame() {
+    initAudio();
+    score = 0;
+    level = 1;
+    moves = 10;
+    gameState = 'playing';
+    startOverlay.classList.remove('active');
+    gameOverOverlay.classList.remove('active');
+    buildLevel(level);
+  }
+
+  function checkTurnEnd() {
+    if (!isResolving || ripples.length > 0) return;
+    isResolving = false;
+    const remaining = countAlive();
+    if (remaining === 0) {
+      // Level Cleared!
+      const bonus = moves * 50 + level * 100;
+      score += bonus;
+      level++;
+      moves += 8;
+      playLevelUp();
+      addPopup(boardPx / 2, boardPx / 2, `LEVEL CLEAR! +${bonus}`, '#14B8A6');
+      setTimeout(() => {
+        if (gameState === 'playing') buildLevel(level);
+      }, 650);
+    } else if (moves <= 0) {
+      gameState = 'gameover';
+      playGameOver();
+      updateHUD();
+      document.getElementById('finalScore').textContent = score;
+      document.getElementById('finalBest').textContent = bestScore;
+      document.getElementById('finalLevel').textContent = level;
+      gameOverOverlay.classList.add('active');
+    } else {
+      updateHUD();
+    }
+  }
+
+  // Input: Pointer
+  function handlePointer(e) {
+    if (gameState !== 'playing') return;
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX - rect.left);
+    const y = (e.clientY - rect.top);
+    const c = Math.floor((x - padPx) / cellPx);
+    const r = Math.floor((y - padPx) / cellPx);
+    if (r >= 0 && r < GRID_SIZE && c >= 0 && c < GRID_SIZE) {
+      cursor = { r, c, active: false };
+      triggerMove(r, c);
+    }
+  }
+  canvas.addEventListener('pointerdown', handlePointer);
+
+  // Input: Keyboard
+  window.addEventListener('keydown', (e) => {
+    if (gameState !== 'playing') return;
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) {
+      e.preventDefault();
+      cursor.active = true;
+    }
+    if (e.key === 'ArrowUp' || e.key === 'w') cursor.r = (cursor.r + GRID_SIZE - 1) % GRID_SIZE;
+    if (e.key === 'ArrowDown' || e.key === 's') cursor.r = (cursor.r + 1) % GRID_SIZE;
+    if (e.key === 'ArrowLeft' || e.key === 'a') cursor.c = (cursor.c + GRID_SIZE - 1) % GRID_SIZE;
+    if (e.key === 'ArrowRight' || e.key === 'd') cursor.c = (cursor.c + 1) % GRID_SIZE;
+    if (e.key === ' ' || e.key === 'Enter') triggerMove(cursor.r, cursor.c);
+  });
+
+  // Buttons
+  document.getElementById('startBtn').addEventListener('click', startGame);
+  document.getElementById('restartBtn').addEventListener('click', startGame);
+  document.getElementById('helpBtn').addEventListener('click', () => helpOverlay.classList.add('active'));
+  document.getElementById('closeHelpBtn').addEventListener('click', () => helpOverlay.classList.remove('active'));
+  muteBtn.addEventListener('click', () => {
+    muted = !muted;
+    muteBtn.innerHTML = muted ? '&#128263;' : '&#128266;';
+  });
+
+  // Main Loop
+  function loop() {
+    requestAnimationFrame(loop);
+
+    // Update Ripples
+    for (let i = ripples.length - 1; i >= 0; i--) {
+      const rp = ripples[i];
+      rp.x += rp.dc * rp.speed;
+      rp.y += rp.dr * rp.speed;
+      rp.dist += rp.speed;
+
+      const nc = Math.floor((rp.x - padPx) / cellPx);
+      const nr = Math.floor((rp.y - padPx) / cellPx);
+      if (nr < 0 || nr >= GRID_SIZE || nc < 0 || nc >= GRID_SIZE || rp.dist > rp.maxDist) {
+        ripples.splice(i, 1);
+        continue;
+      }
+      const key = `${nr},${nc}`;
+      if (!rp.visited.has(key)) {
+        rp.visited.add(key);
+        const target = grid[nr][nc];
+        if (target.alive && (rp.colorIdx === -1 || target.colorIdx === -1 || target.colorIdx === rp.colorIdx)) {
+          detonateTile(nr, nc);
+        }
+      }
+    }
+    checkTurnEnd();
+
+    // Update Particles
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vx *= 0.94;
+      p.vy *= 0.94;
+      p.alpha -= 0.03;
+      if (p.alpha <= 0) particles.splice(i, 1);
+    }
+
+    // Update Popups
+    for (let i = popups.length - 1; i >= 0; i--) {
+      const pp = popups[i];
+      pp.y += pp.vy;
+      pp.alpha -= 0.022;
+      if (pp.alpha <= 0) popups.splice(i, 1);
+    }
+
+    if (shake > 0) shake *= 0.85;
+    if (shake < 0.2) shake = 0;
+
+    // Render
+    ctx.save();
+    if (shake > 0) {
+      ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
+    }
+    ctx.clearRect(0, 0, boardPx, boardPx);
+
+    // Draw Grid Slots & Tiles
+    const gap = Math.max(3, cellPx * 0.08);
+    const radius = Math.max(6, cellPx * 0.2);
+    for (let r = 0; r < GRID_SIZE; r++) {
+      for (let c = 0; c < GRID_SIZE; c++) {
+        const tile = grid[r][c];
+        const x = padPx + c * cellPx + gap / 2;
+        const y = padPx + r * cellPx + gap / 2;
+        const w = cellPx - gap;
+
+        // Empty slot
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.035)';
+        ctx.beginPath();
+        ctx.roundRect(x, y, w, w, radius);
+        ctx.fill();
+
+        if (tile && tile.alive) {
+          tile.scale += (tile.targetScale - tile.scale) * 0.22;
+          const s = tile.scale;
+          const cx = x + w / 2;
+          const cy = y + w / 2;
+          const sw = w * s;
+          ctx.save();
+          ctx.translate(cx, cy);
+          if (tile.colorIdx === -1) {
+            const grad = ctx.createLinearGradient(-sw/2, -sw/2, sw/2, sw/2);
+            grad.addColorStop(0, '#14B8A6');
+            grad.addColorStop(0.33, '#F43F5E');
+            grad.addColorStop(0.66, '#F59E0B');
+            grad.addColorStop(1, '#8B5CF6');
+            ctx.fillStyle = grad;
+            ctx.shadowColor = 'rgba(255,255,255,0.5)';
+            ctx.shadowBlur = 12;
+          } else {
+            const col = COLORS[tile.colorIdx];
+            ctx.fillStyle = col.hex;
+            ctx.shadowColor = col.glow;
+            ctx.shadowBlur = 8;
+          }
+          ctx.beginPath();
+          ctx.roundRect(-sw / 2, -sw / 2, sw, sw, radius);
+          ctx.fill();
+
+          // Subtle inner highlight
+          ctx.shadowBlur = 0;
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.18)';
+          ctx.beginPath();
+          ctx.roundRect(-sw / 2 + 3, -sw / 2 + 3, sw - 6, sw * 0.35, radius * 0.6);
+          ctx.fill();
+          ctx.restore();
+        }
+
+        // Keyboard cursor
+        if (cursor.active && cursor.r === r && cursor.c === c) {
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.roundRect(x - 1, y - 1, w + 2, w + 2, radius);
+          ctx.stroke();
+        }
+      }
+    }
+
+    // Draw Ripples
+    for (const rp of ripples) {
+      ctx.save();
+      ctx.fillStyle = rp.hex;
+      ctx.shadowColor = rp.hex;
+      ctx.shadowBlur = 14;
+      ctx.beginPath();
+      ctx.arc(rp.x, rp.y, Math.max(5, cellPx * 0.18), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Draw Particles
+    for (const p of particles) {
+      ctx.globalAlpha = Math.max(0, p.alpha);
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // Draw Popups
+    ctx.font = '800 14px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    for (const pp of popups) {
+      ctx.globalAlpha = Math.max(0, pp.alpha);
+      ctx.fillStyle = pp.color;
+      ctx.fillText(pp.text, pp.x, pp.y);
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  buildLevel(1);
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

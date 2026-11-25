@@ -726,5 +726,13 @@
     "category": "Puzzle",
     "accent": "#8B5CF6",
     "addedAt": "2026-11-25T21:51:40Z"
+  },
+  {
+    "slug": "prism-ripple",
+    "title": "Prism Ripple",
+    "description": "Detonate colored tiles to send 4-way ripples across the grid and trigger massive chain reactions!",
+    "category": "Puzzle",
+    "accent": "#14B8A6",
+    "addedAt": "2026-11-25T22:47:15Z"
   }
 ]
