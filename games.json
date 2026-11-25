@@ -662,5 +662,13 @@
     "category": "Physics",
     "accent": "#8B5CF6",
     "addedAt": "2026-11-25T10:04:46Z"
+  },
+  {
+    "slug": "signal-match-tactics",
+    "title": "Signal Match Tactics",
+    "description": "Memorize the signal sequence on the grid and clear matching pairs to restore the data link before the timer runs out!",
+    "category": "Puzzle",
+    "accent": "#0EA5E9",
+    "addedAt": "2026-11-25T13:04:48Z"
   }
 ]

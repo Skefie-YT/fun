@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Signal Match Tactics</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Rajdhani:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #0EA5E9;
+            --bg: #030712;
+            --surface: #1f2937;
+            --text: #f3f4f6;
+        }
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100dvh;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Rajdhani', sans-serif;
+            overflow: hidden;
+        }
+        #game-container {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            position: relative;
+        }
+        header {
+            height: 60px;
+            padding: 0 15px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(0,0,0,0.3);
+            border-bottom: 2px solid var(--accent);
+            z-index: 10;
+        }
+        .back-btn {
+            color: var(--text);
+            text-decoration: none;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 14px;
+            padding: 5px 10px;
+            border: 1px solid var(--accent);
+            border-radius: 4px;
+        }
+        .stats {
+            display: flex;
+            gap: 20px;
+            font-weight: 700;
+            font-size: 18px;
+        }
+        .help-btn {
+            background: none;
+            border: 2px solid var(--accent);
+            color: var(--accent);
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        #game-board {
+            flex: 1;
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            padding: 20px;
+            align-content: center;
+        }
+        .tile {
+            aspect-ratio: 1/1;
+            background: var(--surface);
+            border: 2px solid #374151;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            position: relative;
+            transition: transform 0.2s, background 0.3s, border-color 0.3s;
+            overflow: hidden;
+        }
+        .tile.active {
+            border-color: var(--accent);
+            box-shadow: 0 0 15px var(--accent);
+        }
+        .tile.matched {
+            opacity: 0.3;
+            cursor: default;
+            pointer-events: none;
+        }
+        .tile-icon {
+            width: 60%;
+            height: 60%;
+            stroke: var(--accent);
+            stroke-width: 2;
+            fill: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .tile.revealed .tile-icon, .tile.peek .tile-icon {
+            opacity: 1;
+        }
+        #timer-bar {
+            width: 100%;
+            height: 6px;
+            background: #111827;
+            position: relative;
+        }
+        #timer-fill {
+            width: 100%;
+            height: 100%;
+            background: var(--accent);
+            transition: width 0.1s linear;
+        }
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(3, 7, 18, 0.95);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 20px;
+            z-index: 100;
+            backdrop-filter: blur(5px);
+        }
+        .hidden { display: none !important; }
+        h1, h2 { font-family: 'Orbitron', sans-serif; color: var(--accent); margin-top: 0; }
+        .btn-main {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 18px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 20px;
+            box-shadow: 0 0 20px rgba(14, 165, 233, 0.4);
+        }
+        .btn-main:active { transform: scale(0.95); }
+        .how-to-text {
+            line-height: 1.6;
+            max-width: 400px;
+            margin-bottom: 20px;
+        }
+        #shake-container { height: 100%; width: 100%; }
+        .shaking { animation: shake 0.3s ease-in-out; }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <header>
+        <a href="../../" class="back-btn">BACK</a>
+        <div class="stats">
+            <span>SCORE: <span id="score-val">0</span></span>
+            <span>BEST: <span id="best-val">0</span></span>
+        </div>
+        <button class="help-btn" onclick="toggleHelp()">?</button>
+    </header>
+
+    <div id="timer-bar"><div id="timer-fill"></div></div>
+
+    <div id="shake-container">
+        <div id="game-board"></div>
+    </div>
+
+    <!-- Overlays -->
+    <div id="start-screen" class="overlay">
+        <h1>SIGNAL MATCH</h1>
+        <p class="how-to-text">Memorize the icon pattern when they flash, then match the pairs to sync the system.</p>
+        <button class="btn-main" onclick="startGame()">INITIALIZE</button>
+    </div>
+
+    <div id="help-screen" class="overlay hidden">
+        <h2>HOW TO PLAY</h2>
+        <p class="how-to-text">1. Icons will flash briefly at the start of each round.<br>2. Tap two identical tiles to match them.<br>3. Clear the grid before time runs out.<br>4. Speed increases each round!</p>
+        <button class="btn-main" onclick="toggleHelp()">GOT IT</button>
+    </div>
+
+    <div id="game-over-screen" class="overlay hidden">
+        <h2 id="over-title">CONNECTION LOST</h2>
+        <p>Score: <span id="final-score">0</span></p>
+        <button class="btn-main" onclick="startGame()">RETRY</button>
+    </div>
+</div>
+
+<script>
+    const board = document.getElementById('game-board');
+    const timerFill = document.getElementById('timer-fill');
+    const scoreVal = document.getElementById('score-val');
+    const bestVal = document.getElementById('best-val');
+    const finalScore = document.getElementById('final-score');
+    const shakeContainer = document.getElementById('shake-container');
+
+    const ICONS = [
+        `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M7 12h10"/></svg>`, // Cross
+        `<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9l6 6M15 9l-6 6"/></svg>`, // Square X
+        `<svg viewBox="0 0 24 24"><path d="M12 2l10 18H2L12 2z"/></svg>`, // Triangle
+        `<svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18"/></svg>`, // Plus
+        `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="9"/></svg>`, // Target
+        `<svg viewBox="0 0 24 24"><path d="M2 12h20M12 2l4 4-4 4M12 22l-4-4 4-4"/></svg>`, // Split
+        `<svg viewBox="0 0 24 24"><path d="M4 4l16 16M20 4L4 20"/></svg>`, // X
+        `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M3 12h3M18 12h3M12 3v3M12 18v3"/></svg>` // Compass
+    ];
+
+    let score = 0;
+    let best = localStorage.getItem('fun_arcade_highscore_signal-match-tactics') || 0;
+    let timeLeft = 100;
+    let timerId = null;
+    let selected = [];
+    let matchedCount = 0;
+    let isPeeking = false;
+    let level = 1;
+
+    bestVal.textContent = best;
+
+    function toggleHelp() {
+        document.getElementById('help-screen').classList.toggle('hidden');
+    }
+
+    function startGame() {
+        score = 0;
+        level = 1;
+        scoreVal.textContent = '0';
+        document.getElementById('start-screen').classList.add('hidden');
+        document.getElementById('game-over-screen').classList.add('hidden');
+        initLevel();
+    }
+
+    function initLevel() {
+        board.innerHTML = '';
+        selected = [];
+        matchedCount = 0;
+        isPeeking = true;
+        
+        const pairs = 8;
+        let tileData = [];
+        for(let i=0; i<pairs; i++) {
+            tileData.push({ id: i, html: ICONS[i] });
+            tileData.push({ id: i, html: ICONS[i] });
+        }
+        
+        // Shuffle
+        tileData.sort(() => Math.random() - 0.5);
+
+        tileData.forEach((data, index) => {
+            const tile = document.createElement('div');
+            tile.className = 'tile peek';
+            tile.dataset.id = data.id;
+            tile.innerHTML = `<div class="tile-icon">${data.html}</div>`;
+            tile.onclick = () => handleTileClick(tile);
+            board.appendChild(tile);
+        });
+
+        // Preview sequence
+        const peekTime = Math.max(800, 2000 - (level * 100));
+        setTimeout(() => {
+            document.querySelectorAll('.tile').forEach(t => t.classList.remove('peek'));
+            isPeeking = false;
+            startTimer();
+        }, peekTime);
+    }
+
+    function startTimer() {
+        if(timerId) clearInterval(timerId);
+        timeLeft = 100;
+        const duration = Math.max(4000, 10000 - (level * 500));
+        const step = 100 / (duration / 100);
+        
+        timerId = setInterval(() => {
+            timeLeft -= step;
+            timerFill.style.width = timeLeft + '%';
+            if(timeLeft <= 0) gameOver();
+        }, 100);
+    }
+
+    function handleTileClick(tile) {
+        if(isPeeking || tile.classList.contains('revealed') || tile.classList.contains('matched') || selected.length >= 2) return;
+
+        tile.classList.add('revealed');
+        selected.push(tile);
+        playSound(440 + (selected.length * 100), 0.1);
+
+        if(selected.length === 2) {
+            if(selected[0].dataset.id === selected[1].dataset.id) {
+                // Match
+                setTimeout(() => {
+                    selected.forEach(t => {
+                        t.classList.add('matched');
+                        t.classList.remove('revealed');
+                    });
+                    selected = [];
+                    matchedCount += 2;
+                    score += 10;
+                    scoreVal.textContent = score;
+                    playSound(880, 0.1);
+                    if(matchedCount === 16) winLevel();
+                }, 300);
+            } else {
+                // Mismatch
+                setTimeout(() => {
+                    shakeContainer.classList.add('shaking');
+                    selected.forEach(t => t.classList.remove('revealed'));
+                    selected = [];
+                    setTimeout(() => shakeContainer.classList.remove('shaking'), 300);
+                    playSound(150, 0.2);
+                }, 500);
+            }
+        }
+    }
+
+    function winLevel() {
+        clearInterval(timerId);
+        score += Math.floor(timeLeft);
+        scoreVal.textContent = score;
+        level++;
+        setTimeout(initLevel, 800);
+    }
+
+    function gameOver() {
+        clearInterval(timerId);
+        document.getElementById('game-over-screen').classList.remove('hidden');
+        finalScore.textContent = score;
+        if(score > best) {
+            best = score;
+            localStorage.setItem('fun_arcade_highscore_signal-match-tactics', best);
+            bestVal.textContent = best;
+            document.getElementById('over-title').textContent = "NEW RECORD!";
+        } else {
+            document.getElementById('over-title').textContent = "CONNECTION LOST";
+        }
+    }
+
+    // Simple Web Audio Synth
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playSound(freq, duration) {
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        oscillator.type = 'square';
+        oscillator.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gainNode.gain.setValueAtTime(0.05, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        oscillator.start();
+        oscillator.stop(audioCtx.currentTime + duration);
+    }
+</script>
+</body>
+</html>
