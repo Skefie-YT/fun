@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Flux Dodge</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --accent: #10B981; --bg: #09090b; }
+        * { box-sizing: border-box; touch-action: none; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100dvh; background: var(--bg); color: white; font-family: 'Outfit', sans-serif; overflow: hidden; }
+        #game-container { position: relative; width: 100%; height: 100%; max-width: 600px; margin: 0 auto; }
+        canvas { display: block; width: 100%; height: 100%; }
+        
+        .ui-layer { position: absolute; top: 0; left: 0; width: 100%; pointer-events: none; padding: 20px; z-index: 10; display: flex; justify-content: space-between; align-items: flex-start; }
+        .score-box { font-weight: 700; font-size: 1.5rem; text-shadow: 0 0 10px rgba(16, 185, 129, 0.5); }
+        .btn { pointer-events: auto; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 8px 16px; border-radius: 8px; cursor: pointer; text-decoration: none; font-size: 0.9rem; transition: 0.2s; backdrop-filter: blur(5px); }
+        .btn:hover { background: var(--accent); border-color: var(--accent); }
+
+        .overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.85); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; text-align: center; padding: 30px; transition: opacity 0.3s; }
+        .overlay.hidden { opacity: 0; pointer-events: none; }
+        h1 { margin: 0 0 10px 0; color: var(--accent); font-size: 3rem; text-transform: uppercase; letter-spacing: 2px; }
+        p { max-width: 400px; line-height: 1.6; color: #ccc; }
+        .play-btn { background: var(--accent); color: white; font-weight: 700; font-size: 1.2rem; padding: 15px 40px; border: none; border-radius: 50px; cursor: pointer; margin-top: 20px; text-transform: uppercase; letter-spacing: 1px; transition: transform 0.2s; }
+        .play-btn:hover { transform: scale(1.05); }
+
+        .controls-hint { position: absolute; bottom: 20px; left: 0; width: 100%; text-align: center; font-size: 0.8rem; opacity: 0.6; color: #aaa; }
+        .mute-btn { position: absolute; bottom: 20px; right: 20px; font-size: 1.2rem; }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div class="ui-layer">
+        <a href="../../" class="btn">Back</a>
+        <div class="score-box">Score: <span id="score">0</span></div>
+        <button class="btn" onclick="toggleHelp()">?</button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="start-screen" class="overlay">
+        <h1>Flux Dodge</h1>
+        <p>Survive the flux field! Hold <b>Space</b> or <b>Touch</b> to shrink and squeeze through narrow laser gaps. Release to expand and collect green nodes.</p>
+        <button class="play-btn" onclick="startGame()">Start System</button>
+        <div class="controls-hint">Hold to Shrink &bull; Release to Expand</div>
+    </div>
+
+    <div id="game-over" class="overlay hidden">
+        <h2 style="font-size: 2.5rem; margin-bottom: 0;">TERMINATED</h2>
+        <p id="final-score-text">Score: 0</p>
+        <p id="best-score-text">Best: 0</p>
+        <button class="play-btn" onclick="startGame()">Reboot</button>
+    </div>
+
+    <div id="help-overlay" class="overlay hidden" onclick="toggleHelp()">
+        <h2>How to Play</h2>
+        <p>&bull; Move your flux core with mouse or touch position.</p>
+        <p>&bull; Hold down to shrink (high maneuverability).</p>
+        <p>&bull; Release to expand (collect green energy nodes).</p>
+        <p>&bull; Red barriers end the run instantly!</p>
+        <button class="btn" style="margin-top:20px">Close</button>
+    </div>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const scoreEl = document.getElementById('score');
+const startScreen = document.getElementById('start-screen');
+const gameOverScreen = document.getElementById('game-over');
+const helpOverlay = document.getElementById('help-overlay');
+
+let score = 0;
+let bestScore = localStorage.getItem('fun_arcade_highscore_flux-dodge-reflex') || 0;
+let gameActive = false;
+let inputActive = false;
+let mouseX = 0;
+let mouseY = 0;
+let playerSize = 25;
+let targetSize = 25;
+let entities = [];
+let particles = [];
+let speed = 4;
+let frame = 0;
+
+const ACCENT = '#10B981';
+const DANGER = '#ef4444';
+
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    mouseX = canvas.width / 2;
+    mouseY = canvas.height * 0.8;
+}
+
+window.addEventListener('resize', resize);
+resize();
+
+const setInput = (val) => inputActive = val;
+window.addEventListener('mousedown', () => setInput(true));
+window.addEventListener('mouseup', () => setInput(false));
+window.addEventListener('touchstart', (e) => { e.preventDefault(); setInput(true); });
+window.addEventListener('touchend', (e) => { e.preventDefault(); setInput(false); });
+window.addEventListener('keydown', (e) => { if(e.code === 'Space') setInput(true); });
+window.addEventListener('keyup', (e) => { if(e.code === 'Space') setInput(false); });
+
+window.addEventListener('mousemove', (e) => { mouseX = e.clientX; mouseY = e.clientY; });
+window.addEventListener('touchmove', (e) => {
+    const t = e.touches[0];
+    mouseX = t.clientX;
+    mouseY = t.clientY;
+}, {passive: false});
+
+function spawnEntity() {
+    const type = Math.random() > 0.8 ? 'point' : 'obstacle';
+    if (type === 'point') {
+        entities.push({
+            type: 'point',
+            x: Math.random() * canvas.width,
+            y: -50,
+            w: 12,
+            h: 12,
+            color: ACCENT
+        });
+    } else {
+        const gapWidth = Math.random() * 100 + 80;
+        const gapX = Math.random() * (canvas.width - gapWidth);
+        entities.push({ type: 'wall', x: 0, y: -50, w: gapX, h: 30, color: DANGER });
+        entities.push({ type: 'wall', x: gapX + gapWidth, y: -50, w: canvas.width - (gapX + gapWidth), h: 30, color: DANGER });
+    }
+}
+
+function createExplosion(x, y, color) {
+    for(let i=0; i<10; i++) {
+        particles.push({
+            x, y,
+            vx: (Math.random() - 0.5) * 10,
+            vy: (Math.random() - 0.5) * 10,
+            life: 1.0,
+            color
+        });
+    }
+}
+
+function toggleHelp() { helpOverlay.classList.toggle('hidden'); }
+
+function startGame() {
+    score = 0;
+    scoreEl.innerText = "0";
+    speed = 4;
+    frame = 0;
+    entities = [];
+    particles = [];
+    gameActive = true;
+    startScreen.classList.add('hidden');
+    gameOverScreen.classList.add('hidden');
+}
+
+function gameOver() {
+    gameActive = false;
+    if (score > bestScore) {
+        bestScore = score;
+        localStorage.setItem('fun_arcade_highscore_flux-dodge-reflex', bestScore);
+    }
+    document.getElementById('final-score-text').innerText = "Score: " + score;
+    document.getElementById('best-score-text').innerText = "Best: " + bestScore;
+    gameOverScreen.classList.remove('hidden');
+}
+
+function update() {
+    if (!gameActive) return;
+
+    frame++;
+    if (frame % Math.max(20, 60 - Math.floor(score/10)) === 0) spawnEntity();
+
+    targetSize = inputActive ? 8 : 28;
+    playerSize += (targetSize - playerSize) * 0.15;
+
+    speed = 4 + (score / 200);
+
+    for (let i = entities.length - 1; i >= 0; i--) {
+        let e = entities[i];
+        e.y += speed;
+
+        // Collision
+        const dx = mouseX - e.x;
+        const dy = mouseY - e.y;
+        
+        if (e.type === 'point') {
+            const dist = Math.sqrt((mouseX - e.x)**2 + (mouseY - e.y)**2);
+            if (dist < playerSize + e.w) {
+                score += 10;
+                scoreEl.innerText = score;
+                createExplosion(e.x, e.y, ACCENT);
+                entities.splice(i, 1);
+                continue;
+            }
+        } else {
+            if (mouseX + playerSize > e.x && mouseX - playerSize < e.x + e.w && 
+                mouseY + playerSize > e.y && mouseY - playerSize < e.y + e.h) {
+                createExplosion(mouseX, mouseY, DANGER);
+                gameOver();
+            }
+        }
+
+        if (e.y > canvas.height + 100) entities.splice(i, 1);
+    }
+
+    for (let i = particles.length - 1; i >= 0; i--) {
+        let p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life -= 0.02;
+        if (p.life <= 0) particles.splice(i, 1);
+    }
+
+    if (frame % 5 === 0) score++; 
+    scoreEl.innerText = score;
+}
+
+function draw() {
+    ctx.fillStyle = '#09090b';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Draw Entities
+    entities.forEach(e => {
+        ctx.fillStyle = e.color;
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = e.color;
+        if (e.type === 'point') {
+            ctx.beginPath();
+            ctx.arc(e.x, e.y, e.w, 0, Math.PI*2);
+            ctx.fill();
+        } else {
+            ctx.fillRect(e.x, e.y, e.w, e.h);
+        }
+    });
+
+    // Draw Particles
+    particles.forEach(p => {
+        ctx.globalAlpha = p.life;
+        ctx.fillStyle = p.color;
+        ctx.fillRect(p.x, p.y, 4, 4);
+    });
+    ctx.globalAlpha = 1.0;
+    ctx.shadowBlur = 0;
+
+    // Draw Player
+    ctx.save();
+    ctx.translate(mouseX, mouseY);
+    ctx.shadowBlur = 20;
+    ctx.shadowColor = ACCENT;
+    ctx.strokeStyle = ACCENT;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, playerSize, 0, Math.PI*2);
+    ctx.stroke();
+    
+    ctx.fillStyle = 'rgba(16, 185, 129, 0.2)';
+    ctx.fill();
+    
+    // Inner core
+    ctx.beginPath();
+    ctx.arc(0, 0, playerSize * 0.4, 0, Math.PI*2);
+    ctx.fillStyle = ACCENT;
+    ctx.fill();
+    ctx.restore();
+
+    update();
+    requestAnimationFrame(draw);
+}
+
+draw();
+</script>
+</body>
+</html>

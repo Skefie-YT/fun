@@ -702,5 +702,13 @@
     "category": "Strategy",
     "accent": "#EF4444",
     "addedAt": "2026-11-25T18:43:06Z"
+  },
+  {
+    "slug": "flux-dodge-reflex",
+    "title": "Flux Dodge",
+    "description": "Shift your size to squeeze through narrow gaps and expand to collect energy pulses in this high-speed survival dodger.",
+    "category": "Reflex",
+    "accent": "#10B981",
+    "addedAt": "2026-11-25T19:49:24Z"
   }
 ]
