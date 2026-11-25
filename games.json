@@ -654,5 +654,13 @@
     "category": "Reflex",
     "accent": "#0EA5E9",
     "addedAt": "2026-11-25T08:56:55Z"
+  },
+  {
+    "slug": "tensor-tether",
+    "title": "Tensor Tether",
+    "description": "Click and hold to fire a magnetic tether, build momentum, and slingshot through the void to reach the energy gate!",
+    "category": "Physics",
+    "accent": "#8B5CF6",
+    "addedAt": "2026-11-25T10:04:46Z"
   }
 ]

@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Tensor Tether</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --accent: #8B5CF6; --bg: #0f172a; }
+        * { box-sizing: border-box; touch-action: none; -webkit-tap-highlight-color: transparent; }
+        body { margin: 0; padding: 0; background: var(--bg); color: white; font-family: 'Orbitron', sans-serif; overflow: hidden; height: 100dvh; }
+        canvas { display: block; width: 100%; height: 100%; }
+        
+        .ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+        .hud { display: flex; justify-content: space-between; align-items: center; padding: 10px 20px; pointer-events: auto; background: rgba(0,0,0,0.4); }
+        .back-btn, .btn { background: rgba(255,255,255,0.1); color: white; border: 1px solid var(--accent); padding: 8px 15px; text-decoration: none; border-radius: 4px; cursor: pointer; pointer-events: auto; font-size: 14px; transition: 0.2s; }
+        .back-btn:hover, .btn:hover { background: var(--accent); }
+        
+        .overlay { position: absolute; inset: 0; background: rgba(15, 23, 42, 0.95); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px; pointer-events: auto; z-index: 10; }
+        .hidden { display: none !important; }
+        
+        h1 { font-size: 2.5rem; margin: 0 0 10px; color: var(--accent); text-shadow: 0 0 15px var(--accent); }
+        p { max-width: 400px; line-height: 1.6; margin-bottom: 25px; }
+        .score-display { font-size: 1.2rem; margin-bottom: 15px; }
+
+        #info-panel { position: absolute; top: 60px; right: 20px; width: 280px; background: rgba(15, 23, 42, 0.98); border: 2px solid var(--accent); padding: 20px; border-radius: 10px; pointer-events: auto; z-index: 20; }
+        .controls-hint { position: absolute; bottom: 20px; font-size: 12px; color: #94a3b8; }
+    </style>
+</head>
+<body>
+
+    <div class="ui-layer">
+        <div class="hud">
+            <a href="../../" class="back-btn">Back</a>
+            <div id="current-score">Score: 0</div>
+            <div>Best: <span id="best-score">0</span></div>
+            <button class="btn" onclick="toggleInfo()">?</button>
+        </div>
+
+        <div id="start-screen" class="overlay">
+            <h1>TENSOR TETHER</h1>
+            <p>Master the momentum of physics! Tether to anchors to swing across the void. Reach the yellow gate to advance!</p>
+            <button class="btn" style="padding: 15px 40px; font-size: 1.2rem;" onclick="startGame()">INITIALIZE</button>
+            <div class="controls-hint">Hold Mouse/Touch to Tether • Release to Launch</div>
+        </div>
+
+        <div id="game-over" class="overlay hidden">
+            <h1 id="over-title">GRID FAILURE</h1>
+            <div class="score-display">Final Score: <span id="final-score">0</span></div>
+            <button class="btn" onclick="startGame()">REBOOT SYSTEM</button>
+        </div>
+
+        <div id="info-panel" class="hidden">
+            <h3>HOW TO PLAY</h3>
+            <p style="font-size: 0.9rem;">• Hold anywhere to attach a tether to the nearest anchor node.<br>• Use your momentum to swing around nodes.<br>• Release to slingshot yourself forward.<br>• Reach the golden Energy Gate to level up.<br>• Don't fly off the screen or lose speed!</p>
+            <button class="btn" onclick="toggleInfo()">Close</button>
+        </div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const slug = 'tensor-tether';
+        
+        let gameState = 'START';
+        let score = 0;
+        let level = 1;
+        let bestScore = localStorage.getItem('fun_arcade_highscore_' + slug) || 0;
+        document.getElementById('best-score').innerText = bestScore;
+
+        let player = { x: 0, y: 0, vx: 0, vy: 0, radius: 10, tetheredTo: null, length: 0 };
+        let anchors = [];
+        let goal = { x: 0, y: 0, radius: 25 };
+        let particles = [];
+        let isPressing = false;
+        let cameraY = 0;
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        function createLevel() {
+            anchors = [];
+            const spacing = 150 + Math.random() * 50;
+            const count = 8 + level;
+            
+            // Start player at bottom
+            player.x = canvas.width / 2;
+            player.y = canvas.height - 100;
+            player.vx = 0;
+            player.vy = 0;
+            player.tetheredTo = null;
+
+            // Generate anchors winding upwards
+            for(let i=0; i<count; i++) {
+                anchors.push({
+                    x: Math.random() * (canvas.width - 100) + 50,
+                    y: (canvas.height - 200) - (i * spacing),
+                    pulse: 0
+                });
+            }
+            
+            // Goal is at the top
+            goal.x = anchors[anchors.length-1].x;
+            goal.y = anchors[anchors.length-1].y - 200;
+            cameraY = player.y - canvas.height * 0.7;
+        }
+
+        function startGame() {
+            score = 0;
+            level = 1;
+            gameState = 'PLAY';
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('game-over').classList.add('hidden');
+            createLevel();
+            updateScore(0);
+        }
+
+        function updateScore(val) {
+            score += val;
+            document.getElementById('current-score').innerText = `Score: ${score}`;
+            if(score > bestScore) {
+                bestScore = score;
+                localStorage.setItem('fun_arcade_highscore_' + slug, bestScore);
+                document.getElementById('best-score').innerText = bestScore;
+            }
+        }
+
+        function gameOver() {
+            gameState = 'GAMEOVER';
+            document.getElementById('game-over').classList.remove('hidden');
+            document.getElementById('final-score').innerText = score;
+        }
+
+        function toggleInfo() {
+            document.getElementById('info-panel').classList.toggle('hidden');
+        }
+
+        function getDist(o1, o2) {
+            return Math.sqrt((o1.x-o2.x)**2 + (o1.y-o2.y)**2);
+        }
+
+        canvas.addEventListener('mousedown', () => isPressing = true);
+        canvas.addEventListener('mouseup', () => { isPressing = false; player.tetheredTo = null; });
+        canvas.addEventListener('touchstart', (e) => { e.preventDefault(); isPressing = true; });
+        canvas.addEventListener('touchend', (e) => { e.preventDefault(); isPressing = false; player.tetheredTo = null; });
+
+        function update() {
+            if(gameState !== 'PLAY') return;
+
+            // Tether logic
+            if(isPressing && !player.tetheredTo) {
+                let nearest = null;
+                let minDist = 300;
+                anchors.forEach(a => {
+                    let d = getDist(player, a);
+                    if(d < minDist) {
+                        minDist = d;
+                        nearest = a;
+                    }
+                });
+                if(nearest) {
+                    player.tetheredTo = nearest;
+                    player.length = minDist;
+                }
+            }
+
+            if(player.tetheredTo) {
+                // Constrained circular motion physics
+                let dx = player.x - player.tetheredTo.x;
+                let dy = player.y - player.tetheredTo.y;
+                let angle = Math.atan2(dy, dx);
+                
+                // Gravity/Drift
+                player.vy += 0.15;
+
+                // Keep distance
+                player.x = player.tetheredTo.x + Math.cos(angle) * player.length;
+                player.y = player.tetheredTo.y + Math.sin(angle) * player.length;
+
+                // Tangential velocity maintenance
+                let vel = Math.sqrt(player.vx**2 + player.vy**2);
+                player.vx = -Math.sin(angle) * vel * 0.99; 
+                player.vy = Math.cos(angle) * vel * 0.99;
+            } else {
+                // Free flight
+                player.vy += 0.2; // Gravity
+                player.vx *= 0.99;
+                player.vy *= 0.99;
+                player.x += player.vx;
+                player.y += player.vy;
+            }
+
+            // Camera follow
+            let targetCam = player.y - canvas.height * 0.6;
+            cameraY += (targetCam - cameraY) * 0.1;
+
+            // Goal detection
+            if(getDist(player, goal) < goal.radius + player.radius) {
+                updateScore(1000 * level);
+                level++;
+                createLevel();
+                spawnExplosion(player.x, player.y, '#fbbf24');
+            }
+
+            // Bounds check
+            if(player.y > cameraY + canvas.height + 100 || player.x < -50 || player.x > canvas.width + 50) {
+                gameOver();
+            }
+
+            // Particles
+            particles.forEach((p, i) => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.02;
+                if(p.life <= 0) particles.splice(i, 1);
+            });
+            if(Math.abs(player.vx) + Math.abs(player.vy) > 2) {
+                if(Math.random() > 0.5) spawnParticle(player.x, player.y, '#8B5CF6');
+            }
+        }
+
+        function spawnParticle(x, y, color) {
+            particles.push({ x, y, vx: (Math.random()-0.5)*2, vy: (Math.random()-0.5)*2, life: 1, color });
+        }
+
+        function spawnExplosion(x, y, color) {
+            for(let i=0; i<20; i++) {
+                particles.push({ x, y, vx: (Math.random()-0.5)*10, vy: (Math.random()-0.5)*10, life: 1, color });
+            }
+        }
+
+        function draw() {
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.save();
+            ctx.translate(0, -cameraY);
+
+            // Draw Grid
+            ctx.strokeStyle = 'rgba(139, 92, 246, 0.05)';
+            ctx.lineWidth = 1;
+            for(let i = 0; i < canvas.width; i += 50) {
+                ctx.beginPath();
+                ctx.moveTo(i, cameraY - 100);
+                ctx.lineTo(i, cameraY + canvas.height + 100);
+                ctx.stroke();
+            }
+
+            // Draw Tether
+            if(player.tetheredTo) {
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = '#8B5CF6';
+                ctx.strokeStyle = '#8B5CF6';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(player.x, player.y);
+                ctx.lineTo(player.tetheredTo.x, player.tetheredTo.y);
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+            }
+
+            // Draw Anchors
+            anchors.forEach(a => {
+                a.pulse += 0.05;
+                let s = 5 + Math.sin(a.pulse) * 2;
+                ctx.fillStyle = '#1e293b';
+                ctx.strokeStyle = '#8B5CF6';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(a.x, a.y, 8, 0, Math.PI*2);
+                ctx.fill();
+                ctx.stroke();
+                
+                ctx.strokeStyle = 'rgba(139, 92, 246, 0.3)';
+                ctx.beginPath();
+                ctx.arc(a.x, a.y, 12 + s, 0, Math.PI*2);
+                ctx.stroke();
+            });
+
+            // Draw Goal
+            ctx.fillStyle = '#fbbf24';
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = '#fbbf24';
+            ctx.beginPath();
+            ctx.arc(goal.x, goal.y, goal.radius + Math.sin(Date.now()/200)*5, 0, Math.PI*2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // Draw Particles
+            particles.forEach(p => {
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.fillRect(p.x, p.y, 3, 3);
+            });
+            ctx.globalAlpha = 1;
+
+            // Draw Player
+            ctx.fillStyle = 'white';
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = 'white';
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.radius, 0, Math.PI*2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            ctx.restore();
+        }
+
+        function loop() {
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        loop();
+    </script>
+</body>
+</html>
