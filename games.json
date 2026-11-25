@@ -670,5 +670,13 @@
     "category": "Puzzle",
     "accent": "#0EA5E9",
     "addedAt": "2026-11-25T13:04:48Z"
+  },
+  {
+    "slug": "void-vortex-escape",
+    "title": "Void Vortex Escape",
+    "description": "Rotate your gravity path to avoid incoming void shards and survive the collapsing singularity!",
+    "category": "Reflex",
+    "accent": "#E85D04",
+    "addedAt": "2026-11-25T14:55:08Z"
   }
 ]
