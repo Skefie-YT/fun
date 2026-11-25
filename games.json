@@ -718,5 +718,13 @@
     "category": "Arcade",
     "accent": "#EF4444",
     "addedAt": "2026-11-25T20:48:00Z"
+  },
+  {
+    "slug": "shadow-shift-grid",
+    "title": "Shadow Shift Grid",
+    "description": "Rotate the grid to slide blocks into their matching targets before the shadow walls close in!",
+    "category": "Puzzle",
+    "accent": "#8B5CF6",
+    "addedAt": "2026-11-25T21:51:40Z"
   }
 ]

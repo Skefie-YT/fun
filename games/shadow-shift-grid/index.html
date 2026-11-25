@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Shadow Shift Grid</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap');
+        :root {
+            --accent: #8B5CF6;
+            --bg: #0f172a;
+            --tile: #1e293b;
+            --text: #f8fafc;
+        }
+        * { box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
+        body, html { margin: 0; padding: 0; height: 100dvh; background: var(--bg); color: var(--text); font-family: 'Outfit', sans-serif; overflow: hidden; }
+        
+        #game-container {
+            display: flex; flex-direction: column; height: 100%; max-width: 500px; margin: 0 auto; position: relative;
+        }
+
+        /* UI */
+        .header {
+            display: flex; justify-content: space-between; align-items: center; padding: 15px; z-index: 10;
+        }
+        .back-btn { color: var(--text); text-decoration: none; font-weight: bold; border: 2px solid var(--accent); padding: 5px 12px; border-radius: 8px; font-size: 14px; }
+        .stats { text-align: center; }
+        .stats h2 { margin: 0; font-size: 24px; color: var(--accent); }
+        .stats p { margin: 0; font-size: 12px; opacity: 0.8; }
+        .help-btn { background: var(--tile); border: none; color: var(--text); width: 35px; height: 35px; border-radius: 50%; font-weight: bold; cursor: pointer; }
+
+        /* Canvas Area */
+        #canvas-wrapper {
+            flex: 1; display: flex; align-items: center; justify-content: center; position: relative; padding: 20px;
+        }
+        canvas { background: var(--bg); max-width: 100%; max-height: 100%; border-radius: 12px; box-shadow: 0 0 40px rgba(0,0,0,0.5); }
+
+        /* Overlays */
+        .overlay {
+            position: absolute; inset: 0; background: rgba(15, 23, 42, 0.95); 
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 100; padding: 30px; text-align: center; transition: opacity 0.3s;
+        }
+        .hidden { display: none !important; opacity: 0; }
+        .btn-main {
+            background: var(--accent); color: white; border: none; padding: 15px 40px;
+            font-size: 18px; font-weight: bold; border-radius: 12px; cursor: pointer; margin-top: 20px;
+            box-shadow: 0 4px 15px rgba(139, 92, 246, 0.4);
+        }
+        .btn-main:active { transform: scale(0.98); }
+
+        .controls-hint {
+            position: absolute; bottom: 20px; font-size: 13px; opacity: 0.6; width: 100%; text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div class="header">
+        <a href="../../" class="back-btn">Back</a>
+        <div class="stats">
+            <p>SCORE</p>
+            <h2 id="score-val">0</h2>
+        </div>
+        <button class="help-btn" onclick="toggleHelp()">?</button>
+    </div>
+
+    <div id="canvas-wrapper">
+        <canvas id="gameCanvas"></canvas>
+    </div>
+
+    <!-- Overlays -->
+    <div id="start-overlay" class="overlay">
+        <h1 style="color:var(--accent)">SHADOW SHIFT</h1>
+        <p>Gravity is yours to control. Rotate the grid to slide the energy blocks into their matching color targets.</p>
+        <p style="font-size: 14px; opacity: 0.7;">Watch out: Walls become shadow traps!</p>
+        <button class="btn-main" onclick="startGame()">START MISSION</button>
+        <div class="controls-hint">Tap Left/Right or use Arrow Keys to rotate</div>
+    </div>
+
+    <div id="gameover-overlay" class="overlay hidden">
+        <h1 style="color:#f43f5e">SYSTEM LOCK</h1>
+        <p>You failed to stabilize the grid.</p>
+        <h2 id="final-score">Score: 0</h2>
+        <p id="best-score">Best: 0</p>
+        <button class="btn-main" onclick="startGame()">RETRY</button>
+    </div>
+
+    <div id="help-overlay" class="overlay hidden" onclick="toggleHelp()">
+        <h2>How to Play</h2>
+        <p>1. The grid rotates 90 degrees when you tap or press arrows.</p>
+        <p>2. Gravity pulls blocks "down" based on current orientation.</p>
+        <p>3. Match the Block color to the Circle target.</p>
+        <p>4. Don't let your score timer run out!</p>
+        <button class="btn-main">GOT IT</button>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score-val');
+    const SLUG = 'shadow-shift-grid';
+
+    let gameState = 'START';
+    let score = 0;
+    let grid = [];
+    let gridSize = 5;
+    let rotation = 0; // 0, 90, 180, 270
+    let targetRotation = 0;
+    let blocks = [];
+    let goals = [];
+    let particles = [];
+    let levelTimer = 100;
+    let isMoving = false;
+
+    const COLORS = {
+        purple: '#8B5CF6',
+        cyan: '#06b6d4',
+        rose: '#f43f5e',
+        amber: '#f59e0b'
+    };
+
+    function init() {
+        resize();
+        window.addEventListener('resize', resize);
+        window.addEventListener('keydown', handleKey);
+        canvas.addEventListener('touchstart', handleTouch);
+        canvas.addEventListener('mousedown', handleTouch);
+        requestAnimationFrame(update);
+    }
+
+    function resize() {
+        const size = Math.min(window.innerWidth - 40, window.innerHeight - 200, 400);
+        canvas.width = size * window.devicePixelRatio;
+        canvas.height = size * window.devicePixelRatio;
+        canvas.style.width = size + 'px';
+        canvas.style.height = size + 'px';
+    }
+
+    function startGame() {
+        score = 0;
+        scoreEl.innerText = score;
+        levelTimer = 100;
+        document.querySelectorAll('.overlay').forEach(el => el.classList.add('hidden'));
+        gameState = 'PLAYING';
+        nextLevel();
+    }
+
+    function nextLevel() {
+        blocks = [];
+        goals = [];
+        rotation = 0;
+        targetRotation = 0;
+        const colorKeys = Object.keys(COLORS);
+        const count = Math.min(2 + Math.floor(score / 5), 4);
+        
+        let used = new Set();
+        for(let i=0; i<count; i++) {
+            let bPos, gPos;
+            do { bPos = Math.floor(Math.random() * (gridSize * gridSize)); } while (used.has(bPos));
+            used.add(bPos);
+            do { gPos = Math.floor(Math.random() * (gridSize * gridSize)); } while (used.has(gPos));
+            used.add(gPos);
+
+            const color = COLORS[colorKeys[i]];
+            blocks.push({ x: bPos % gridSize, y: Math.floor(bPos / gridSize), color, id: i });
+            goals.push({ x: gPos % gridSize, y: Math.floor(gPos / gridSize), color, id: i });
+        }
+        levelTimer = Math.max(40, 100 - (score * 2));
+    }
+
+    function handleKey(e) {
+        if (gameState !== 'PLAYING' || isMoving) return;
+        if (e.key === 'ArrowLeft') rotateGrid(-90);
+        if (e.key === 'ArrowRight') rotateGrid(90);
+    }
+
+    function handleTouch(e) {
+        if (gameState !== 'PLAYING' || isMoving) return;
+        const x = e.clientX || e.touches[0].clientX;
+        if (x < window.innerWidth / 2) rotateGrid(-90);
+        else rotateGrid(90);
+    }
+
+    function rotateGrid(amt) {
+        targetRotation += amt;
+        isMoving = true;
+        setTimeout(applyGravity, 300);
+    }
+
+    function applyGravity() {
+        // Normalize rotation to get gravity direction
+        let norm = ((targetRotation % 360) + 360) % 360;
+        let dx = 0, dy = 0;
+        if (norm === 0) dy = 1;
+        else if (norm === 90) dx = -1;
+        else if (norm === 180) dy = -1;
+        else if (norm === 270) dx = 1;
+
+        let changed = true;
+        while (changed) {
+            changed = false;
+            blocks.sort((a, b) => {
+                if (dx === 1) return b.x - a.x;
+                if (dx === -1) return a.x - b.x;
+                if (dy === 1) return b.y - a.y;
+                return a.y - b.y;
+            });
+
+            blocks.forEach(b => {
+                let nx = b.x + dx;
+                let ny = b.y + dy;
+                if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize) {
+                    let occupied = blocks.find(ob => ob !== b && ob.x === nx && ob.y === ny);
+                    if (!occupied) {
+                        b.x = nx;
+                        b.y = ny;
+                        changed = true;
+                    }
+                }
+            });
+        }
+
+        checkWin();
+        isMoving = false;
+    }
+
+    function checkWin() {
+        let wins = 0;
+        blocks.forEach(b => {
+            const goal = goals.find(g => g.color === b.color);
+            if (goal.x === b.x && goal.y === b.y) wins++;
+        });
+
+        if (wins === blocks.length) {
+            score++;
+            scoreEl.innerText = score;
+            createExplosion(canvas.width/2, canvas.height/2, '#8B5CF6');
+            setTimeout(nextLevel, 400);
+        }
+    }
+
+    function createExplosion(x, y, color) {
+        for(let i=0; i<20; i++) {
+            particles.push({
+                x, y, 
+                vx: (Math.random()-0.5)*10, 
+                vy: (Math.random()-0.5)*10, 
+                life: 1.0, 
+                color
+            });
+        }
+    }
+
+    function update() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const cellSize = canvas.width / gridSize;
+        
+        if (gameState === 'PLAYING') {
+            levelTimer -= 0.05;
+            if (levelTimer <= 0) gameOver();
+
+            // Smooth rotation interpolation
+            rotation += (targetRotation - rotation) * 0.15;
+
+            ctx.save();
+            ctx.translate(canvas.width/2, canvas.height/2);
+            ctx.rotate(rotation * Math.PI / 180);
+            ctx.translate(-canvas.width/2, -canvas.height/2);
+
+            // Draw Grid
+            ctx.strokeStyle = '#334155';
+            ctx.lineWidth = 2;
+            for(let i=0; i<=gridSize; i++) {
+                ctx.beginPath();
+                ctx.moveTo(i * cellSize, 0); ctx.lineTo(i * cellSize, canvas.height);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(0, i * cellSize); ctx.lineTo(canvas.width, i * cellSize);
+                ctx.stroke();
+            }
+
+            // Draw Goals
+            goals.forEach(g => {
+                ctx.beginPath();
+                ctx.arc(g.x * cellSize + cellSize/2, g.y * cellSize + cellSize/2, cellSize * 0.35, 0, Math.PI*2);
+                ctx.strokeStyle = g.color;
+                ctx.setLineDash([5, 5]);
+                ctx.lineWidth = 3;
+                ctx.stroke();
+                ctx.setLineDash([]);
+            });
+
+            // Draw Blocks
+            blocks.forEach(b => {
+                ctx.fillStyle = b.color;
+                const padding = cellSize * 0.15;
+                roundRect(ctx, b.x * cellSize + padding, b.y * cellSize + padding, cellSize - padding*2, cellSize - padding*2, 8);
+                ctx.fill();
+                // Glow
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = b.color;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            });
+
+            ctx.restore();
+
+            // Timer Bar
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(0, canvas.height - 10, canvas.width, 10);
+            ctx.fillStyle = levelTimer < 30 ? '#f43f5e' : '#8B5CF6';
+            ctx.fillRect(0, canvas.height - 10, (levelTimer/100) * canvas.width, 10);
+        }
+
+        // Particles
+        particles.forEach((p, i) => {
+            p.x += p.vx; p.y += p.vy; p.life -= 0.02;
+            ctx.globalAlpha = p.life;
+            ctx.fillStyle = p.color;
+            ctx.fillRect(p.x, p.y, 4, 4);
+            if (p.life <= 0) particles.splice(i, 1);
+        });
+        ctx.globalAlpha = 1;
+
+        requestAnimationFrame(update);
+    }
+
+    function gameOver() {
+        gameState = 'GAMEOVER';
+        const best = localStorage.getItem('fun_arcade_highscore_' + SLUG) || 0;
+        if (score > best) localStorage.setItem('fun_arcade_highscore_' + SLUG, score);
+        
+        document.getElementById('final-score').innerText = `Score: ${score}`;
+        document.getElementById('best-score').innerText = `Best: ${Math.max(score, best)}`;
+        document.getElementById('gameover-overlay').classList.remove('hidden');
+    }
+
+    function toggleHelp() {
+        document.getElementById('help-overlay').classList.toggle('hidden');
+    }
+
+    function roundRect(ctx, x, y, width, height, radius) {
+        ctx.beginPath();
+        ctx.moveTo(x + radius, y);
+        ctx.lineTo(x + width - radius, y);
+        ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+        ctx.lineTo(x + width, y + height - radius);
+        ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+        ctx.lineTo(x + radius, y + height);
+        ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+        ctx.lineTo(x, y + radius);
+        ctx.quadraticCurveTo(x, y, x + radius, y);
+        ctx.closePath();
+    }
+
+    init();
+</script>
+</body>
+</html>
