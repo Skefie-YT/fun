@@ -638,5 +638,13 @@
     "category": "Puzzle",
     "accent": "#0EA5E9",
     "addedAt": "2026-11-25T06:00:00Z"
+  },
+  {
+    "slug": "orbit-click-reflex",
+    "title": "Orbit Click",
+    "description": "Tap or press Space to jump between orbits at the perfect moment to collect cores and avoid the red void-balls!",
+    "category": "Reflex",
+    "accent": "#E85D04",
+    "addedAt": "2026-11-25T07:15:20Z"
   }
 ]

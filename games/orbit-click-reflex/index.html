@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Orbit Click</title>
+    <style>
+        :root {
+            --accent: #E85D04;
+            --bg: #0a0a0a;
+            --text: #ffffff;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Segoe UI', Roboto, sans-serif;
+            overflow: hidden;
+            touch-action: manipulation;
+        }
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        canvas {
+            max-width: 100%;
+            max-height: 100%;
+            background: #000;
+            cursor: pointer;
+        }
+        .hud {
+            position: absolute;
+            top: 0;
+            width: 100%;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-sizing: border-box;
+            z-index: 10;
+            pointer-events: none;
+        }
+        .hud * { pointer-events: auto; }
+        .back-btn {
+            color: #fff;
+            text-decoration: none;
+            font-weight: bold;
+            background: rgba(255,255,255,0.1);
+            padding: 8px 15px;
+            border-radius: 20px;
+            transition: background 0.3s;
+        }
+        .back-btn:hover { background: rgba(255,255,255,0.2); }
+        .scores {
+            text-align: center;
+            font-variant-numeric: tabular-nums;
+        }
+        .btn-round {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: none;
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+            cursor: pointer;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.85);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+            text-align: center;
+            padding: 20px;
+        }
+        .hidden { display: none !important; }
+        h1 { color: var(--accent); margin: 0 0 10px 0; font-size: 3rem; text-transform: uppercase; }
+        .btn-main {
+            background: var(--accent);
+            border: none;
+            color: white;
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            border-radius: 30px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-top: 20px;
+            transition: transform 0.1s;
+        }
+        .btn-main:active { transform: scale(0.95); }
+        .controls-hint {
+            position: absolute;
+            bottom: 20px;
+            opacity: 0.6;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div class="hud">
+        <a href="../../" class="back-btn">Back</a>
+        <div class="scores">
+            <div id="score-display">SCORE: 0</div>
+            <div id="best-display" style="font-size: 0.8rem; opacity: 0.7;">BEST: 0</div>
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <button class="btn-round" id="mute-btn">🔊</button>
+            <button class="btn-round" id="info-btn">?</button>
+        </div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="start-screen" class="overlay">
+        <h1>ORBIT CLICK</h1>
+        <p>Timing is everything. Tap to jump to the next ring.</p>
+        <p style="color: #aaa; max-width: 300px;">Collect white cores to score. Don't hit the red nodes or fall into the void!</p>
+        <button class="btn-main" id="start-button">START ENGINE</button>
+        <div class="controls-hint">SPACEBAR or CLICK to jump</div>
+    </div>
+
+    <div id="game-over-screen" class="overlay hidden">
+        <h2 style="font-size: 2.5rem; margin-bottom: 0;">CRASHED!</h2>
+        <p id="final-score" style="font-size: 1.5rem;">Score: 0</p>
+        <button class="btn-main" id="restart-button">TRY AGAIN</button>
+    </div>
+
+    <div id="info-screen" class="overlay hidden">
+        <h2>HOW TO PLAY</h2>
+        <ul style="text-align: left; line-height: 1.6;">
+            <li>You rotate automatically on an orbit.</li>
+            <li><b>Tap/Space</b> to jump to the next orbit.</li>
+            <li>Collect <b>white particles</b> for +1 point.</li>
+            <li>Avoid <b>red spikes</b> and timing misses.</li>
+            <li>Difficulty increases every 5 points!</li>
+        </ul>
+        <button class="btn-main" id="close-info">GOT IT</button>
+    </div>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const SLUG = 'orbit-click-reflex';
+const ACCENT = '#E85D04';
+
+// Game State
+let score = 0;
+let bestScore = localStorage.getItem('fun_arcade_highscore_' + SLUG) || 0;
+let isPlaying = false;
+let muted = false;
+let time = 0;
+
+// Game Constants
+const ORBIT_COUNT = 4;
+const BASE_RADIUS = 60;
+const RADIUS_STEP = 50;
+
+// Player State
+let player = {
+    orbit: 0,
+    angle: 0,
+    targetOrbit: 0,
+    jumpProgress: 1,
+    speed: 0.04,
+    radius: 8
+};
+
+let enemies = [];
+let collectibles = [];
+let particles = [];
+
+function init() {
+    resize();
+    window.addEventListener('resize', resize);
+    document.getElementById('best-display').textContent = `BEST: ${bestScore}`;
+    
+    // Input
+    const triggerJump = () => {
+        if (!isPlaying || player.jumpProgress < 1) return;
+        player.targetOrbit = (player.orbit + 1) % ORBIT_COUNT;
+        player.jumpProgress = 0;
+        playTone(440 + player.orbit * 100, 0.1);
+    };
+    
+    window.addEventListener('keydown', (e) => { if(e.code === 'Space') triggerJump(); });
+    canvas.addEventListener('mousedown', triggerJump);
+    canvas.addEventListener('touchstart', (e) => { e.preventDefault(); triggerJump(); });
+
+    // Buttons
+    document.getElementById('start-button').onclick = startGame;
+    document.getElementById('restart-button').onclick = startGame;
+    document.getElementById('info-btn').onclick = () => document.getElementById('info-screen').classList.remove('hidden');
+    document.getElementById('close-info').onclick = () => document.getElementById('info-screen').classList.add('hidden');
+    document.getElementById('mute-btn').onclick = () => {
+        muted = !muted;
+        document.getElementById('mute-btn').textContent = muted ? '🔇' : '🔊';
+    };
+}
+
+function resize() {
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = window.innerWidth * dpr;
+    canvas.height = window.innerHeight * dpr;
+    canvas.style.width = window.innerWidth + 'px';
+    canvas.style.height = window.innerHeight + 'px';
+    ctx.scale(dpr, dpr);
+}
+
+function startGame() {
+    score = 0;
+    player.orbit = 0;
+    player.targetOrbit = 0;
+    player.jumpProgress = 1;
+    player.angle = 0;
+    player.speed = 0.04;
+    enemies = [];
+    collectibles = [];
+    particles = [];
+    isPlaying = true;
+    
+    document.getElementById('score-display').textContent = 'SCORE: 0';
+    document.getElementById('start-screen').classList.add('hidden');
+    document.getElementById('game-over-screen').classList.add('hidden');
+    
+    spawnEntities();
+    requestAnimationFrame(update);
+}
+
+function spawnEntities() {
+    enemies = [];
+    collectibles = [];
+    for (let i = 0; i < ORBIT_COUNT; i++) {
+        // Spawn enemies (Red)
+        const enemyCount = i === 0 ? 0 : Math.min(i + Math.floor(score/10), 4);
+        for (let j = 0; j < enemyCount; j++) {
+            enemies.push({
+                orbit: i,
+                angle: (Math.PI * 2 / enemyCount) * j + Math.random(),
+                rotSpeed: 0.02 + (i * 0.005)
+            });
+        }
+        // Spawn Collectibles (White)
+        collectibles.push({
+            orbit: i,
+            angle: Math.random() * Math.PI * 2,
+            active: true
+        });
+    }
+}
+
+function gameOver() {
+    isPlaying = false;
+    if (score > bestScore) {
+        bestScore = score;
+        localStorage.setItem('fun_arcade_highscore_' + SLUG, bestScore);
+        document.getElementById('best-display').textContent = `BEST: ${bestScore}`;
+    }
+    document.getElementById('final-score').textContent = `Score: ${score}`;
+    document.getElementById('game-over-screen').classList.remove('hidden');
+    playTone(150, 0.5, 'sawtooth');
+}
+
+// Audio Utility
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+function playTone(freq, dur, type = 'sine') {
+    if (muted) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + dur);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + dur);
+}
+
+function update() {
+    if (!isPlaying) return;
+
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
+
+    const cx = window.innerWidth / 2;
+    const cy = window.innerHeight / 2;
+
+    // Draw Orbits
+    ctx.lineWidth = 1;
+    for (let i = 0; i < ORBIT_COUNT; i++) {
+        ctx.beginPath();
+        ctx.arc(cx, cy, BASE_RADIUS + i * RADIUS_STEP, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+        ctx.stroke();
+    }
+
+    // Update Player
+    if (player.jumpProgress < 1) {
+        player.jumpProgress += 0.12;
+        if (player.jumpProgress >= 1) {
+            player.orbit = player.targetOrbit;
+            player.jumpProgress = 1;
+        }
+    }
+    player.angle += player.speed;
+
+    // Calculate Player Pos
+    const currentR = BASE_RADIUS + player.orbit * RADIUS_STEP;
+    const targetR = BASE_RADIUS + player.targetOrbit * RADIUS_STEP;
+    const lerp = (a, b, t) => a + (b - a) * t;
+    const r = lerp(currentR, targetR, player.jumpProgress);
+    const px = cx + Math.cos(player.angle) * r;
+    const py = cy + Math.sin(player.angle) * r;
+
+    // Collectibles
+    collectibles.forEach(c => {
+        if (!c.active) return;
+        const cr = BASE_RADIUS + c.orbit * RADIUS_STEP;
+        const cxp = cx + Math.cos(c.angle) * cr;
+        const cyp = cy + Math.sin(c.angle) * cr;
+
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(cxp, cyp, 5, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Collision
+        const dist = Math.hypot(px - cxp, py - cyp);
+        if (dist < 15) {
+            c.active = false;
+            score++;
+            player.speed = 0.04 + (score * 0.001);
+            document.getElementById('score-display').textContent = `SCORE: ${score}`;
+            playTone(600 + score * 10, 0.1);
+            // Respawn logic
+            setTimeout(() => { 
+                c.angle = Math.random() * Math.PI * 2; 
+                c.active = true; 
+            }, 1000);
+        }
+    });
+
+    // Enemies
+    enemies.forEach(e => {
+        e.angle += e.rotSpeed;
+        const er = BASE_RADIUS + e.orbit * RADIUS_STEP;
+        const exp = cx + Math.cos(e.angle) * er;
+        const eyp = cy + Math.sin(e.angle) * er;
+
+        ctx.fillStyle = '#ff4444';
+        ctx.beginPath();
+        ctx.arc(exp, eyp, 6, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Collision
+        const dist = Math.hypot(px - exp, py - eyp);
+        if (dist < 12) gameOver();
+    });
+
+    // Draw Player
+    ctx.fillStyle = ACCENT;
+    ctx.shadowBlur = 15;
+    ctx.shadowColor = ACCENT;
+    ctx.beginPath();
+    ctx.arc(px, py, player.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Particles
+    if (player.jumpProgress < 1) {
+        particles.push({x: px, y: py, life: 1, size: 3});
+    }
+    for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.life -= 0.05;
+        if (p.life <= 0) particles.splice(i, 1);
+        else {
+            ctx.fillStyle = `rgba(232, 93, 4, ${p.life})`;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+
+    if (isPlaying) requestAnimationFrame(update);
+}
+
+init();
+</script>
+</body>
+</html>
