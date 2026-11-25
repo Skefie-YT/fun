@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Breach Protocol — Fun Arcade</title>
+<style>
+  :root {
+    --bg: #0b0d13;
+    --panel: #131722;
+    --tile: #1a2030;
+    --tile-hover: #232b40;
+    --accent: #EF4444;
+    --accent-glow: rgba(239, 68, 68, 0.45);
+    --cyan: #22d3ee;
+    --amber: #f59e0b;
+    --text: #f8fafc;
+    --muted: #94a3b8;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    width: 100%; height: 100dvh; overflow: hidden;
+    background: radial-gradient(circle at 50% 20%, #1c1218 0%, var(--bg) 70%);
+    color: var(--text); font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    display: flex; flex-direction: column;
+  }
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px; background: rgba(19, 23, 34, 0.85);
+    border-bottom: 1px solid rgba(255,255,255,0.08); backdrop-filter: blur(8px);
+    z-index: 10; flex-shrink: 0;
+  }
+  .back-btn {
+    color: var(--text); text-decoration: none; font-size: 13px; font-weight: 600;
+    padding: 6px 12px; border-radius: 8px; background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.1); transition: 0.15s;
+  }
+  .back-btn:hover { background: rgba(255,255,255,0.15); }
+  .hud {
+    display: flex; gap: 14px; align-items: center;
+  }
+  .stat { text-align: center; }
+  .stat-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--muted); }
+  .stat-val { font-size: 16px; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; }
+  .stat-val.accent { color: var(--accent); }
+  .icon-btns { display: flex; gap: 8px; }
+  .icon-btn {
+    width: 34px; height: 34px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.06); color: var(--text); font-weight: 700; font-size: 15px;
+    cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.15s;
+  }
+  .icon-btn:hover { background: rgba(255,255,255,0.14); }
+
+  main {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 10px; position: relative; min-height: 0;
+  }
+  .sector-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    width: 100%; max-width: 420px; margin-bottom: 10px; padding: 0 4px;
+  }
+  .sector-badge {
+    font-size: 13px; font-weight: 700; letter-spacing: 0.5px; color: var(--cyan);
+    background: rgba(34, 211, 238, 0.1); padding: 4px 10px; border-radius: 99px;
+    border: 1px solid rgba(34, 211, 238, 0.25);
+  }
+  .pulse-btn {
+    display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 99px;
+    border: 1px solid rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.12);
+    color: #fca5a5; font-size: 12px; font-weight: 700; cursor: pointer; transition: 0.2s;
+  }
+  .pulse-btn.ready {
+    background: var(--accent); color: #fff; border-color: #fff;
+    box-shadow: 0 0 16px var(--accent-glow); animation: pulseGlow 1.2s infinite alternate;
+  }
+  .pulse-btn:disabled { opacity: 0.45; cursor: not-allowed; animation: none; }
+  @keyframes pulseGlow { from { transform: scale(1); } to { transform: scale(1.05); } }
+
+  .board-wrap {
+    position: relative; width: min(92vw, 420px); aspect-ratio: 1 / 1;
+    background: var(--panel); border-radius: 16px; padding: 10px;
+    border: 1px solid rgba(255,255,255,0.1);
+    box-shadow: 0 20px 50px rgba(0,0,0,0.6), inset 0 0 30px rgba(239,68,68,0.05);
+  }
+  .grid {
+    width: 100%; height: 100%; display: grid; gap: 6px;
+    position: relative;
+  }
+  .tile {
+    background: var(--tile); border-radius: 10px; position: relative;
+    border: 1px solid rgba(255,255,255,0.05); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: transform 0.12s, background 0.15s, border-color 0.15s;
+  }
+  .tile.movable {
+    background: rgba(34, 211, 238, 0.12); border-color: rgba(34, 211, 238, 0.45);
+  }
+  .tile.movable:hover { background: rgba(34, 211, 238, 0.24); transform: scale(0.97); }
+  .tile.attackable {
+    background: rgba(239, 68, 68, 0.22); border-color: var(--accent);
+    box-shadow: inset 0 0 12px rgba(239, 68, 68, 0.35);
+  }
+  .tile.danger::after {
+    content: ''; position: absolute; inset: 3px; border-radius: 7px;
+    border: 2px dashed rgba(239, 68, 68, 0.75);
+    background: rgba(239, 68, 68, 0.12); pointer-events: none;
+    animation: dangerPulse 0.9s infinite alternate;
+  }
+  @keyframes dangerPulse { from { opacity: 0.5; } to { opacity: 1; } }
+
+  .entity {
+    width: 72%; height: 72%; border-radius: 50%; display: flex; align-items: center;
+    justify-content: center; font-weight: 900; font-size: 18px; position: relative;
+    z-index: 2; pointer-events: none; transition: transform 0.15s;
+  }
+  .player {
+    background: linear-gradient(135deg, #22d3ee, #0284c7);
+    box-shadow: 0 0 16px rgba(34, 211, 238, 0.65); border: 2px solid #fff;
+  }
+  .drone {
+    background: linear-gradient(135deg, #f87171, #dc2626);
+    box-shadow: 0 0 14px rgba(239, 68, 68, 0.6); border: 2px solid #fecaca;
+    border-radius: 10px;
+  }
+  .turret {
+    background: linear-gradient(135deg, #fbbf24, #d97706);
+    box-shadow: 0 0 14px rgba(245, 158, 11, 0.6); border: 2px solid #fef3c7;
+    clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+    border-radius: 0;
+  }
+  .core {
+    width: 44%; height: 44%; background: #34d399; border-radius: 4px;
+    transform: rotate(45deg); box-shadow: 0 0 12px rgba(52, 211, 153, 0.8);
+    border: 2px solid #ecfdf5;
+  }
+
+  canvas#fx {
+    position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5;
+  }
+
+  .controls-hint {
+    margin-top: 10px; font-size: 12px; color: var(--muted); text-align: center;
+  }
+
+  .overlay {
+    position: fixed; inset: 0; background: rgba(8, 10, 16, 0.86); backdrop-filter: blur(8px);
+    display: flex; align-items: center; justify-content: center; z-index: 30; padding: 20px;
+  }
+  .overlay.hidden { display: none; }
+  .card {
+    background: var(--panel); border: 1px solid rgba(255,255,255,0.12); border-radius: 18px;
+    padding: 24px; max-width: 380px; width: 100%; text-align: center;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.7);
+  }
+  .card h1 { font-size: 26px; font-weight: 900; margin-bottom: 8px; color: #fff; }
+  .card h1 span { color: var(--accent); }
+  .card p { font-size: 14px; color: var(--muted); line-height: 1.5; margin-bottom: 18px; }
+  .btn-primary {
+    width: 100%; padding: 13px; border-radius: 12px; border: none;
+    background: var(--accent); color: #fff; font-size: 16px; font-weight: 800;
+    cursor: pointer; box-shadow: 0 8px 24px var(--accent-glow); transition: 0.15s;
+  }
+  .btn-primary:hover { transform: translateY(-1px); filter: brightness(1.1); }
+  .rules-list {
+    text-align: left; font-size: 13px; color: #cbd5e1; margin-bottom: 18px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .rules-list div { background: rgba(255,255,255,0.04); padding: 8px 10px; border-radius: 8px; }
+  .shake { animation: shake 0.25s ease-in-out; }
+  @keyframes shake {
+    0%, 100% { transform: translate(0, 0); }
+    25% { transform: translate(-5px, 4px); }
+    50% { transform: translate(5px, -4px); }
+    75% { transform: translate(-4px, -3px); }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <a href="../../" class="back-btn">← Back</a>
+    <div class="hud">
+      <div class="stat">
+        <div class="stat-label">Score</div>
+        <div class="stat-val" id="scoreEl">0</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Best</div>
+        <div class="stat-val accent" id="bestEl">0</div>
+      </div>
+    </div>
+    <div class="icon-btns">
+      <button class="icon-btn" id="muteBtn" title="Toggle Sound">🔊</button>
+      <button class="icon-btn" id="helpBtn" title="How to Play">?</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="sector-bar">
+      <div class="sector-badge" id="sectorEl">SECTOR 1</div>
+      <button class="pulse-btn" id="pulseBtn" disabled>⚡ PULSE (0/3)</button>
+    </div>
+
+    <div class="board-wrap" id="boardWrap">
+      <div class="grid" id="grid"></div>
+      <canvas id="fx"></canvas>
+    </div>
+
+    <div class="controls-hint">Tap adjacent tiles or use Arrow Keys / WASD • Space for Pulse</div>
+  </main>
+
+  <div class="overlay" id="startOverlay">
+    <div class="card">
+      <h1>BREACH <span>PROTOCOL</span></h1>
+      <p>Outsmart telegraphed security bots on a 5×5 tactical grid. Slice enemies, dodge red danger zones, and clear every sector!</p>
+      <button class="btn-primary" id="startBtn">INITIATE BREACH</button>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="helpOverlay">
+    <div class="card">
+      <h1>HOW TO <span>PLAY</span></h1>
+      <div class="rules-list">
+        <div>🟦 <b>Move &amp; Slice:</b> Tap any glowing adjacent tile (or use WASD/Arrows) to move or destroy an enemy on it.</div>
+        <div>🟥 <b>Danger Zones:</b> Dashed red tiles show where enemies will strike next turn. Don't end your turn there!</div>
+        <div>🟨 <b>Turrets:</b> Fire lasers across their entire row or column every turn.</div>
+        <div>⚡ <b>Crimson Pulse:</b> Every 3 kills charges a 3×3 shockwave. Press Space or tap Pulse to blast nearby bots!</div>
+      </div>
+      <button class="btn-primary" id="closeHelpBtn">GOT IT</button>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="gameOverOverlay">
+    <div class="card">
+      <h1>SYSTEM <span>BREACHED</span></h1>
+      <p id="finalStats">You reached Sector 1 with a score of 0.</p>
+      <button class="btn-primary" id="retryBtn">PLAY AGAIN</button>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const SLUG = 'breach-protocol';
+  const BEST_KEY = 'fun_arcade_highscore_' + SLUG;
+  const SIZE = 5;
+
+  const gridEl = document.getElementById('grid');
+  const boardWrap = document.getElementById('boardWrap');
+  const scoreEl = document.getElementById('scoreEl');
+  const bestEl = document.getElementById('bestEl');
+  const sectorEl = document.getElementById('sectorEl');
+  const pulseBtn = document.getElementById('pulseBtn');
+  const startOverlay = document.getElementById('startOverlay');
+  const helpOverlay = document.getElementById('helpOverlay');
+  const gameOverOverlay = document.getElementById('gameOverOverlay');
+  const finalStats = document.getElementById('finalStats');
+  const muteBtn = document.getElementById('muteBtn');
+  const canvas = document.getElementById('fx');
+  const ctx = canvas.getContext('2d');
+
+  let score = 0;
+  let best = parseInt(localStorage.getItem(BEST_KEY) || '0', 10);
+  let sector = 1;
+  let player = { x: 2, y: 2 };
+  let enemies = [];
+  let cores = [];
+  let pulseCharge = 0;
+  let gameActive = false;
+  let muted = false;
+  let particles = [];
+
+  bestEl.textContent = best;
+
+  // Web Audio Synth
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  let actx = null;
+  function playTone(freq, type = 'sine', dur = 0.12, vol = 0.15) {
+    if (muted) return;
+    if (!actx) actx = new AudioCtx();
+    if (actx.state === 'suspended') actx.resume();
+    const osc = actx.createOscillator();
+    const gain = actx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, actx.currentTime);
+    gain.gain.setValueAtTime(vol, actx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + dur);
+    osc.connect(gain); gain.connect(actx.destination);
+    osc.start(); osc.stop(actx.currentTime + dur);
+  }
+
+  function resizeCanvas() {
+    canvas.width = boardWrap.clientWidth;
+    canvas.height = boardWrap.clientHeight;
+  }
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+
+  function spawnParticles(gx, gy, color, count = 14) {
+    const cellW = canvas.width / SIZE;
+    const cx = (gx + 0.5) * cellW;
+    const cy = (gy + 0.5) * cellW;
+    for (let i = 0; i < count; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 1.5 + Math.random() * 4;
+      particles.push({
+        x: cx, y: cy, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd,
+        life: 1, color, size: 2 + Math.random() * 3
+      });
+    }
+  }
+
+  function animLoop() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx; p.y += p.vy; p.life -= 0.04;
+      if (p.life <= 0) { particles.splice(i, 1); continue; }
+      ctx.globalAlpha = p.life;
+      ctx.fillStyle = p.color;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    requestAnimationFrame(animLoop);
+  }
+  animLoop();
+
+  function initSector(sec) {
+    sector = sec;
+    sectorEl.textContent = `SECTOR ${sector}`;
+    enemies = [];
+    cores = [];
+    player = { x: 2, y: 2 };
+
+    const enemyCount = Math.min(2 + Math.floor(sector * 0.8), 8);
+    const occupied = new Set(['2,2']);
+
+    function randFree() {
+      let x, y, k;
+      do {
+        x = Math.floor(Math.random() * SIZE);
+        y = Math.floor(Math.random() * SIZE);
+        k = `${x},${y}`;
+      } while (occupied.has(k));
+      occupied.add(k);
+      return { x, y };
+    }
+
+    for (let i = 0; i < enemyCount; i++) {
+      const pos = randFree();
+      const isTurret = sector >= 2 && Math.random() < 0.35;
+      enemies.push({
+        x: pos.x, y: pos.y,
+        type: isTurret ? 'turret' : 'drone',
+        axis: Math.random() < 0.5 ? 'h' : 'v'
+      });
+    }
+
+    if (sector % 2 === 0) {
+      const cPos = randFree();
+      cores.push(cPos);
+    }
+    render();
+  }
+
+  function getDangerTiles() {
+    const danger = new Set();
+    for (const e of enemies) {
+      if (e.type === 'drone') {
+        const dx = Math.sign(player.x - e.x);
+        const dy = Math.sign(player.y - e.y);
+        if (Math.abs(player.x - e.x) >= Math.abs(player.y - e.y)) {
+          danger.add(`${e.x + dx},${e.y}`);
+        } else {
+          danger.add(`${e.x},${e.y + dy}`);
+        }
+      } else if (e.type === 'turret') {
+        for (let i = 0; i < SIZE; i++) {
+          if (e.axis === 'h' && i !== e.x) danger.add(`${i},${e.y}`);
+          if (e.axis === 'v' && i !== e.y) danger.add(`${e.x},${i}`);
+        }
+      }
+    }
+    return danger;
+  }
+
+  function render() {
+    gridEl.style.gridTemplateColumns = `repeat(${SIZE}, 1fr)`;
+    gridEl.innerHTML = '';
+    const danger = getDangerTiles();
+
+    for (let y = 0; y < SIZE; y++) {
+      for (let x = 0; x < SIZE; x++) {
+        const tile = document.createElement('div');
+        tile.className = 'tile';
+        const dist = Math.abs(x - player.x) + Math.abs(y - player.y);
+        const enemy = enemies.find(e => e.x === x && e.y === y);
+        const core = cores.find(c => c.x === x && c.y === y);
+
+        if (dist === 1) {
+          tile.classList.add(enemy ? 'attackable' : 'movable');
+          tile.addEventListener('click', () => handleMove(x, y));
+        }
+        if (danger.has(`${x},${y}`)) tile.classList.add('danger');
+
+        if (player.x === x && player.y === y) {
+          const p = document.createElement('div');
+          p.className = 'entity player';
+          tile.appendChild(p);
+        } else if (enemy) {
+          const e = document.createElement('div');
+          e.className = `entity ${enemy.type}`;
+          e.textContent = enemy.type === 'turret' ? (enemy.axis === 'h' ? '↔' : '↕') : '✦';
+          tile.appendChild(e);
+        } else if (core) {
+          const c = document.createElement('div');
+          c.className = 'core';
+          tile.appendChild(c);
+        }
+        gridEl.appendChild(tile);
+      }
+    }
+
+    scoreEl.textContent = score;
+    if (score > best) {
+      best = score;
+      bestEl.textContent = best;
+      localStorage.setItem(BEST_KEY, best);
+    }
+    pulseBtn.textContent = pulseCharge >= 3 ? '⚡ PULSE READY!' : `⚡ PULSE (${pulseCharge}/3)`;
+    pulseBtn.disabled = pulseCharge < 3 || !gameActive;
+    pulseBtn.classList.toggle('ready', pulseCharge >= 3 && gameActive);
+  }
+
+  function handleMove(nx, ny) {
+    if (!gameActive) return;
+    if (Math.abs(nx - player.x) + Math.abs(ny - player.y) !== 1) return;
+
+    player.x = nx; player.y = ny;
+    playTone(320, 'triangle', 0.08, 0.1);
+
+    // Check enemy slice
+    const eIdx = enemies.findIndex(e => e.x === nx && e.y === ny);
+    if (eIdx !== -1) {
+      enemies.splice(eIdx, 1);
+      score += 100 * sector;
+      pulseCharge = Math.min(3, pulseCharge + 1);
+      spawnParticles(nx, ny, '#EF4444', 18);
+      playTone(520, 'sawtooth', 0.14, 0.16);
+      boardWrap.classList.remove('shake'); void boardWrap.offsetWidth; boardWrap.classList.add('shake');
+    }
+
+    // Check core pickup
+    const cIdx = cores.findIndex(c => c.x === nx && c.y === ny);
+    if (cIdx !== -1) {
+      cores.splice(cIdx, 1);
+      score += 250;
+      spawnParticles(nx, ny, '#34d399', 16);
+      playTone(760, 'sine', 0.18, 0.15);
+    }
+
+    if (enemies.length === 0) {
+      score += 200 * sector;
+      playTone(660, 'sine', 0.2, 0.15);
+      setTimeout(() => initSector(sector + 1), 260);
+      render();
+      return;
+    }
+
+    enemyTurn();
+  }
+
+  function enemyTurn() {
+    let hit = false;
+    for (const e of enemies) {
+      if (e.type === 'drone') {
+        const dx = Math.sign(player.x - e.x);
+        const dy = Math.sign(player.y - e.y);
+        let tx = e.x, ty = e.y;
+        if (Math.abs(player.x - e.x) >= Math.abs(player.y - e.y)) tx += dx;
+        else ty += dy;
+        if (tx === player.x && ty === player.y) hit = true;
+        else if (!enemies.some(o => o !== e && o.x === tx && o.y === ty)) {
+          e.x = tx; e.y = ty;
+        }
+      } else if (e.type === 'turret') {
+        if ((e.axis === 'h' && player.y === e.y) || (e.axis === 'v' && player.x === e.x)) {
+          hit = true;
+        }
+        e.axis = e.axis === 'h' ? 'v' : 'h';
+      }
+    }
+
+    if (hit) {
+      gameActive = false;
+      spawnParticles(player.x, player.y, '#22d3ee', 26);
+      playTone(140, 'sawtooth', 0.35, 0.22);
+      boardWrap.classList.add('shake');
+      render();
+      setTimeout(() => {
+        finalStats.textContent = `You reached Sector ${sector} with a score of ${score}.`;
+        gameOverOverlay.classList.remove('hidden');
+      }, 350);
+      return;
+    }
+    render();
+  }
+
+  function triggerPulse() {
+    if (!gameActive || pulseCharge < 3) return;
+    pulseCharge = 0;
+    let killed = 0;
+    for (let i = enemies.length - 1; i >= 0; i--) {
+      const e = enemies[i];
+      if (Math.abs(e.x - player.x) <= 1 && Math.abs(e.y - player.y) <= 1) {
+        spawnParticles(e.x, e.y, '#EF4444', 20);
+        enemies.splice(i, 1);
+        killed++;
+      }
+    }
+    score += killed * 150 * sector;
+    playTone(220, 'square', 0.25, 0.2);
+    boardWrap.classList.remove('shake'); void boardWrap.offsetWidth; boardWrap.classList.add('shake');
+    if (enemies.length === 0) {
+      score += 200 * sector;
+      setTimeout(() => initSector(sector + 1), 260);
+    }
+    render();
+  }
+
+  function startGame() {
+    score = 0; pulseCharge = 0; gameActive = true;
+    startOverlay.classList.add('hidden');
+    gameOverOverlay.classList.add('hidden');
+    initSector(1);
+  }
+
+  document.getElementById('startBtn').addEventListener('click', startGame);
+  document.getElementById('retryBtn').addEventListener('click', startGame);
+  pulseBtn.addEventListener('click', triggerPulse);
+  document.getElementById('helpBtn').addEventListener('click', () => helpOverlay.classList.remove('hidden'));
+  document.getElementById('closeHelpBtn').addEventListener('click', () => helpOverlay.classList.add('hidden'));
+  muteBtn.addEventListener('click', () => {
+    muted = !muted;
+    muteBtn.textContent = muted ? '🔇' : '🔊';
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (!gameActive) return;
+    if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') handleMove(player.x, player.y - 1);
+    else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') handleMove(player.x, player.y + 1);
+    else if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') handleMove(player.x - 1, player.y);
+    else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') handleMove(player.x + 1, player.y);
+    else if (e.key === ' ') { e.preventDefault(); triggerPulse(); }
+  });
+})();
+</script>
+</body>
+</html>

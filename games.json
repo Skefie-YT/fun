@@ -694,5 +694,13 @@
     "category": "Reflex",
     "accent": "#EC4899",
     "addedAt": "2026-11-25T17:50:40Z"
+  },
+  {
+    "slug": "breach-protocol",
+    "title": "Breach Protocol",
+    "description": "Outsmart telegraphed security bots on a tactical grid\u2014slice enemies, dodge laser sights, and clear every sector!",
+    "category": "Strategy",
+    "accent": "#EF4444",
+    "addedAt": "2026-11-25T18:43:06Z"
   }
 ]
