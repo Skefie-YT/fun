@@ -878,5 +878,13 @@
     "category": "Reflex",
     "accent": "#EF4444",
     "addedAt": "2026-11-26T20:49:24Z"
+  },
+  {
+    "slug": "emerald-beam",
+    "title": "Emerald Beam",
+    "description": "Rotate mirrors on the tactical grid to bounce the emerald laser into every crystal target before running out of moves.",
+    "category": "Puzzle",
+    "accent": "#10B981",
+    "addedAt": "2026-11-26T21:46:13Z"
   }
 ]

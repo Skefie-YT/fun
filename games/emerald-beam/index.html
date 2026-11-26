@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Emerald Beam — Fun Arcade</title>
+<style>
+  :root {
+    --bg: #070B0E;
+    --surface: #0F171E;
+    --surface-2: #16222C;
+    --border: #1E2E3B;
+    --text: #E6F4F1;
+    --muted: #7B96A4;
+    --accent: #10B981;
+    --accent-glow: rgba(16, 185, 129, 0.45);
+    --danger: #EF4444;
+    --gold: #F59E0B;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; user-select: none; }
+  html, body {
+    width: 100%; height: 100dvh; overflow: hidden;
+    background: var(--bg); color: var(--text);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    display: flex; flex-direction: column;
+  }
+  header {
+    height: 54px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 14px;
+    background: rgba(15, 23, 30, 0.9);
+    border-bottom: 1px solid var(--border);
+    z-index: 20;
+  }
+  .back-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px; border-radius: 8px;
+    background: var(--surface-2); color: var(--text);
+    text-decoration: none; font-size: 13px; font-weight: 600;
+    border: 1px solid var(--border); transition: 0.15s;
+  }
+  .back-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .hud {
+    display: flex; align-items: center; gap: 14px;
+  }
+  .stat {
+    display: flex; flex-direction: column; align-items: center; line-height: 1.1;
+  }
+  .stat-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+  .stat-val { font-size: 15px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+  .stat-val.accent { color: var(--accent); }
+  .stat-val.warn { color: var(--gold); }
+  .stat-val.danger { color: var(--danger); }
+  .actions { display: flex; align-items: center; gap: 8px; }
+  .icon-btn {
+    width: 34px; height: 34px; border-radius: 8px;
+    background: var(--surface-2); color: var(--text);
+    border: 1px solid var(--border); cursor: pointer;
+    display: grid; place-items: center; font-size: 15px; font-weight: 700;
+    transition: 0.15s;
+  }
+  .icon-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  main {
+    flex: 1; position: relative;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 10px; overflow: hidden;
+  }
+  .level-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    width: 100%; max-width: 460px; margin-bottom: 10px; padding: 0 4px;
+  }
+  .level-pill {
+    font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--accent); background: rgba(16, 185, 129, 0.12);
+    border: 1px solid rgba(16, 185, 129, 0.3); padding: 4px 10px; border-radius: 999px;
+  }
+  .moves-pill {
+    font-size: 13px; font-weight: 600; color: var(--text);
+  }
+  .moves-pill span { color: var(--accent); font-weight: 800; }
+  .moves-pill.low span { color: var(--danger); }
+
+  .board-wrap {
+    position: relative;
+    width: min(92vw, 440px, calc(100dvh - 170px));
+    height: min(92vw, 440px, calc(100dvh - 170px));
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: 14px;
+    box-shadow: 0 16px 40px rgba(0,0,0,0.6), inset 0 0 24px rgba(16, 185, 129, 0.05);
+    overflow: hidden;
+  }
+  canvas {
+    width: 100%; height: 100%; display: block; cursor: pointer;
+  }
+  .hint-bar {
+    margin-top: 10px; font-size: 12px; color: var(--muted); text-align: center;
+  }
+
+  .overlay {
+    position: absolute; inset: 0; z-index: 30;
+    background: rgba(7, 11, 14, 0.86); backdrop-filter: blur(8px);
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+    opacity: 0; pointer-events: none; transition: opacity 0.22s ease;
+  }
+  .overlay.active { opacity: 1; pointer-events: auto; }
+  .card {
+    width: 100%; max-width: 380px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; padding: 24px; text-align: center;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.7);
+  }
+  .card h1 { font-size: 26px; font-weight: 800; margin-bottom: 8px; color: var(--text); }
+  .card h1 span { color: var(--accent); }
+  .card h2 { font-size: 22px; font-weight: 800; margin-bottom: 10px; }
+  .card p { font-size: 14px; line-height: 1.5; color: var(--muted); margin-bottom: 18px; }
+  .rules-list {
+    text-align: left; font-size: 13px; color: var(--text); line-height: 1.6;
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 14px; margin-bottom: 18px;
+  }
+  .rules-list li { margin-left: 16px; margin-bottom: 4px; }
+  .btn {
+    width: 100%; padding: 12px 18px; border-radius: 10px;
+    border: none; background: var(--accent); color: #04120D;
+    font-size: 15px; font-weight: 800; cursor: pointer;
+    box-shadow: 0 4px 18px var(--accent-glow); transition: transform 0.12s, filter 0.12s;
+  }
+  .btn:hover { filter: brightness(1.08); transform: translateY(-1px); }
+  .btn:active { transform: translateY(1px); }
+  .btn.secondary {
+    background: var(--surface-2); color: var(--text); border: 1px solid var(--border);
+    box-shadow: none; margin-top: 8px;
+  }
+  .final-stats {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px;
+  }
+  .final-box {
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 10px;
+  }
+  .final-box .lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; }
+  .final-box .val { font-size: 20px; font-weight: 800; color: var(--accent); margin-top: 2px; }
+</style>
+</head>
+<body>
+  <header>
+    <a href="../../" class="back-btn">← Back</a>
+    <div class="hud">
+      <div class="stat">
+        <span class="stat-label">Score</span>
+        <span class="stat-val accent" id="scoreVal">0</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Best</span>
+        <span class="stat-val" id="bestVal">0</span>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="icon-btn" id="muteBtn" title="Toggle Sound">🔊</button>
+      <button class="icon-btn" id="helpBtn" title="How to Play">?</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="level-bar">
+      <div class="level-pill" id="levelPill">Sector 1</div>
+      <div class="moves-pill" id="movesPill">Moves Left: <span id="movesVal">10</span></div>
+    </div>
+    <div class="board-wrap" id="boardWrap">
+      <canvas id="gameCanvas"></canvas>
+    </div>
+    <div class="hint-bar">Tap/Click mirrors to rotate • Arrow keys + Space also work</div>
+
+    <!-- Start Overlay -->
+    <div class="overlay active" id="startOverlay">
+      <div class="card">
+        <h1>Emerald <span>Beam</span></h1>
+        <p>Rotate tactical mirrors on the grid to guide the emerald laser into every crystal target before your moves run out.</p>
+        <button class="btn" id="startBtn">Launch Sector 1</button>
+      </div>
+    </div>
+
+    <!-- Help Overlay -->
+    <div class="overlay" id="helpOverlay">
+      <div class="card">
+        <h2>How to Play</h2>
+        <ul class="rules-list">
+          <li><strong>Goal:</strong> Light up every emerald crystal on the grid with the laser beam.</li>
+          <li><strong>Rotate:</strong> Tap or click any mirror tile (<code>/</code> or <code>\</code>) to flip its angle 90°.</li>
+          <li><strong>Efficiency:</strong> Clear sectors with spare moves for bonus points!</li>
+          <li><strong>Controls:</strong> Mouse / Touch on tiles, or Arrow Keys + Spacebar.</li>
+        </ul>
+        <button class="btn" id="closeHelpBtn">Got It</button>
+      </div>
+    </div>
+
+    <!-- Game Over Overlay -->
+    <div class="overlay" id="gameOverOverlay">
+      <div class="card">
+        <h2>Out of Moves</h2>
+        <p>The laser grid locked down before all crystals were energized.</p>
+        <div class="final-stats">
+          <div class="final-box">
+            <div class="lbl">Score</div>
+            <div class="val" id="finalScore">0</div>
+          </div>
+          <div class="final-box">
+            <div class="lbl">Best</div>
+            <div class="val" id="finalBest">0</div>
+          </div>
+        </div>
+        <button class="btn" id="retryBtn">Play Again</button>
+      </div>
+    </div>
+  </main>
+
+<script>
+(() => {
+  const SLUG = 'emerald-beam';
+  const HS_KEY = 'fun_arcade_highscore_' + SLUG;
+
+  // Audio Synth
+  let audioCtx = null;
+  let muted = false;
+  function initAudio() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  }
+  function playTone(freq, dur, type = 'sine', vol = 0.12) {
+    if (muted) return;
+    try {
+      initAudio();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+      gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + dur);
+    } catch (e) {}
+  }
+  function playRotateSound() { playTone(520, 0.06, 'triangle', 0.1); }
+  function playHitSound() { playTone(880, 0.14, 'sine', 0.1); }
+  function playClearSound() {
+    [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => {
+      setTimeout(() => playTone(f, 0.22, 'triangle', 0.12), i * 70);
+    });
+  }
+  function playFailSound() {
+    [300, 220, 160].forEach((f, i) => {
+      setTimeout(() => playTone(f, 0.2, 'sawtooth', 0.08), i * 110);
+    });
+  }
+
+  // DOM
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+  const scoreVal = document.getElementById('scoreVal');
+  const bestVal = document.getElementById('bestVal');
+  const levelPill = document.getElementById('levelPill');
+  const movesPill = document.getElementById('movesPill');
+  const movesVal = document.getElementById('movesVal');
+  const startOverlay = document.getElementById('startOverlay');
+  const helpOverlay = document.getElementById('helpOverlay');
+  const gameOverOverlay = document.getElementById('gameOverOverlay');
+  const finalScore = document.getElementById('finalScore');
+  const finalBest = document.getElementById('finalBest');
+  const muteBtn = document.getElementById('muteBtn');
+
+  let bestScore = parseInt(localStorage.getItem(HS_KEY) || '0', 10) || 0;
+  bestVal.textContent = bestScore;
+
+  // Game State
+  let gridSize = 6;
+  let grid = []; // 0: empty, 1: '/', 2: '\\', 3: wall, 4: target, 5: emitter
+  let emitter = { r: 0, c: 0, dir: 1 }; // dir: 0=up, 1=right, 2=down, 3=left
+  let targets = [];
+  let beamSegments = [];
+  let particles = [];
+  let cursor = { r: 0, c: 0 };
+  let showCursor = false;
+  let level = 1;
+  let score = 0;
+  let movesLeft = 10;
+  let levelLocked = false;
+  let gameActive = false;
+
+  const DIRS = [
+    { dr: -1, dc: 0 }, // 0: up
+    { dr: 0, dc: 1 },  // 1: right
+    { dr: 1, dc: 0 },  // 2: down
+    { dr: 0, dc: -1 }  // 3: left
+  ];
+
+  function reflect(dir, mirrorType) {
+    // mirrorType 1 = '/', 2 = '\\'
+    if (mirrorType === 1) {
+      // up(0)->right(1), right(1)->up(0), down(2)->left(3), left(3)->down(2)
+      return [1, 0, 3, 2][dir];
+    } else {
+      // up(0)->left(3), left(3)->up(0), down(2)->right(1), right(1)->down(2)
+      return [3, 2, 1, 0][dir];
+    }
+  }
+
+  function generateLevel(lvl) {
+    gridSize = lvl <= 2 ? 5 : lvl <= 6 ? 6 : 7;
+    const numTurns = Math.min(2 + Math.floor(lvl * 0.7), 7);
+
+    let success = false;
+    let attempts = 0;
+    while (!success && attempts < 100) {
+      attempts++;
+      grid = Array.from({ length: gridSize }, () => Array(gridSize).fill(0));
+      const startSide = Math.floor(Math.random() * 4);
+      let r, c, dir;
+      if (startSide === 0) { r = 0; c = Math.floor(Math.random() * gridSize); dir = 2; }
+      else if (startSide === 1) { r = Math.floor(Math.random() * gridSize); c = gridSize - 1; dir = 3; }
+      else if (startSide === 2) { r = gridSize - 1; c = Math.floor(Math.random() * gridSize); dir = 0; }
+      else { r = Math.floor(Math.random() * gridSize); c = 0; dir = 1; }
+
+      emitter = { r, c, dir };
+      grid[r][c] = 5;
+
+      const pathCells = new Set([`${r},${c}`]);
+      const mirrors = [];
+      let cr = r, cc = c, cdir = dir;
+      let valid = true;
+
+      for (let t = 0; t < numTurns; t++) {
+        // Walk 1..3 steps
+        const steps = 1 + Math.floor(Math.random() * (gridSize - 2));
+        let stepped = 0;
+        for (let s = 0; s < steps; s++) {
+          const nr = cr + DIRS[cdir].dr;
+          const nc = cc + DIRS[cdir].dc;
+          if (nr < 0 || nr >= gridSize || nc < 0 || nc >= gridSize) break;
+          if (grid[nr][nc] !== 0) break;
+          cr = nr; cc = nc;
+          pathCells.add(`${cr},${cc}`);
+          stepped++;
+        }
+        if (stepped === 0 || (cr === r && cc === c)) { valid = false; break; }
+
+        // Place a mirror here
+        const mType = Math.random() < 0.5 ? 1 : 2;
+        grid[cr][cc] = mType;
+        mirrors.push({ r: cr, c: cc, correct: mType });
+        cdir = reflect(cdir, mType);
+      }
+
+      if (!valid || mirrors.length < 2) continue;
+
+      // Walk at least 1 step after last mirror to place target
+      const nr = cr + DIRS[cdir].dr;
+      const nc = cc + DIRS[cdir].dc;
+      if (nr < 0 || nr >= gridSize || nc < 0 || nc >= gridSize || grid[nr][nc] !== 0) continue;
+      cr = nr; cc = nc;
+      grid[cr][cc] = 4;
+      targets = [{ r: cr, c: cc, lit: false }];
+
+      // Scramble mirrors
+      let scrambledCount = 0;
+      mirrors.forEach(m => {
+        if (Math.random() < 0.7) {
+          grid[m.r][m.c] = m.correct === 1 ? 2 : 1;
+          scrambledCount++;
+        }
+      });
+      if (scrambledCount === 0) {
+        const m = mirrors[0];
+        grid[m.r][m.c] = m.correct === 1 ? 2 : 1;
+        scrambledCount = 1;
+      }
+
+      // Add a few decoy mirrors & walls on non-path cells
+      const decoys = Math.min(2 + Math.floor(lvl / 2), 6);
+      for (let d = 0; d < decoys; d++) {
+        const dr = Math.floor(Math.random() * gridSize);
+        const dc = Math.floor(Math.random() * gridSize);
+        if (!pathCells.has(`${dr},${dc}`) && grid[dr][dc] === 0) {
+          grid[dr][dc] = Math.random() < 0.55 ? (Math.random() < 0.5 ? 1 : 2) : 3;
+        }
+      }
+
+      movesLeft = scrambledCount + Math.max(3, Math.ceil(lvl * 0.6) + 2);
+      success = true;
+    }
+
+    levelLocked = false;
+    updateHUD();
+    traceBeam();
+  }
+
+  function traceBeam() {
+    beamSegments = [];
+    targets.forEach(t => t.lit = false);
+    let r = emitter.r, c = emitter.c, dir = emitter.dir;
+    const visited = new Set();
+    let steps = 0;
+
+    while (steps < 100) {
+      steps++;
+      const key = `${r},${c},${dir}`;
+      if (visited.has(key)) break;
+      visited.add(key);
+
+      const nr = r + DIRS[dir].dr;
+      const nc = c + DIRS[dir].dc;
+      if (nr < 0 || nr >= gridSize || nc < 0 || nc >= gridSize) {
+        beamSegments.push({ r1: r, c1: c, r2: r + DIRS[dir].dr * 0.5, c2: c + DIRS[dir].dc * 0.5 });
+        break;
+      }
+      beamSegments.push({ r1: r, c1: c, r2: nr, c2: nc });
+      r = nr; c = nc;
+      const cell = grid[r][c];
+      if (cell === 3 || cell === 5) break;
+      if (cell === 4) {
+        const t = targets.find(x => x.r === r && x.c === c);
+        if (t && !t.lit) {
+          t.lit = true;
+          spawnParticles(r, c, '#10B981', 14);
+          playHitSound();
+        }
+        break;
+      }
+      if (cell === 1 || cell === 2) {
+        dir = reflect(dir, cell);
+      }
+    }
+
+    if (targets.length > 0 && targets.every(t => t.lit) && !levelLocked && gameActive) {
+      levelLocked = true;
+      const bonus = movesLeft * 25 + level * 50;
+      score += bonus;
+      if (score > bestScore) {
+        bestScore = score;
+        localStorage.setItem(HS_KEY, String(bestScore));
+      }
+      updateHUD();
+      playClearSound();
+      setTimeout(() => {
+        level++;
+        generateLevel(level);
+      }, 650);
+    } else if (movesLeft <= 0 && !levelLocked && gameActive) {
+      levelLocked = true;
+      playFailSound();
+      setTimeout(showGameOver, 350);
+    }
+  }
+
+  function spawnParticles(r, c, color, count) {
+    const cellSize = canvas.width / gridSize;
+    const x = (c + 0.5) * cellSize;
+    const y = (r + 0.5) * cellSize;
+    for (let i = 0; i < count; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 1.5 + Math.random() * 3.5;
+      particles.push({
+        x, y,
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd,
+        life: 1,
+        color
+      });
+    }
+  }
+
+  function rotateCell(r, c) {
+    if (!gameActive || levelLocked) return;
+    if (grid[r][c] === 1 || grid[r][c] === 2) {
+      grid[r][c] = grid[r][c] === 1 ? 2 : 1;
+      movesLeft--;
+      playRotateSound();
+      spawnParticles(r, c, '#34D399', 6);
+      updateHUD();
+      traceBeam();
+    }
+  }
+
+  function updateHUD() {
+    scoreVal.textContent = score;
+    bestVal.textContent = bestScore;
+    levelPill.textContent = `Sector ${level}`;
+    movesVal.textContent = movesLeft;
+    movesPill.classList.toggle('low', movesLeft <= 2);
+  }
+
+  function showGameOver() {
+    gameActive = false;
+    finalScore.textContent = score;
+    finalBest.textContent = bestScore;
+    gameOverOverlay.classList.add('active');
+  }
+
+  function startGame() {
+    initAudio();
+    score = 0;
+    level = 1;
+    gameActive = true;
+    startOverlay.classList.remove('active');
+    gameOverOverlay.classList.remove('active');
+    generateLevel(level);
+  }
+
+  // Canvas Resize & Render
+  function resize() {
+    const rect = canvas.parentElement.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function draw() {
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    const cs = w / gridSize;
+
+    // Grid lines
+    ctx.strokeStyle = '#18242E';
+    ctx.lineWidth = Math.max(1, w * 0.003);
+    for (let i = 1; i < gridSize; i++) {
+      ctx.beginPath(); ctx.moveTo(i * cs, 0); ctx.lineTo(i * cs, h); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, i * cs); ctx.lineTo(w, i * cs); ctx.stroke();
+    }
+
+    // Cursor highlight
+    if (showCursor && gameActive) {
+      ctx.strokeStyle = 'rgba(16, 185, 129, 0.7)';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(cursor.c * cs + 3, cursor.r * cs + 3, cs - 6, cs - 6);
+    }
+
+    // Laser Beam
+    if (beamSegments.length > 0) {
+      ctx.save();
+      ctx.lineCap = 'round';
+      ctx.shadowColor = '#10B981';
+      ctx.shadowBlur = cs * 0.35;
+      ctx.strokeStyle = 'rgba(16, 185, 129, 0.45)';
+      ctx.lineWidth = cs * 0.14;
+      ctx.beginPath();
+      beamSegments.forEach(seg => {
+        ctx.moveTo((seg.c1 + 0.5) * cs, (seg.r1 + 0.5) * cs);
+        ctx.lineTo((seg.c2 + 0.5) * cs, (seg.r2 + 0.5) * cs);
+      });
+      ctx.stroke();
+
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = '#A7F3D0';
+      ctx.lineWidth = cs * 0.045;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Cells
+    for (let r = 0; r < gridSize; r++) {
+      for (let c = 0; c < gridSize; c++) {
+        const cell = grid[r][c];
+        const cx = (c + 0.5) * cs;
+        const cy = (r + 0.5) * cs;
+
+        if (cell === 1 || cell === 2) {
+          // Mirror
+          ctx.save();
+          ctx.fillStyle = '#13202A';
+          ctx.strokeStyle = '#2A4052';
+          ctx.lineWidth = 2;
+          const pad = cs * 0.12;
+          ctx.beginPath();
+          ctx.roundRect(c * cs + pad, r * cs + pad, cs - pad * 2, cs - pad * 2, cs * 0.14);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.strokeStyle = '#34D399';
+          ctx.lineWidth = cs * 0.08;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          const mPad = cs * 0.26;
+          if (cell === 1) {
+            ctx.moveTo(c * cs + mPad, (r + 1) * cs - mPad);
+            ctx.lineTo((c + 1) * cs - mPad, r * cs + mPad);
+          } else {
+            ctx.moveTo(c * cs + mPad, r * cs + mPad);
+            ctx.lineTo((c + 1) * cs - mPad, (r + 1) * cs - mPad);
+          }
+          ctx.stroke();
+          ctx.restore();
+        } else if (cell === 3) {
+          // Wall
+          ctx.fillStyle = '#1E2A35';
+          const pad = cs * 0.12;
+          ctx.beginPath();
+          ctx.roundRect(c * cs + pad, r * cs + pad, cs - pad * 2, cs - pad * 2, cs * 0.1);
+          ctx.fill();
+        } else if (cell === 4) {
+          // Target Crystal
+          const t = targets.find(x => x.r === r && x.c === c);
+          const lit = t && t.lit;
+          ctx.save();
+          ctx.fillStyle = lit ? '#10B981' : '#0E3B2E';
+          ctx.strokeStyle = lit ? '#A7F3D0' : '#10B981';
+          ctx.lineWidth = 2.5;
+          if (lit) { ctx.shadowColor = '#10B981'; ctx.shadowBlur = 18; }
+          const rad = cs * 0.28;
+          ctx.beginPath();
+          ctx.moveTo(cx, cy - rad);
+          ctx.lineTo(cx + rad, cy);
+          ctx.lineTo(cx, cy + rad);
+          ctx.lineTo(cx - rad, cy);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          ctx.restore();
+        } else if (cell === 5) {
+          // Emitter
+          ctx.save();
+          ctx.fillStyle = '#064E3B';
+          ctx.strokeStyle = '#10B981';
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.arc(cx, cy, cs * 0.26, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = '#A7F3D0';
+          ctx.beginPath();
+          ctx.arc(cx, cy, cs * 0.1, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+    }
+
+    // Particles
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.life -= 0.04;
+      if (p.life <= 0) { particles.splice(i, 1); continue; }
+      ctx.globalAlpha = p.life;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    requestAnimationFrame(draw);
+  }
+  requestAnimationFrame(draw);
+
+  // Input
+  function handlePointer(e) {
+    if (!gameActive) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
+    const c = Math.floor(x * gridSize);
+    const r = Math.floor(y * gridSize);
+    if (r >= 0 && r < gridSize && c >= 0 && c < gridSize) {
+      showCursor = false;
+      rotateCell(r, c);
+    }
+  }
+  canvas.addEventListener('pointerdown', handlePointer);
+
+  window.addEventListener('keydown', e => {
+    if (!gameActive) return;
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) {
+      e.preventDefault();
+      showCursor = true;
+    }
+    if (e.key === 'ArrowUp') cursor.r = (cursor.r - 1 + gridSize) % gridSize;
+    else if (e.key === 'ArrowDown') cursor.r = (cursor.r + 1) % gridSize;
+    else if (e.key === 'ArrowLeft') cursor.c = (cursor.c - 1 + gridSize) % gridSize;
+    else if (e.key === 'ArrowRight') cursor.c = (cursor.c + 1) % gridSize;
+    else if (e.key === ' ' || e.key === 'Enter') rotateCell(cursor.r, cursor.c);
+  });
+
+  // UI Buttons
+  document.getElementById('startBtn').addEventListener('click', startGame);
+  document.getElementById('retryBtn').addEventListener('click', startGame);
+  document.getElementById('helpBtn').addEventListener('click', () => helpOverlay.classList.add('active'));
+  document.getElementById('closeHelpBtn').addEventListener('click', () => helpOverlay.classList.remove('active'));
+  muteBtn.addEventListener('click', () => {
+    muted = !muted;
+    muteBtn.textContent = muted ? '🔇' : '🔊';
+  });
+})();
+</script>
+</body>
+</html>
