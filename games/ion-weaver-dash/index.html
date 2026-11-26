@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Ion Weaver Dash</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #E85D04;
+            --bg: #0a0a12;
+            --text: #ffffff;
+        }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Orbitron', sans-serif;
+            overflow: hidden;
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+        }
+        #game-container {
+            position: relative;
+            flex: 1;
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            background: radial-gradient(circle at center, #1a1a2e 0%, #0a0a12 100%);
+            touch-action: none;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        .hud {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            pointer-events: none;
+            z-index: 10;
+        }
+        .hud-item {
+            background: rgba(0, 0, 0, 0.5);
+            padding: 5px 12px;
+            border-radius: 4px;
+            border: 1px solid var(--accent);
+            font-size: 14px;
+        }
+        .back-btn, .info-btn, .mute-btn {
+            pointer-events: auto;
+            cursor: pointer;
+            background: var(--accent);
+            color: white;
+            text-decoration: none;
+            padding: 5px 12px;
+            border-radius: 4px;
+            font-weight: bold;
+            border: none;
+        }
+        .overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            padding: 20px;
+            text-align: center;
+        }
+        .hidden { display: none !important; }
+        h1 {
+            color: var(--accent);
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+        }
+        p { margin-bottom: 20px; line-height: 1.5; }
+        .btn {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            font-family: 'Orbitron', sans-serif;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+        .btn:active { transform: scale(0.95); }
+        .controls-hint {
+            position: absolute;
+            bottom: 20px;
+            font-size: 12px;
+            opacity: 0.7;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div class="hud">
+        <a href="../../" class="back-btn">Back</a>
+        <div class="hud-item">Score: <span id="score">0</span></div>
+        <div class="hud-item">Best: <span id="best">0</span></div>
+        <button class="info-btn" id="help-trigger">?</button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- Start Screen -->
+    <div id="start-screen" class="overlay">
+        <h1>ION WEAVER</h1>
+        <p>Drag your spark to collect glowing cores.<br>Avoid the frantic red ion particles!</p>
+        <button class="btn" onclick="startGame()">INITIALIZE</button>
+        <div class="controls-hint">Mouse/Touch: Move Spark</div>
+    </div>
+
+    <!-- Game Over Screen -->
+    <div id="game-over" class="overlay hidden">
+        <h1 style="color: #ff4444">OVERLOAD</h1>
+        <p>Your ion field collapsed!</p>
+        <p>Score: <span id="final-score">0</span></p>
+        <button class="btn" onclick="startGame()">RETRY</button>
+    </div>
+
+    <!-- Help Overlay -->
+    <div id="help-overlay" class="overlay hidden">
+        <h2>HOW TO PLAY</h2>
+        <p style="margin-top:20px">Avoid the red bouncing ions. They multiply and speed up over time!</p>
+        <p>Collect the <span style="color:var(--accent)">ORANGE</span> cores to score points and slow down time briefly.</p>
+        <button class="btn" onclick="toggleHelp()">CLOSE</button>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score');
+    const bestEl = document.getElementById('best');
+    const finalScoreEl = document.getElementById('final-score');
+    const startScreen = document.getElementById('start-screen');
+    const gameOverScreen = document.getElementById('game-over');
+    const helpOverlay = document.getElementById('help-overlay');
+    const helpTrigger = document.getElementById('help-trigger');
+
+    let score = 0;
+    let bestScore = localStorage.getItem('fun_arcade_highscore_ion-weaver-dash') || 0;
+    bestEl.textContent = bestScore;
+
+    let gameActive = false;
+    let player = { x: 0, y: 0, radius: 10, targetX: 0, targetY: 0 };
+    let particles = [];
+    let enemies = [];
+    let food = null;
+    let animationId;
+    let difficultyTimer = 0;
+    let timeSlow = 1.0;
+
+    function resize() {
+        const rect = canvas.parentNode.getBoundingClientRect();
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+        if (!gameActive) {
+            player.x = canvas.width / 2;
+            player.y = canvas.height / 2;
+        }
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // Input Handling
+    function updatePos(e) {
+        const rect = canvas.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        player.targetX = clientX - rect.left;
+        player.targetY = clientY - rect.top;
+    }
+    canvas.addEventListener('mousemove', updatePos);
+    canvas.addEventListener('touchmove', (e) => { updatePos(e); e.preventDefault(); }, {passive: false});
+
+    function spawnEnemy() {
+        const edge = Math.floor(Math.random() * 4);
+        let x, y;
+        if (edge === 0) { x = Math.random() * canvas.width; y = -20; }
+        else if (edge === 1) { x = canvas.width + 20; y = Math.random() * canvas.height; }
+        else if (edge === 2) { x = Math.random() * canvas.width; y = canvas.height + 20; }
+        else { x = -20; y = Math.random() * canvas.height; }
+        
+        enemies.push({
+            x, y,
+            vx: (Math.random() - 0.5) * 4,
+            vy: (Math.random() - 0.5) * 4,
+            radius: 5 + Math.random() * 5
+        });
+    }
+
+    function spawnFood() {
+        food = {
+            x: 50 + Math.random() * (canvas.width - 100),
+            y: 100 + Math.random() * (canvas.height - 200),
+            radius: 8,
+            pulse: 0
+        };
+    }
+
+    function createParticles(x, y, color) {
+        for (let i = 0; i < 8; i++) {
+            particles.push({
+                x, y,
+                vx: (Math.random() - 0.5) * 6,
+                vy: (Math.random() - 0.5) * 6,
+                life: 1.0,
+                color
+            });
+        }
+    }
+
+    function startGame() {
+        score = 0;
+        scoreEl.textContent = '0';
+        enemies = [];
+        particles = [];
+        gameActive = true;
+        difficultyTimer = 0;
+        timeSlow = 1.0;
+        player.targetX = canvas.width / 2;
+        player.targetY = canvas.height / 2;
+        player.x = player.targetX;
+        player.y = player.targetY;
+        
+        startScreen.classList.add('hidden');
+        gameOverScreen.classList.add('hidden');
+        spawnFood();
+        for (let i = 0; i < 3; i++) spawnEnemy();
+        
+        cancelAnimationFrame(animationId);
+        gameLoop();
+    }
+
+    function gameOver() {
+        gameActive = false;
+        finalScoreEl.textContent = score;
+        gameOverScreen.classList.remove('hidden');
+        if (score > bestScore) {
+            bestScore = score;
+            localStorage.setItem('fun_arcade_highscore_ion-weaver-dash', bestScore);
+            bestEl.textContent = bestScore;
+        }
+    }
+
+    function toggleHelp() {
+        helpOverlay.classList.toggle('hidden');
+    }
+    helpTrigger.addEventListener('click', toggleHelp);
+
+    function gameLoop() {
+        if (!gameActive) return;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Slow motion recovery
+        if (timeSlow < 1.0) timeSlow += 0.005;
+
+        // Update Player (Interpolation for smoothness)
+        player.x += (player.targetX - player.x) * 0.25;
+        player.y += (player.targetY - player.y) * 0.25;
+
+        // Draw Player
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = 'white';
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // Food Logic
+        if (food) {
+            food.pulse += 0.1;
+            const s = food.radius + Math.sin(food.pulse) * 3;
+            ctx.fillStyle = '#E85D04';
+            ctx.beginPath();
+            ctx.arc(food.x, food.y, s, 0, Math.PI * 2);
+            ctx.fill();
+            
+            const dist = Math.hypot(player.x - food.x, player.y - food.y);
+            if (dist < player.radius + food.radius) {
+                score += 10;
+                scoreEl.textContent = score;
+                timeSlow = 0.4; // Time warp effect
+                createParticles(food.x, food.y, '#E85D04');
+                spawnFood();
+                if (score % 30 === 0) spawnEnemy();
+            }
+        }
+
+        // Enemy Logic
+        difficultyTimer++;
+        if (difficultyTimer % 400 === 0) spawnEnemy();
+
+        enemies.forEach(e => {
+            e.x += e.vx * timeSlow;
+            e.y += e.vy * timeSlow;
+
+            // Bounce
+            if (e.x < 0 || e.x > canvas.width) e.vx *= -1;
+            if (e.y < 0 || e.y > canvas.height) e.vy *= -1;
+
+            ctx.fillStyle = '#ff4444';
+            ctx.beginPath();
+            ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Collision check
+            const dist = Math.hypot(player.x - e.x, player.y - e.y);
+            if (dist < player.radius + e.radius - 2) {
+                createParticles(player.x, player.y, '#ff4444');
+                gameOver();
+            }
+        });
+
+        // Particles
+        for (let i = particles.length - 1; i >= 0; i--) {
+            const p = particles[i];
+            p.x += p.vx;
+            p.y += p.vy;
+            p.life -= 0.02;
+            if (p.life <= 0) {
+                particles.splice(i, 1);
+            } else {
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life;
+                ctx.fillRect(p.x, p.y, 3, 3);
+            }
+        }
+        ctx.globalAlpha = 1;
+
+        animationId = requestAnimationFrame(gameLoop);
+    }
+</script>
+</body>
+</html>
