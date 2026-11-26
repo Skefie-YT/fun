@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Fulcrum Fall</title>
+    <style>
+        :root { --accent: #10B981; --bg: #0f172a; }
+        * { box-sizing: border-box; user-select: none; -webkit-touch-callout: none; }
+        body { margin: 0; background: var(--bg); color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; height: 100dvh; display: flex; flex-direction: column; }
+        #game-header { height: 60px; display: flex; align-items: center; justify-content: space-between; padding: 0 15px; background: rgba(0,0,0,0.3); z-index: 10; }
+        .back-btn { color: white; text-decoration: none; font-size: 14px; border: 1px solid rgba(255,255,255,0.3); padding: 5px 10px; border-radius: 4px; }
+        .hud { display: flex; gap: 20px; font-weight: bold; }
+        .hud span { color: var(--accent); }
+        .btn-icon { background: none; border: 1px solid rgba(255,255,255,0.3); color: white; border-radius: 50%; width: 30px; height: 30px; cursor: pointer; }
+        #canvas-container { flex: 1; position: relative; width: 100%; overflow: hidden; }
+        canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+        .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.9); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; text-align: center; padding: 20px; }
+        h1 { color: var(--accent); margin: 0 0 10px 0; font-size: 2.5rem; text-transform: uppercase; }
+        .msg { margin-bottom: 30px; line-height: 1.5; color: #cbd5e1; }
+        .start-btn { background: var(--accent); color: white; border: none; padding: 15px 40px; font-size: 1.2rem; font-weight: bold; border-radius: 50px; cursor: pointer; box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4); transition: transform 0.2s; }
+        .start-btn:active { transform: scale(0.95); }
+        #help-overlay { display: none; }
+        .controls-hint { position: absolute; bottom: 20px; font-size: 12px; color: #64748b; }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <div id="game-header">
+        <a href="../../" class="back-btn">Back</a>
+        <div class="hud">
+            <div>SCORE: <span id="score-val">0</span></div>
+            <div>BEST: <span id="best-val">0</span></div>
+        </div>
+        <button class="btn-icon" onclick="toggleHelp()">?</button>
+    </div>
+
+    <div id="canvas-container">
+        <canvas id="gameCanvas"></canvas>
+
+        <div id="start-screen" class="overlay">
+            <h1>Fulcrum Fall</h1>
+            <p class="msg">Tap to drop blocks and stack them high.<br>Keep the beam balanced or the tower will tumble!</p>
+            <button class="start-btn" onclick="startGame()">PLAY NOW</button>
+            <div class="controls-hint">TAP or CLICK to drop blocks</div>
+        </div>
+
+        <div id="help-overlay" class="overlay" onclick="toggleHelp()">
+            <h2>How to Play</h2>
+            <p class="msg">
+                1. Blocks move side-to-side at the top.<br>
+                2. Tap to drop a block onto the rocking beam.<br>
+                3. Every block has weight. Keep the beam level.<br>
+                4. Game ends if any block falls off the platform.
+            </p>
+            <button class="start-btn">CLOSE</button>
+        </div>
+
+        <div id="game-over" class="overlay hidden">
+            <h1 id="over-title">CRASHED!</h1>
+            <p class="msg">Your tower tipped over. Great effort!<br>Final Score: <span id="final-score">0</span></p>
+            <button class="start-btn" onclick="startGame()">RETRY</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreVal = document.getElementById('score-val');
+        const bestVal = document.getElementById('best-val');
+        const finalScore = document.getElementById('final-score');
+        const startScreen = document.getElementById('start-screen');
+        const gameOverScreen = document.getElementById('game-over');
+        const helpOverlay = document.getElementById('help-overlay');
+
+        let score = 0;
+        let best = localStorage.getItem('fun_arcade_highscore_fulcrum-fall') || 0;
+        bestVal.innerText = best;
+
+        let gameState = 'START';
+        let blocks = [];
+        let beamAngle = 0;
+        let beamVel = 0;
+        let currentBlockX = 0;
+        let currentBlockDir = 1;
+        let currentBlockWidth = 40;
+        let lastTime = 0;
+        let dropCooldown = 0;
+
+        const G = 0.0005;
+        const BEAM_WIDTH = 220;
+        const BEAM_HEIGHT = 10;
+        const FRICTION = 0.98;
+        const TILT_LIMIT = 0.65;
+
+        function resize() {
+            canvas.width = canvas.offsetWidth * window.devicePixelRatio;
+            canvas.height = canvas.offsetHeight * window.devicePixelRatio;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        function toggleHelp() {
+            helpOverlay.style.display = (helpOverlay.style.display === 'flex') ? 'none' : 'flex';
+        }
+
+        function startGame() {
+            score = 0;
+            scoreVal.innerText = score;
+            blocks = [];
+            beamAngle = 0;
+            beamVel = 0;
+            currentBlockX = 100;
+            gameState = 'PLAYING';
+            startScreen.classList.add('hidden');
+            gameOverScreen.classList.add('hidden');
+            requestAnimationFrame(gameLoop);
+        }
+
+        function spawnBlock() {
+            const bw = Math.max(20, 50 - (score * 0.5));
+            return {
+                x: currentBlockX,
+                y: 50,
+                w: bw,
+                h: 20,
+                vx: 0,
+                vy: 0,
+                active: false,
+                landed: false,
+                offset: 0 // offset from fulcrum center when landed
+            };
+        }
+
+        let activeBlock = spawnBlock();
+
+        canvas.addEventListener('mousedown', dropBlock);
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            dropBlock();
+        });
+
+        function dropBlock() {
+            if (gameState !== 'PLAYING' || activeBlock.active) return;
+            activeBlock.active = true;
+            activeBlock.vy = 2;
+        }
+
+        function update(dt) {
+            if (gameState !== 'PLAYING') return;
+
+            // Moving top block
+            if (!activeBlock.active) {
+                currentBlockX += currentBlockDir * (2 + (score * 0.1));
+                if (currentBlockX > canvas.width / window.devicePixelRatio - 50 || currentBlockX < 50) {
+                    currentBlockDir *= -1;
+                }
+                activeBlock.x = currentBlockX;
+            } else {
+                // Gravity for falling block
+                activeBlock.vy += 0.25;
+                activeBlock.y += activeBlock.vy;
+
+                // Check Collision with Beam or Stack
+                const fulcrumY = canvas.height / window.devicePixelRatio - 100;
+                const fulcrumX = canvas.width / (2 * window.devicePixelRatio);
+
+                // Simplified physics for stack
+                let surfaceY = fulcrumY;
+                if (blocks.length > 0) {
+                   surfaceY = blocks[blocks.length - 1].y - 20;
+                }
+
+                // Hit detection logic
+                if (activeBlock.y + activeBlock.h >= surfaceY) {
+                    const worldX = activeBlock.x - fulcrumX;
+                    const range = (BEAM_WIDTH / 2);
+                    
+                    // Check if it hit the beam/platform range
+                    if (Math.abs(worldX) < range + 20) {
+                        activeBlock.landed = true;
+                        activeBlock.active = false;
+                        activeBlock.y = surfaceY - 20;
+                        activeBlock.offset = worldX;
+                        blocks.push({...activeBlock});
+                        
+                        score++;
+                        scoreVal.innerText = score;
+                        
+                        // Calculate Torque (Weight * Distance)
+                        // Blocks higher up apply more leverage
+                        const leverage = 1 + (blocks.length * 0.1);
+                        beamVel += (worldX * 0.0002) * leverage;
+
+                        activeBlock = spawnBlock();
+                    } else {
+                        endGame();
+                    }
+                }
+            }
+
+            // Beam Physics
+            beamVel *= FRICTION;
+            beamAngle += beamVel;
+
+            // Check if beam tilted too far
+            if (Math.abs(beamAngle) > TILT_LIMIT) {
+                endGame();
+            }
+
+            // Adjust existing blocks based on tilt
+            blocks.forEach(b => {
+                // If angle is high, blocks start to slip
+                if (Math.abs(beamAngle) > 0.1) {
+                    b.offset += beamAngle * 2;
+                }
+                // If block slips off beam
+                if (Math.abs(b.offset) > BEAM_WIDTH / 2 + 30) {
+                    endGame();
+                }
+            });
+        }
+
+        function endGame() {
+            if (gameState === 'GAMEOVER') return;
+            gameState = 'GAMEOVER';
+            if (score > best) {
+                best = score;
+                localStorage.setItem('fun_arcade_highscore_fulcrum-fall', best);
+                bestVal.innerText = best;
+            }
+            finalScore.innerText = score;
+            gameOverScreen.classList.remove('hidden');
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const scale = window.devicePixelRatio;
+            ctx.save();
+            ctx.scale(scale, scale);
+            
+            const centerX = (canvas.width / scale) / 2;
+            const groundY = (canvas.height / scale) - 100;
+
+            // Draw Fulcrum triangle
+            ctx.fillStyle = '#475569';
+            ctx.beginPath();
+            ctx.moveTo(centerX, groundY);
+            ctx.lineTo(centerX - 20, groundY + 40);
+            ctx.lineTo(centerX + 20, groundY + 40);
+            ctx.fill();
+
+            // Draw Rotating Beam
+            ctx.save();
+            ctx.translate(centerX, groundY);
+            ctx.rotate(beamAngle);
+            
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(-BEAM_WIDTH/2, -BEAM_HEIGHT, BEAM_WIDTH, BEAM_HEIGHT);
+            ctx.strokeStyle = '#334155';
+            ctx.strokeRect(-BEAM_WIDTH/2, -BEAM_HEIGHT, BEAM_WIDTH, BEAM_HEIGHT);
+
+            // Draw Stacked Blocks
+            blocks.forEach((b, i) => {
+                ctx.fillStyle = i % 2 === 0 ? '#10B981' : '#34d399';
+                ctx.fillRect(b.offset - b.w/2, -BEAM_HEIGHT - ( (blocks.length - i) * 20), b.w, 20);
+                ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+                ctx.strokeRect(b.offset - b.w/2, -BEAM_HEIGHT - ( (blocks.length - i) * 20), b.w, 20);
+            });
+            ctx.restore();
+
+            // Draw Falling Block (Shadowed if high up)
+            if (gameState === 'PLAYING') {
+                ctx.fillStyle = activeBlock.active ? '#fbbf24' : 'rgba(255,255,255,0.5)';
+                ctx.fillRect(activeBlock.x - activeBlock.w/2, activeBlock.y, activeBlock.w, activeBlock.h);
+            }
+
+            ctx.restore();
+        }
+
+        function gameLoop(timestamp) {
+            const dt = timestamp - lastTime;
+            lastTime = timestamp;
+            update(dt);
+            draw();
+            if (gameState === 'PLAYING') {
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        // Init draw
+        draw();
+    </script>
+</body>
+</html>

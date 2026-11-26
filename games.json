@@ -846,5 +846,13 @@
     "category": "Puzzle",
     "accent": "#10B981",
     "addedAt": "2026-11-26T15:54:29Z"
+  },
+  {
+    "slug": "fulcrum-fall",
+    "title": "Fulcrum Fall",
+    "description": "Drop dynamic blocks to build a towering stack on a rocking beam. Balance the weights or watch the whole structure collapse!",
+    "category": "Physics",
+    "accent": "#10B981",
+    "addedAt": "2026-11-26T16:58:42Z"
   }
 ]
