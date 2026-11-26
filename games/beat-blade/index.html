@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Beat Blade — Fun Arcade</title>
+<style>
+  :root {
+    --accent: #EF4444;
+    --accent-glow: rgba(239, 68, 68, 0.55);
+    --bg: #09090b;
+    --surface: #18181b;
+    --text: #fafafa;
+    --muted: #a1a1aa;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
+  html, body {
+    width: 100%; height: 100dvh; overflow: hidden;
+    background: var(--bg); color: var(--text);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    touch-action: none;
+  }
+  body {
+    display: flex; flex-direction: column;
+    background: radial-gradient(circle at 50% 55%, #1c1014 0%, #09090b 70%);
+  }
+  .topbar {
+    height: 56px; padding: 0 14px;
+    display: flex; align-items: center; justify-content: space-between;
+    background: rgba(24, 24, 27, 0.85);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    backdrop-filter: blur(8px); z-index: 20;
+  }
+  .back-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 13px; border-radius: 8px;
+    background: rgba(255,255,255,0.08); color: var(--text);
+    text-decoration: none; font-size: 13px; font-weight: 600;
+    transition: background 0.15s;
+  }
+  .back-btn:hover { background: rgba(255,255,255,0.16); }
+  .hud {
+    display: flex; align-items: center; gap: 18px;
+  }
+  .hud-item { text-align: center; }
+  .hud-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+  .hud-val { font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .hud-val.accent { color: var(--accent); }
+  .top-actions { display: flex; align-items: center; gap: 8px; }
+  .icon-btn {
+    width: 34px; height: 34px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.06); color: var(--text);
+    font-size: 15px; font-weight: 700; cursor: pointer;
+    display: grid; place-items: center; transition: background 0.15s;
+  }
+  .icon-btn:hover { background: rgba(255,255,255,0.15); }
+
+  .stage {
+    position: relative; flex: 1; width: 100%; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+  }
+  canvas { display: block; width: 100%; height: 100%; }
+
+  .hint-bar {
+    position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
+    font-size: 12px; color: var(--muted); background: rgba(9,9,11,0.75);
+    padding: 5px 12px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.08);
+    pointer-events: none; white-space: nowrap; z-index: 5;
+  }
+
+  .overlay {
+    position: absolute; inset: 0; z-index: 30;
+    background: rgba(9, 9, 11, 0.84); backdrop-filter: blur(8px);
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+  }
+  .overlay.hidden { display: none; }
+  .card {
+    width: 100%; max-width: 380px; background: var(--surface);
+    border: 1px solid rgba(255,255,255,0.12); border-radius: 18px;
+    padding: 26px 24px; text-align: center;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.6), 0 0 40px rgba(239,68,68,0.12);
+  }
+  .badge {
+    display: inline-block; padding: 4px 10px; border-radius: 999px;
+    background: rgba(239,68,68,0.16); color: var(--accent);
+    font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+  .card h1 { font-size: 28px; font-weight: 900; margin-bottom: 10px; letter-spacing: -0.02em; }
+  .card p { font-size: 14px; line-height: 1.55; color: #d4d4d8; margin-bottom: 18px; }
+  .controls-list {
+    text-align: left; background: rgba(0,0,0,0.3); border-radius: 10px;
+    padding: 12px 14px; margin-bottom: 20px; font-size: 13px; color: #d4d4d8;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .controls-list strong { color: #fff; }
+  .btn-primary {
+    width: 100%; padding: 13px 20px; border: none; border-radius: 12px;
+    background: var(--accent); color: #fff; font-size: 16px; font-weight: 800;
+    cursor: pointer; box-shadow: 0 8px 24px var(--accent-glow);
+    transition: transform 0.12s, filter 0.12s;
+  }
+  .btn-primary:hover { filter: brightness(1.08); }
+  .btn-primary:active { transform: scale(0.97); }
+  .stats-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px;
+  }
+  .stat-box {
+    background: rgba(0,0,0,0.3); border-radius: 10px; padding: 10px;
+  }
+  .stat-box .lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; }
+  .stat-box .val { font-size: 22px; font-weight: 800; margin-top: 2px; }
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a href="../../" class="back-btn">&#8592; Back</a>
+    <div class="hud">
+      <div class="hud-item">
+        <div class="hud-label">Score</div>
+        <div class="hud-val" id="scoreEl">0</div>
+      </div>
+      <div class="hud-item">
+        <div class="hud-label">Combo</div>
+        <div class="hud-val accent" id="comboEl">0x</div>
+      </div>
+      <div class="hud-item">
+        <div class="hud-label">Best</div>
+        <div class="hud-val" id="bestEl">0</div>
+      </div>
+    </div>
+    <div class="top-actions">
+      <button class="icon-btn" id="muteBtn" title="Toggle Sound">&#128266;</button>
+      <button class="icon-btn" id="helpBtn" title="How to Play">?</button>
+    </div>
+  </header>
+
+  <main class="stage" id="stage">
+    <canvas id="gameCanvas"></canvas>
+    <div class="hint-bar">Arrow Keys / WASD &bull; Tap or Swipe in 4 Directions</div>
+
+    <div class="overlay" id="startOverlay">
+      <div class="card">
+        <div class="badge">Rhythm Slasher</div>
+        <h1>Beat Blade</h1>
+        <p>Incoming beat shards surge toward your core from 4 directions. Slash them right as they cross the crimson strike ring!</p>
+        <div class="controls-list">
+          <div><strong>Desktop:</strong> Arrow Keys or W A S D</div>
+          <div><strong>Mobile / Mouse:</strong> Tap or Swipe Up, Right, Down, Left</div>
+          <div><strong>Overdrive:</strong> Reach 15x combo for 2x points!</div>
+        </div>
+        <button class="btn-primary" id="startBtn">Start Slashing</button>
+      </div>
+    </div>
+
+    <div class="overlay hidden" id="helpOverlay">
+      <div class="card">
+        <div class="badge">How to Play</div>
+        <h1>Beat Blade</h1>
+        <p>Time your directional slashes with the beat. Hitting <strong>Perfect</strong> or <strong>Good</strong> builds your combo and repairs your Core Integrity.</p>
+        <div class="controls-list">
+          <div><strong>Controls:</strong> Arrow Keys / WASD, or tap/swipe any of the 4 quadrants.</div>
+          <div><strong>Overdrive:</strong> 15+ combo activates Crimson Overdrive (2x Score).</div>
+          <div><strong>Integrity:</strong> Missing beats drains your core. Don't let it hit 0%!</div>
+        </div>
+        <button class="btn-primary" id="closeHelpBtn">Got It</button>
+      </div>
+    </div>
+
+    <div class="overlay hidden" id="gameOverOverlay">
+      <div class="card">
+        <div class="badge">Core Shattered</div>
+        <h1>Game Over</h1>
+        <div class="stats-grid">
+          <div class="stat-box"><div class="lbl">Score</div><div class="val" id="finalScore">0</div></div>
+          <div class="stat-box"><div class="lbl">Max Combo</div><div class="val" id="finalCombo">0x</div></div>
+        </div>
+        <p id="newBestMsg" style="color:#EF4444;font-weight:700;display:none;">New High Score!</p>
+        <button class="btn-primary" id="restartBtn">Play Again</button>
+      </div>
+    </div>
+  </main>
+
+<script>
+(() => {
+  const SLUG = 'beat-blade';
+  const STORAGE_KEY = 'fun_arcade_highscore_' + SLUG;
+
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+  const stage = document.getElementById('stage');
+
+  const scoreEl = document.getElementById('scoreEl');
+  const comboEl = document.getElementById('comboEl');
+  const bestEl = document.getElementById('bestEl');
+  const muteBtn = document.getElementById('muteBtn');
+  const helpBtn = document.getElementById('helpBtn');
+  const startOverlay = document.getElementById('startOverlay');
+  const helpOverlay = document.getElementById('helpOverlay');
+  const gameOverOverlay = document.getElementById('gameOverOverlay');
+  const startBtn = document.getElementById('startBtn');
+  const closeHelpBtn = document.getElementById('closeHelpBtn');
+  const restartBtn = document.getElementById('restartBtn');
+  const finalScoreEl = document.getElementById('finalScore');
+  const finalComboEl = document.getElementById('finalCombo');
+  const newBestMsg = document.getElementById('newBestMsg');
+
+  let bestScore = parseInt(localStorage.getItem(STORAGE_KEY) || '0', 10) || 0;
+  bestEl.textContent = bestScore;
+
+  // Audio Engine (Web Audio API)
+  let audioCtx = null;
+  let muted = false;
+  function initAudio() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  }
+  function playTone(freq, type, dur, vol = 0.15, slide = 0) {
+    if (muted || !audioCtx) return;
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, now);
+    if (slide) osc.frequency.exponentialRampToValueAtTime(Math.max(20, freq + slide), now + dur);
+    gain.gain.setValueAtTime(vol, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.start(now); osc.stop(now + dur);
+  }
+  function playKick() {
+    if (muted || !audioCtx) return;
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(140, now);
+    osc.frequency.exponentialRampToValueAtTime(38, now + 0.14);
+    gain.gain.setValueAtTime(0.24, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.start(now); osc.stop(now + 0.15);
+  }
+  function playSlashSound(quality) {
+    if (quality === 'perfect') {
+      playTone(520, 'triangle', 0.12, 0.18, 280);
+      playTone(880, 'sine', 0.14, 0.12, 120);
+    } else if (quality === 'good') {
+      playTone(380, 'triangle', 0.1, 0.14, 140);
+    } else {
+      playTone(130, 'sawtooth', 0.14, 0.12, -50);
+    }
+  }
+
+  muteBtn.addEventListener('click', () => {
+    muted = !muted;
+    muteBtn.innerHTML = muted ? '&#128263;' : '&#128266;';
+  });
+
+  // Game State
+  // Directions: 0 = UP, 1 = RIGHT, 2 = DOWN, 3 = LEFT
+  const DIRS = [
+    { dx: 0, dy: -1, angle: -Math.PI / 2, label: '▲' },
+    { dx: 1, dy: 0, angle: 0, label: '▶' },
+    { dx: 0, dy: 1, angle: Math.PI / 2, label: '▼' },
+    { dx: -1, dy: 0, angle: Math.PI, label: '◀' }
+  ];
+
+  let W = 0, H = 0, CX = 0, CY = 0, RING_R = 72, SPAWN_R = 300;
+  let state = 'start'; // start, playing, paused, gameover
+  let score = 0, combo = 0, maxCombo = 0, integrity = 100;
+  let bpm = 108, beatTimer = 0, beatCount = 0;
+  let notes = [], slashes = [], particles = [], floatTexts = [];
+  let shake = 0, corePulse = 0, lastTime = 0;
+
+  function resize() {
+    const rect = stage.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = rect.width; H = rect.height;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    CX = W / 2; CY = H / 2;
+    const minDim = Math.min(W, H);
+    RING_R = Math.max(54, Math.min(86, minDim * 0.16));
+    SPAWN_R = Math.max(200, minDim * 0.54);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function resetGame() {
+    score = 0; combo = 0; maxCombo = 0; integrity = 100;
+    bpm = 108; beatTimer = 0; beatCount = 0;
+    notes = []; slashes = []; particles = []; floatTexts = [];
+    shake = 0; corePulse = 0;
+    updateHUD();
+  }
+
+  function updateHUD() {
+    scoreEl.textContent = score;
+    comboEl.textContent = combo + 'x';
+    bestEl.textContent = bestScore;
+  }
+
+  function spawnParticles(x, y, color, count = 12) {
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const spd = 90 + Math.random() * 220;
+      particles.push({
+        x, y, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd,
+        life: 1, decay: 2.2 + Math.random() * 1.5, size: 2 + Math.random() * 3.5, color
+      });
+    }
+  }
+
+  function addFloatText(x, y, text, color) {
+    floatTexts.push({ x, y, text, color, life: 1 });
+  }
+
+  function spawnBeat() {
+    beatCount++;
+    playKick();
+    corePulse = 1;
+
+    // Ramp BPM gently
+    bpm = Math.min(168, 108 + Math.floor(score / 600) * 3);
+
+    const dir = Math.floor(Math.random() * 4);
+    const speed = (SPAWN_R - RING_R) / (60 / bpm * 2); // arrives in 2 beats
+    notes.push({ dir, dist: SPAWN_R, speed, hit: false });
+
+    // Occasional double note at higher BPM
+    if (bpm >= 126 && beatCount % 6 === 0) {
+      const dir2 = (dir + 2) % 4;
+      notes.push({ dir: dir2, dist: SPAWN_R, speed, hit: false });
+    }
+  }
+
+  function triggerSlash(dir) {
+    if (state !== 'playing') return;
+    initAudio();
+    const d = DIRS[dir];
+    slashes.push({ dir, life: 1 });
+
+    // Find closest unhit note in this direction
+    let bestIdx = -1, bestDiff = Infinity;
+    for (let i = 0; i < notes.length; i++) {
+      const n = notes[i];
+      if (n.dir === dir && !n.hit) {
+        const diff = Math.abs(n.dist - RING_R);
+        if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
+      }
+    }
+
+    const hitX = CX + d.dx * RING_R;
+    const hitY = CY + d.dy * RING_R;
+
+    if (bestIdx !== -1 && bestDiff <= 44) {
+      const n = notes[bestIdx];
+      n.hit = true;
+      notes.splice(bestIdx, 1);
+
+      const isOverdrive = combo >= 15;
+      const mult = isOverdrive ? 2 : 1;
+      if (bestDiff <= 18) {
+        combo++;
+        const pts = (100 + combo * 5) * mult;
+        score += pts;
+        integrity = Math.min(100, integrity + 2.5);
+        playSlashSound('perfect');
+        spawnParticles(hitX, hitY, isOverdrive ? '#FACC15' : '#EF4444', 16);
+        addFloatText(hitX, hitY - 14, isOverdrive ? `OVERDRIVE +${pts}` : `PERFECT +${pts}`, isOverdrive ? '#FACC15' : '#4ADE80');
+        shake = 5;
+      } else {
+        combo++;
+        const pts = (50 + combo * 2) * mult;
+        score += pts;
+        integrity = Math.min(100, integrity + 1);
+        playSlashSound('good');
+        spawnParticles(hitX, hitY, '#38BDF8', 10);
+        addFloatText(hitX, hitY - 14, `GOOD +${pts}`, '#38BDF8');
+        shake = 2.5;
+      }
+      if (combo > maxCombo) maxCombo = combo;
+    } else {
+      // Whiff penalty
+      combo = 0;
+      integrity = Math.max(0, integrity - 4);
+      playSlashSound('miss');
+      addFloatText(hitX, hitY - 10, 'MISS', '#F87171');
+      shake = 4;
+    }
+    updateHUD();
+    if (integrity <= 0) endGame();
+  }
+
+  function endGame() {
+    state = 'gameover';
+    finalScoreEl.textContent = score;
+    finalComboEl.textContent = maxCombo + 'x';
+    if (score > bestScore) {
+      bestScore = score;
+      localStorage.setItem(STORAGE_KEY, String(bestScore));
+      bestEl.textContent = bestScore;
+      newBestMsg.style.display = 'block';
+    } else {
+      newBestMsg.style.display = 'none';
+    }
+    gameOverOverlay.classList.remove('hidden');
+  }
+
+  // Input Handling
+  window.addEventListener('keydown', (e) => {
+    if (e.repeat) return;
+    if (state === 'playing') {
+      if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') { e.preventDefault(); triggerSlash(0); }
+      else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') { e.preventDefault(); triggerSlash(1); }
+      else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') { e.preventDefault(); triggerSlash(2); }
+      else if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') { e.preventDefault(); triggerSlash(3); }
+    }
+  });
+
+  let touchStartX = 0, touchStartY = 0, swiped = false;
+  canvas.addEventListener('pointerdown', (e) => {
+    if (state !== 'playing') return;
+    touchStartX = e.clientX; touchStartY = e.clientY; swiped = false;
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (state !== 'playing' || swiped) return;
+    const dx = e.clientX - touchStartX;
+    const dy = e.clientY - touchStartY;
+    if (Math.hypot(dx, dy) > 26) {
+      swiped = true;
+      if (Math.abs(dx) > Math.abs(dy)) triggerSlash(dx > 0 ? 1 : 3);
+      else triggerSlash(dy > 0 ? 2 : 0);
+    }
+  });
+  canvas.addEventListener('pointerup', (e) => {
+    if (state !== 'playing' || swiped) return;
+    const rect = canvas.getBoundingClientRect();
+    const dx = (e.clientX - rect.left) - CX;
+    const dy = (e.clientY - rect.top) - CY;
+    if (Math.abs(dx) > Math.abs(dy)) triggerSlash(dx > 0 ? 1 : 3);
+    else triggerSlash(dy > 0 ? 2 : 0);
+  });
+
+  // UI Buttons
+  startBtn.addEventListener('click', () => {
+    initAudio();
+    startOverlay.classList.add('hidden');
+    resetGame();
+    state = 'playing';
+    lastTime = performance.now();
+  });
+  restartBtn.addEventListener('click', () => {
+    initAudio();
+    gameOverOverlay.classList.add('hidden');
+    resetGame();
+    state = 'playing';
+    lastTime = performance.now();
+  });
+  helpBtn.addEventListener('click', () => {
+    if (state === 'playing') state = 'paused';
+    helpOverlay.classList.remove('hidden');
+  });
+  closeHelpBtn.addEventListener('click', () => {
+    helpOverlay.classList.add('hidden');
+    if (state === 'paused') { state = 'playing'; lastTime = performance.now(); }
+  });
+
+  // Main Loop
+  function loop(now) {
+    requestAnimationFrame(loop);
+    const dt = Math.min(0.05, (now - lastTime) / 1000 || 0.016);
+    lastTime = now;
+
+    if (state === 'playing') {
+      const beatInterval = 60 / bpm;
+      beatTimer += dt;
+      if (beatTimer >= beatInterval) {
+        beatTimer -= beatInterval;
+        spawnBeat();
+      }
+
+      // Update notes
+      for (let i = notes.length - 1; i >= 0; i--) {
+        const n = notes[i];
+        n.dist -= n.speed * dt;
+        if (n.dist < RING_R - 36) {
+          notes.splice(i, 1);
+          combo = 0;
+          integrity = Math.max(0, integrity - 12);
+          playSlashSound('miss');
+          shake = 6;
+          updateHUD();
+          if (integrity <= 0) { endGame(); break; }
+        }
+      }
+    }
+
+    // Update visual effects
+    corePulse = Math.max(0, corePulse - dt * 4);
+    shake = Math.max(0, shake - dt * 28);
+    for (let i = slashes.length - 1; i >= 0; i--) {
+      slashes[i].life -= dt * 6;
+      if (slashes[i].life <= 0) slashes.splice(i, 1);
+    }
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      p.life -= p.decay * dt;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+    for (let i = floatTexts.length - 1; i >= 0; i--) {
+      const f = floatTexts[i];
+      f.y -= 35 * dt; f.life -= dt * 1.6;
+      if (f.life <= 0) floatTexts.splice(i, 1);
+    }
+
+    draw();
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    ctx.save();
+    if (shake > 0) {
+      ctx.translate((Math.random() - 0.5) * shake * 2, (Math.random() - 0.5) * shake * 2);
+    }
+
+    const isOverdrive = combo >= 15;
+
+    // Draw 4 lane tracks
+    ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 4; i++) {
+      const d = DIRS[i];
+      ctx.beginPath();
+      ctx.moveTo(CX + d.dx * RING_R, CY + d.dy * RING_R);
+      ctx.lineTo(CX + d.dx * SPAWN_R, CY + d.dy * SPAWN_R);
+      ctx.stroke();
+    }
+
+    // Strike Ring
+    ctx.beginPath();
+    ctx.arc(CX, CY, RING_R, 0, Math.PI * 2);
+    ctx.strokeStyle = isOverdrive ? 'rgba(250, 204, 21, 0.85)' : 'rgba(239, 68, 68, 0.75)';
+    ctx.lineWidth = 3.5;
+    ctx.stroke();
+
+    // Core Integrity Ring
+    ctx.beginPath();
+    ctx.arc(CX, CY, 26 + corePulse * 5, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * (integrity / 100)));
+    ctx.strokeStyle = integrity > 35 ? '#4ADE80' : '#EF4444';
+    ctx.lineWidth = 5;
+    ctx.stroke();
+
+    // Center Core
+    ctx.beginPath();
+    ctx.arc(CX, CY, 16 + corePulse * 4, 0, Math.PI * 2);
+    ctx.fillStyle = isOverdrive ? '#FACC15' : '#EF4444';
+    ctx.shadowColor = isOverdrive ? '#FACC15' : '#EF4444';
+    ctx.shadowBlur = 18;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Draw Slashes
+    for (const s of slashes) {
+      const d = DIRS[s.dir];
+      ctx.save();
+      ctx.translate(CX, CY);
+      ctx.rotate(d.angle);
+      ctx.beginPath();
+      ctx.arc(0, 0, RING_R + 6, -0.55, 0.55);
+      ctx.strokeStyle = `rgba(255, 255, 255, ${s.life})`;
+      ctx.lineWidth = 8 * s.life;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Draw Notes
+    for (const n of notes) {
+      const d = DIRS[n.dir];
+      const nx = CX + d.dx * n.dist;
+      const ny = CY + d.dy * n.dist;
+      ctx.save();
+      ctx.translate(nx, ny);
+      ctx.rotate(d.angle + Math.PI / 4);
+      ctx.fillStyle = '#EF4444';
+      ctx.shadowColor = '#EF4444';
+      ctx.shadowBlur = 12;
+      ctx.fillRect(-10, -10, 20, 20);
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(-10, -10, 20, 20);
+      ctx.restore();
+    }
+
+    // Draw Particles
+    for (const p of particles) {
+      ctx.globalAlpha = Math.max(0, p.life);
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // Draw Floating Texts
+    ctx.font = '800 13px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    for (const f of floatTexts) {
+      ctx.globalAlpha = Math.max(0, f.life);
+      ctx.fillStyle = f.color;
+      ctx.fillText(f.text, f.x, f.y);
+    }
+    ctx.globalAlpha = 1;
+
+    ctx.restore();
+  }
+
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

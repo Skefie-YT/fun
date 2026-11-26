@@ -750,5 +750,13 @@
     "category": "Physics",
     "accent": "#EF4444",
     "addedAt": "2026-11-26T00:54:48Z"
+  },
+  {
+    "slug": "beat-blade",
+    "title": "Beat Blade",
+    "description": "Slash incoming beats in 4 directions right as they hit the strike ring to build combos and ignite Overdrive!",
+    "category": "Arcade",
+    "accent": "#EF4444",
+    "addedAt": "2026-11-26T02:15:24Z"
   }
 ]
