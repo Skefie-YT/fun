@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Chroma Reflux</title>
+    <style>
+        :root {
+            --accent: #EC4899;
+            --bg: #0f172a;
+            --panel: #1e293b;
+            --text: #f8fafc;
+        }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
+        body {
+            margin: 0; padding: 0; background: var(--bg); color: var(--text);
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            height: 100dvh; display: flex; flex-direction: column; overflow: hidden;
+        }
+        .header {
+            height: 60px; padding: 0 20px; display: flex; align-items: center; justify-content: space-between;
+            background: rgba(0,0,0,0.3); z-index: 100;
+        }
+        .back-btn {
+            color: var(--text); text-decoration: none; font-weight: bold; font-size: 14px;
+            border: 1px solid var(--text); padding: 5px 12px; border-radius: 4px;
+        }
+        .stats { display: flex; gap: 20px; font-weight: 800; letter-spacing: 1px; }
+        .help-btn { width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--text); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+        
+        #game-container {
+            flex: 1; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            padding: 20px;
+        }
+
+        .grid {
+            display: grid; grid-template-columns: repeat(2, 1fr); grid-template-rows: repeat(2, 1fr);
+            gap: 15px; width: 100%; max-width: 400px; aspect-ratio: 1/1;
+        }
+
+        .tile {
+            border-radius: 20px; cursor: pointer; transition: transform 0.1s, opacity 0.2s;
+            opacity: 0.6; position: relative; border: 4px solid rgba(255,255,255,0.1);
+            box-shadow: 0 0 0 rgba(0,0,0,0);
+        }
+        .tile:active { transform: scale(0.95); }
+        .tile.active {
+            opacity: 1; transform: scale(1.05);
+            box-shadow: 0 0 30px currentColor;
+            z-index: 10;
+        }
+        
+        #tile-0 { background-color: #3b82f6; color: #3b82f6; } /* Blue */
+        #tile-1 { background-color: #ef4444; color: #ef4444; } /* Red */
+        #tile-2 { background-color: #10b981; color: #10b981; } /* Green */
+        #tile-3 { background-color: #f59e0b; color: #f59e0b; } /* Yellow */
+
+        .overlay {
+            position: absolute; inset: 0; background: rgba(15, 23, 42, 0.95);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 200; text-align: center; padding: 40px;
+        }
+        .overlay h2 { font-size: 3rem; margin: 0 0 10px; color: var(--accent); }
+        .hidden { display: none !important; }
+
+        .btn {
+            background: var(--accent); color: white; border: none; padding: 15px 40px;
+            border-radius: 50px; font-size: 1.2rem; font-weight: bold; cursor: pointer;
+            margin-top: 20px; transition: transform 0.2s;
+        }
+        .btn:hover { transform: scale(1.05); }
+
+        .timer-bar { width: 100%; max-width: 400px; height: 8px; background: #334155; margin-top: 30px; border-radius: 4px; overflow: hidden; }
+        #timer-fill { height: 100%; background: var(--accent); width: 0%; transition: width 0.1s linear; }
+        
+        .status-msg {
+            font-size: 1.5rem; font-weight: bold; margin-bottom: 20px; height: 1.5em; color: var(--accent);
+        }
+
+        .hint-bar { margin-top: 20px; font-size: 12px; opacity: 0.5; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <a href="../../" class="back-btn">Back</a>
+        <div class="stats">
+            <div>LEVEL: <span id="score">1</span></div>
+            <div>BEST: <span id="best">0</span></div>
+        </div>
+        <div class="help-btn" onclick="toggleHelp()">?</div>
+    </div>
+
+    <div id="game-container">
+        <div class="status-msg" id="status">READY?</div>
+
+        <div class="grid" id="grid">
+            <div class="tile" id="tile-0" data-id="0"></div>
+            <div class="tile" id="tile-1" data-id="1"></div>
+            <div class="tile" id="tile-2" data-id="2"></div>
+            <div class="tile" id="tile-3" data-id="3"></div>
+        </div>
+
+        <div class="timer-bar">
+            <div id="timer-fill"></div>
+        </div>
+
+        <div class="hint-bar">Follow the sequence. Speed increases every level.</div>
+    </div>
+
+    <div id="start-overlay" class="overlay">
+        <h2>CHROMA REFLUX</h2>
+        <p>Watch the colors flash, then repeat the pattern exactly.</p>
+        <button class="btn" onclick="startGame()">INITIALIZE</button>
+    </div>
+
+    <div id="help-overlay" class="overlay hidden">
+        <h2>HOW TO PLAY</h2>
+        <p>1. The CPU will play a sequence of colors.</p>
+        <p>2. Once the timer bar starts moving, repeat it back.</p>
+        <p>3. Each level adds one more color to the pattern.</p>
+        <button class="btn" onclick="toggleHelp()">GOT IT</button>
+    </div>
+
+    <div id="gameover-overlay" class="overlay hidden">
+        <h2 style="color: #ef4444">REFLEX SYNC LOST</h2>
+        <p>Final Level: <span id="final-score">0</span></p>
+        <button class="btn" onclick="startGame()">REBOOT</button>
+    </div>
+
+    <script>
+        const SLUG = 'chroma-reflux';
+        let sequence = [];
+        let playerSequence = [];
+        let level = 1;
+        let isPlayingSequence = false;
+        let gameActive = false;
+        let timerInterval;
+        let timeRemaining = 0;
+        let totalTime = 5000;
+
+        const scoreEl = document.getElementById('score');
+        const bestEl = document.getElementById('best');
+        const statusEl = document.getElementById('status');
+        const timerFill = document.getElementById('timer-fill');
+        const tiles = document.querySelectorAll('.tile');
+
+        // Audio Context setup for retro synth beeps
+        let audioCtx;
+        const freqs = [261.63, 329.63, 392.00, 523.25]; // C, E, G, C2
+
+        function initAudio() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+
+        function playTone(index) {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freqs[index], audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.3);
+        }
+
+        function updateBest() {
+            const saved = localStorage.getItem('fun_arcade_highscore_' + SLUG) || 0;
+            bestEl.textContent = saved;
+            return saved;
+        }
+
+        function saveBest(score) {
+            const current = updateBest();
+            if (score > current) {
+                localStorage.setItem('fun_arcade_highscore_' + SLUG, score);
+                updateBest();
+            }
+        }
+
+        function startGame() {
+            initAudio();
+            document.querySelectorAll('.overlay').forEach(o => o.classList.add('hidden'));
+            level = 1;
+            sequence = [];
+            gameActive = true;
+            nextLevel();
+        }
+
+        async function nextLevel() {
+            isPlayingSequence = true;
+            playerSequence = [];
+            scoreEl.textContent = level;
+            statusEl.textContent = "WATCHING...";
+            statusEl.style.color = "#94a3b8";
+            timerFill.style.width = "0%";
+            
+            // Add new step
+            sequence.push(Math.floor(Math.random() * 4));
+
+            // Speed up based on level
+            const speed = Math.max(200, 600 - (level * 25));
+            
+            await new Promise(r => setTimeout(r, 800));
+
+            for (let id of sequence) {
+                if (!gameActive) return;
+                activateTile(id, speed * 0.8);
+                await new Promise(r => setTimeout(r, speed));
+            }
+
+            startPlayerTurn();
+        }
+
+        function startPlayerTurn() {
+            isPlayingSequence = false;
+            statusEl.textContent = "YOUR TURN!";
+            statusEl.style.color = "#EC4899";
+            
+            timeRemaining = 100;
+            totalTime = Math.max(2000, 6000 - (level * 100));
+            
+            clearInterval(timerInterval);
+            const start = Date.now();
+            timerInterval = setInterval(() => {
+                const elapsed = Date.now() - start;
+                const pct = 100 - (elapsed / totalTime * 100);
+                timerFill.style.width = pct + "%";
+                
+                if (pct <= 0) {
+                    gameOver();
+                }
+            }, 16);
+        }
+
+        function activateTile(id, duration) {
+            const tile = document.getElementById('tile-' + id);
+            tile.classList.add('active');
+            playTone(id);
+            setTimeout(() => tile.classList.remove('active'), duration);
+        }
+
+        function handleInput(e) {
+            if (!gameActive || isPlayingSequence) return;
+            
+            const tileId = parseInt(e.target.dataset.id);
+            if (isNaN(tileId)) return;
+
+            activateTile(tileId, 150);
+            playerSequence.push(tileId);
+
+            const stepIndex = playerSequence.length - 1;
+            
+            if (playerSequence[stepIndex] !== sequence[stepIndex]) {
+                gameOver();
+                return;
+            }
+
+            if (playerSequence.length === sequence.length) {
+                clearInterval(timerInterval);
+                level++;
+                saveBest(level - 1);
+                setTimeout(nextLevel, 600);
+            }
+        }
+
+        function gameOver() {
+            gameActive = false;
+            clearInterval(timerInterval);
+            document.getElementById('gameover-overlay').classList.remove('hidden');
+            document.getElementById('final-score').textContent = level - 1;
+            saveBest(level - 1);
+            playTone(1); // Quick feedback
+        }
+
+        function toggleHelp() {
+            document.getElementById('help-overlay').classList.toggle('hidden');
+        }
+
+        tiles.forEach(tile => {
+            tile.addEventListener('pointerdown', handleInput);
+        });
+
+        updateBest();
+    </script>
+</body>
+</html>

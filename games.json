@@ -798,5 +798,13 @@
     "category": "Physics",
     "accent": "#0EA5E9",
     "addedAt": "2026-11-26T08:57:13Z"
+  },
+  {
+    "slug": "chroma-reflux",
+    "title": "Chroma Reflux",
+    "description": "Memorize the expanding color sequence and repeat it back to sync the neural link before time runs out!",
+    "category": "Reflex",
+    "accent": "#EC4899",
+    "addedAt": "2026-11-26T10:00:24Z"
   }
 ]
