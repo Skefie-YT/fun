@@ -862,5 +862,13 @@
     "category": "Physics",
     "accent": "#10B981",
     "addedAt": "2026-11-26T17:54:35Z"
+  },
+  {
+    "slug": "flux-gate-logic",
+    "title": "Flux Gate Logic",
+    "description": "Rotate nodes to create a closed energy circuit and power the Flux Gates before the overload hits!",
+    "category": "Puzzle",
+    "accent": "#EF4444",
+    "addedAt": "2026-11-26T19:58:36Z"
   }
 ]

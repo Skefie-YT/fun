@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Flux Gate Logic</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #EF4444;
+            --bg: #0f172a;
+            --panel: #1e293b;
+            --text: #f8fafc;
+        }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
+        body { 
+            margin: 0; padding: 0; background: var(--bg); 
+            color: var(--text); font-family: 'JetBrains+Mono', monospace; 
+            overflow: hidden; height: 100dvh; display: flex; flex-direction: column; 
+        }
+        #ui-top {
+            padding: 15px 20px; background: rgba(15, 23, 42, 0.9); 
+            display: flex; justify-content: space-between; align-items: center;
+            border-bottom: 2px solid var(--accent); z-index: 10;
+        }
+        .back-btn { color: var(--text); text-decoration: none; font-size: 14px; border: 1px solid var(--text); padding: 4px 10px; border-radius: 4px; }
+        .stats { display: flex; gap: 20px; font-family: 'Orbitron', sans-serif; }
+        .score-val { color: var(--accent); font-weight: bold; }
+        
+        #game-container { flex: 1; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        canvas { max-width: 100%; max-height: 100%; cursor: pointer; }
+
+        .overlay { 
+            position: absolute; inset: 0; background: rgba(15, 23, 42, 0.95); 
+            display: flex; flex-direction: column; align-items: center; justify-content: center; 
+            text-align: center; padding: 20px; z-index: 100; 
+        }
+        .hidden { display: none !important; }
+        h1 { font-family: 'Orbitron', sans-serif; color: var(--accent); margin: 0 0 10px 0; }
+        p { max-width: 400px; line-height: 1.6; margin-bottom: 20px; }
+        button { 
+            background: var(--accent); color: white; border: none; padding: 12px 30px; 
+            font-size: 18px; font-family: 'Orbitron', sans-serif; cursor: pointer; border-radius: 4px; 
+        }
+        button:hover { filter: brightness(1.2); }
+
+        .how-to-btn { 
+            width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--text); 
+            background: none; color: var(--text); display: flex; align-items: center; 
+            justify-content: center; padding: 0; font-size: 18px; 
+        }
+        .control-hint { position: absolute; bottom: 10px; font-size: 12px; opacity: 0.6; }
+    </style>
+</head>
+<body>
+
+    <div id="ui-top">
+        <a href="../../" class="back-btn">Back</a>
+        <div class="stats">
+            <div>LVL: <span id="level-val" class="score-val">1</span></div>
+            <div>BEST: <span id="best-val" class="score-val">0</span></div>
+        </div>
+        <button class="how-to-btn" onclick="toggleAbout()">?</button>
+    </div>
+
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+
+        <div id="start-screen" class="overlay">
+            <h1>FLUX GATE</h1>
+            <p>Rotate the conduits to connect all nodes. When a path forms a complete loop with the power source, the level clears!</p>
+            <button onclick="startGame()">INITIALIZE</button>
+            <div class="control-hint">Tap or Click a tile to rotate it</div>
+        </div>
+
+        <div id="about-screen" class="overlay hidden">
+            <h1>HOW TO PLAY</h1>
+            <p>1. Every tile has energy connectors.<br>2. Tap a tile to rotate it 90 degrees.<br>3. Connect all nodes so there are no open ends.<br>4. The entire grid must glow to advance.</p>
+            <button onclick="toggleAbout()">CLOSE</button>
+        </div>
+
+        <div id="game-over" class="overlay hidden">
+            <h1 id="over-title">SYSTEM STABLE</h1>
+            <p>Level completed! High scores are saved automatically.</p>
+            <button onclick="startGame()">NEXT LEVEL</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const slug = 'flux-gate-logic';
+
+        let state = {
+            level: 1,
+            gridSize: 3,
+            cells: [],
+            cellSize: 0,
+            padding: 40,
+            isWon: false,
+            best: localStorage.getItem('fun_arcade_highscore_' + slug) || 0
+        };
+
+        // Node shapes: bitmask (N:1, E:2, S:4, W:8)
+        const SHAPES = [
+            { mask: 1 | 4, draw: (c, s) => { // Straight
+                ctx.fillRect(c - 4, 0, 8, s);
+            }},
+            { mask: 1 | 2, draw: (c, s) => { // Corner
+                ctx.fillRect(c - 4, 0, 8, s/2 + 4);
+                ctx.fillRect(c - 4, s/2 - 4, s/2 + 4, 8);
+            }},
+            { mask: 1 | 2 | 4, draw: (c, s) => { // T-Shape
+                ctx.fillRect(c - 4, 0, 8, s);
+                ctx.fillRect(c - 4, s/2 - 4, s/2 + 4, 8);
+            }},
+            { mask: 1 | 2 | 4 | 8, draw: (c, s) => { // Cross
+                ctx.fillRect(c - 4, 0, 8, s);
+                ctx.fillRect(0, s/2 - 4, s, 8);
+            }}
+        ];
+
+        function initGrid() {
+            state.gridSize = Math.min(3 + Math.floor(state.level / 3), 7);
+            state.cells = [];
+            state.isWon = false;
+            
+            for (let y = 0; y < state.gridSize; y++) {
+                for (let x = 0; x < state.gridSize; x++) {
+                    const shapeIndex = Math.floor(Math.random() * SHAPES.length);
+                    const rotation = Math.floor(Math.random() * 4);
+                    state.cells.push({
+                        x, y, 
+                        shapeIndex, 
+                        rotation, 
+                        connected: false
+                    });
+                }
+            }
+            
+            // Scramble ensuring it's not solved
+            state.cells.forEach(c => c.rotation = Math.floor(Math.random() * 4));
+            checkLogic();
+        }
+
+        function rotateMask(mask, times) {
+            let m = mask;
+            for(let i=0; i<times; i++) {
+                let next = 0;
+                if (m & 1) next |= 2;
+                if (m & 2) next |= 4;
+                if (m & 4) next |= 8;
+                if (m & 8) next |= 1;
+                m = next;
+            }
+            return m;
+        }
+
+        function checkLogic() {
+            let allCorrect = true;
+            
+            for (let y = 0; y < state.gridSize; y++) {
+                for (let x = 0; x < state.gridSize; x++) {
+                    const cell = state.cells[y * state.gridSize + x];
+                    const mask = rotateMask(SHAPES[cell.shapeIndex].mask, cell.rotation);
+                    
+                    // Check all 4 directions for consistency
+                    const directions = [
+                        { dx: 0, dy: -1, bit: 1, opp: 4 }, // North
+                        { dx: 1, dy: 0, bit: 2, opp: 8 },  // East
+                        { dx: 0, dy: 1, bit: 4, opp: 1 },  // South
+                        { dx: -1, dy: 0, bit: 8, opp: 2 }  // West
+                    ];
+
+                    for (const d of directions) {
+                        const nx = x + d.dx, ny = y + d.dy;
+                        const hasExit = (mask & d.bit);
+                        
+                        if (nx < 0 || nx >= state.gridSize || ny < 0 || ny >= state.gridSize) {
+                            if (hasExit) { allCorrect = false; break; }
+                        } else {
+                            const neighbor = state.cells[ny * state.gridSize + nx];
+                            const nMask = rotateMask(SHAPES[neighbor.shapeIndex].mask, neighbor.rotation);
+                            const neighborHasExit = (nMask & d.opp);
+                            if (!!hasExit !== !!neighborHasExit) { allCorrect = false; break; }
+                        }
+                    }
+                    if (!allCorrect) break;
+                }
+                if (!allCorrect) break;
+            }
+
+            if (allCorrect) {
+                state.isWon = true;
+                document.getElementById('game-over').classList.remove('hidden');
+                if (state.level > state.best) {
+                    state.best = state.level;
+                    localStorage.setItem('fun_arcade_highscore_' + slug, state.best);
+                    document.getElementById('best-val').innerText = state.best;
+                }
+            }
+        }
+
+        function resize() {
+            const size = Math.min(window.innerWidth, window.innerHeight - 100);
+            canvas.width = size;
+            canvas.height = size;
+            state.cellSize = (size - state.padding * 2) / state.gridSize;
+            render();
+        }
+
+        function render() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            state.cells.forEach(cell => {
+                const x = state.padding + cell.x * state.cellSize;
+                const y = state.padding + cell.y * state.cellSize;
+                const center = state.cellSize / 2;
+
+                ctx.save();
+                ctx.translate(x, y);
+                
+                // Tile BG
+                ctx.strokeStyle = "rgba(255,255,255,0.05)";
+                ctx.strokeRect(2, 2, state.cellSize - 4, state.cellSize - 4);
+
+                // Rotation
+                ctx.translate(center, center);
+                ctx.rotate(cell.rotation * Math.PI / 2);
+                ctx.translate(-center, -center);
+                
+                // Glow effect if won
+                ctx.fillStyle = state.isWon ? "#4ADE80" : "#475569";
+                if (state.isWon) {
+                    ctx.shadowBlur = 15;
+                    ctx.shadowColor = "#4ADE80";
+                }
+                
+                SHAPES[cell.shapeIndex].draw(center, state.cellSize);
+                
+                ctx.restore();
+            });
+        }
+
+        canvas.addEventListener('mousedown', handleClick);
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            handleClick(e.touches[0]);
+        });
+
+        function handleClick(e) {
+            if (state.isWon) return;
+            const rect = canvas.getBoundingClientRect();
+            const mx = e.clientX - rect.left - state.padding;
+            const my = e.clientY - rect.top - state.padding;
+            
+            const gx = Math.floor(mx / state.cellSize);
+            const gy = Math.floor(my / state.cellSize);
+
+            if (gx >= 0 && gx < state.gridSize && gy >= 0 && gy < state.gridSize) {
+                const cell = state.cells[gy * state.gridSize + gx];
+                cell.rotation = (cell.rotation + 1) % 4;
+                playTone(200 + (gx + gy) * 50);
+                checkLogic();
+                render();
+            }
+        }
+
+        function startGame() {
+            if (state.isWon) state.level++;
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('game-over').classList.add('hidden');
+            document.getElementById('level-val').innerText = state.level;
+            document.getElementById('best-val').innerText = state.best;
+            initGrid();
+            resize();
+        }
+
+        function toggleAbout() {
+            document.getElementById('about-screen').classList.toggle('hidden');
+        }
+
+        // Simple Web Audio Synth
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playTone(freq) {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.2);
+        }
+
+        window.addEventListener('resize', resize);
+        window.onload = () => {
+            document.getElementById('best-val').innerText = state.best;
+            resize();
+        };
+    </script>
+</body>
+</html>
