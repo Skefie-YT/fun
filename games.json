@@ -894,5 +894,13 @@
     "category": "Physics",
     "accent": "#F59E0B",
     "addedAt": "2026-11-26T22:49:10Z"
+  },
+  {
+    "slug": "ion-ignite",
+    "title": "Ion Ignite",
+    "description": "Trigger explosive chain reactions by matching colored ions and clearing the grid before it overloads!",
+    "category": "Puzzle",
+    "accent": "#E85D04",
+    "addedAt": "2026-11-26T23:48:28Z"
   }
 ]
