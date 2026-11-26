@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Swing Star Surge</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #10B981;
+            --bg: #0a0a0a;
+            --surface: #1a1a1a;
+            --text: #ffffff;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Outfit', sans-serif;
+            overflow: hidden;
+            touch-action: none;
+            height: 100dvh;
+        }
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+        }
+        canvas {
+            flex-grow: 1;
+            display: block;
+            touch-action: none;
+        }
+        .hud {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 10;
+            pointer-events: none;
+        }
+        .hud-left { display: flex; gap: 15px; pointer-events: auto; }
+        .hud-right { text-align: right; pointer-events: auto; }
+        .back-btn, .btn-icon {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            text-decoration: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .back-btn:hover, .btn-icon:hover { background: var(--accent); }
+        .score-box { font-size: 18px; font-weight: 700; color: var(--accent); }
+        .best-box { font-size: 12px; opacity: 0.7; }
+
+        .overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            text-align: center;
+            padding: 20px;
+        }
+        .hidden { display: none !important; }
+        h1 { font-size: 3rem; color: var(--accent); margin-bottom: 10px; text-shadow: 0 0 20px rgba(16, 185, 129, 0.5); }
+        p { max-width: 400px; line-height: 1.5; margin-bottom: 25px; opacity: 0.9; }
+        .start-btn {
+            background: var(--accent);
+            border: none;
+            color: white;
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            font-weight: 700;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+        .start-btn:active { transform: scale(0.95); }
+
+        .controls-hint {
+            position: absolute;
+            bottom: 30px;
+            font-size: 14px;
+            opacity: 0.6;
+            display: flex;
+            gap: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div class="hud">
+            <div class="hud-left">
+                <a href="../../" class="back-btn">Back</a>
+                <button class="btn-icon" id="how-to-btn">?</button>
+            </div>
+            <div class="hud-right">
+                <div class="score-box">SCORE: <span id="score-val">0</span></div>
+                <div class="best-box">BEST: <span id="best-val">0</span></div>
+            </div>
+        </div>
+
+        <canvas id="gameCanvas"></canvas>
+
+        <div id="start-overlay" class="overlay">
+            <h1>Swing Star Surge</h1>
+            <p>Latch onto glowing stars, build centrifugal force, and launch yourself through space. Don't fall into the abyss!</p>
+            <button class="start-btn" id="start-btn">START SURGE</button>
+            <div class="controls-hint">
+                <span>HOLD/CLICK: Grapple Star</span>
+                <span>RELEASE: Slingshot</span>
+            </div>
+        </div>
+
+        <div id="gameover-overlay" class="overlay hidden">
+            <h1 style="color: #ef4444;">SYSTEM FAILURE</h1>
+            <p id="final-score-text">Your journey ended at 0 meters.</p>
+            <button class="start-btn" id="restart-btn">REBOOT</button>
+        </div>
+
+        <div id="how-to-overlay" class="overlay hidden">
+            <h1 style="font-size: 2rem;">How to Play</h1>
+            <p>1. Tap and hold to fire a grapple at the nearest star.<br>2. While grappling, you will swing in a circle.<br>3. Release at the right moment to launch forward.<br>4. Travel as far as you can and collect gems!</p>
+            <button class="start-btn" id="close-how-to">GOT IT</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const slug = 'swing-star-surge';
+
+        // Game Constants
+        const GRAVITY = 0.15;
+        const DRAG = 0.995;
+        const GRAPPLE_STRENGTH = 0.12;
+        const VIEW_PADDING = 100;
+
+        // State
+        let score = 0;
+        let bestScore = localStorage.getItem('fun_arcade_highscore_' + slug) || 0;
+        let gameState = 'START'; // START, PLAYING, GAMEOVER
+        let cameraY = 0;
+        let player = { x: 0, y: 0, vx: 0, vy: 0, radius: 10, attachedTo: null, angle: 0, dist: 0 };
+        let anchors = [];
+        let gems = [];
+        let particles = [];
+        let inputDown = false;
+
+        document.getElementById('best-val').textContent = bestScore;
+
+        function init() {
+            resize();
+            resetGame();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function resetGame() {
+            score = 0;
+            updateScoreDisplay();
+            player = { 
+                x: canvas.width / 2, 
+                y: canvas.height - 150, 
+                vx: 0, 
+                vy: -5, 
+                radius: 12, 
+                attachedTo: null, 
+                angle: 0, 
+                dist: 0 
+            };
+            cameraY = player.y - canvas.height * 0.7;
+            anchors = [];
+            gems = [];
+            // Initial anchors
+            for(let i=0; i<10; i++) {
+                spawnAnchor(canvas.height - 200 - (i * 250));
+            }
+        }
+
+        function spawnAnchor(yPos) {
+            anchors.push({
+                x: 50 + Math.random() * (canvas.width - 100),
+                y: yPos,
+                radius: 15 + Math.random() * 10,
+                rot: Math.random() * Math.PI * 2,
+                rotSpeed: (Math.random() - 0.5) * 0.05
+            });
+            if (Math.random() > 0.4) {
+                gems.push({
+                    x: 50 + Math.random() * (canvas.width - 100),
+                    y: yPos - 125,
+                    collected: false,
+                    size: 8
+                });
+            }
+        }
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        window.addEventListener('resize', resize);
+
+        function handleStart() {
+            inputDown = true;
+            if (gameState === 'PLAYING' && !player.attachedTo) {
+                // Find nearest anchor above player within range
+                let nearest = null;
+                let minDist = 300;
+                anchors.forEach(a => {
+                    let d = Math.hypot(player.x - a.x, player.y - a.y);
+                    if (d < minDist) {
+                        minDist = d;
+                        nearest = a;
+                    }
+                });
+
+                if (nearest) {
+                    player.attachedTo = nearest;
+                    player.dist = minDist;
+                    player.angle = Math.atan2(player.y - nearest.y, player.x - nearest.x);
+                    createParticles(player.x, player.y, '#fff', 5);
+                }
+            }
+        }
+
+        function handleEnd() {
+            inputDown = false;
+            player.attachedTo = null;
+        }
+
+        canvas.addEventListener('mousedown', handleStart);
+        window.addEventListener('mouseup', handleEnd);
+        canvas.addEventListener('touchstart', (e) => { e.preventDefault(); handleStart(); }, {passive: false});
+        window.addEventListener('touchend', handleEnd);
+
+        function update() {
+            if (gameState !== 'PLAYING') return;
+
+            if (player.attachedTo) {
+                // Physics while swinging
+                let a = player.attachedTo;
+                // Calculate angular velocity based on tangential movement
+                let speed = Math.hypot(player.vx, player.vy);
+                // Keep distance consistent
+                player.angle += (player.vx * Math.cos(player.angle + Math.PI/2) + player.vy * Math.sin(player.angle + Math.PI/2)) / player.dist;
+                
+                player.x = a.x + Math.cos(player.angle) * player.dist;
+                player.y = a.y + Math.sin(player.angle) * player.dist;
+
+                // Tangential velocity update
+                player.vx = -Math.sin(player.angle) * speed;
+                player.vy = Math.cos(player.angle) * speed;
+                
+                // Centripetal tension simulation
+                player.vx += (a.x - player.x) * GRAPPLE_STRENGTH * 0.1;
+                player.vy += (a.y - player.y) * GRAPPLE_STRENGTH * 0.1;
+            } else {
+                // Free fall
+                player.vy += GRAVITY;
+                player.vx *= DRAG;
+                player.vy *= DRAG;
+                player.x += player.vx;
+                player.y += player.vy;
+            }
+
+            // Bounds
+            if (player.x < 0 || player.x > canvas.width) player.vx *= -0.8;
+
+            // Camera following
+            let targetCameraY = player.y - canvas.height * 0.6;
+            cameraY += (targetCameraY - cameraY) * 0.1;
+
+            // Score tracking
+            let currentScore = Math.floor(Math.abs(Math.min(0, player.y - (canvas.height - 150))) / 10);
+            if (currentScore > score) {
+                score = currentScore;
+                updateScoreDisplay();
+            }
+
+            // Cleanup & Spawn
+            anchors = anchors.filter(a => a.y < cameraY + canvas.height + 200);
+            gems = gems.filter(g => !g.collected && g.y < cameraY + canvas.height + 200);
+            
+            const highestAnchorY = anchors.reduce((min, a) => Math.min(min, a.y), 1000000);
+            if (highestAnchorY > cameraY - 400) {
+                spawnAnchor(highestAnchorY - 250);
+            }
+
+            // Gem Collision
+            gems.forEach(g => {
+                if (!g.collected && Math.hypot(player.x - g.x, player.y - g.y) < 30) {
+                    g.collected = true;
+                    score += 50;
+                    updateScoreDisplay();
+                    createParticles(g.x, g.y, '#FFD700', 10);
+                }
+            });
+
+            // Particles
+            particles.forEach(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.02;
+            });
+            particles = particles.filter(p => p.life > 0);
+
+            // Game Over Check
+            if (player.y > cameraY + canvas.height + 100) {
+                endGame();
+            }
+        }
+
+        function createParticles(x, y, color, count) {
+            for(let i=0; i<count; i++) {
+                particles.push({
+                    x, y, 
+                    vx: (Math.random() - 0.5) * 6, 
+                    vy: (Math.random() - 0.5) * 6, 
+                    life: 1, 
+                    color
+                });
+            }
+        }
+
+        function updateScoreDisplay() {
+            document.getElementById('score-val').textContent = score;
+        }
+
+        function endGame() {
+            gameState = 'GAMEOVER';
+            document.getElementById('gameover-overlay').classList.remove('hidden');
+            document.getElementById('final-score-text').textContent = `Your systems failed at ${score} meters.`;
+            if (score > bestScore) {
+                bestScore = score;
+                localStorage.setItem('fun_arcade_highscore_' + slug, bestScore);
+                document.getElementById('best-val').textContent = bestScore;
+            }
+        }
+
+        function draw() {
+            ctx.fillStyle = '#0a0a0a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.save();
+            ctx.translate(0, -cameraY);
+
+            // Draw Anchors
+            anchors.forEach(a => {
+                ctx.beginPath();
+                ctx.arc(a.x, a.y, a.radius, 0, Math.PI * 2);
+                ctx.strokeStyle = '#10B981';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+                
+                ctx.beginPath();
+                ctx.arc(a.x, a.y, a.radius * 0.4, 0, Math.PI * 2);
+                ctx.fillStyle = '#10B981';
+                ctx.fill();
+                
+                // Inner glow
+                const g = ctx.createRadialGradient(a.x, a.y, 0, a.x, a.y, a.radius * 2);
+                g.addColorStop(0, 'rgba(16, 185, 129, 0.2)');
+                g.addColorStop(1, 'rgba(16, 185, 129, 0)');
+                ctx.fillStyle = g;
+                ctx.beginPath();
+                ctx.arc(a.x, a.y, a.radius * 2, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Draw Gems
+            gems.forEach(g => {
+                ctx.fillStyle = '#FFD700';
+                ctx.beginPath();
+                ctx.moveTo(g.x, g.y - g.size);
+                ctx.lineTo(g.x + g.size, g.y);
+                ctx.lineTo(g.x, g.y + g.size);
+                ctx.lineTo(g.x - g.size, g.y);
+                ctx.fill();
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = '#FFD700';
+            });
+            ctx.shadowBlur = 0;
+
+            // Draw Grapple Line
+            if (player.attachedTo) {
+                ctx.beginPath();
+                ctx.moveTo(player.x, player.y);
+                ctx.lineTo(player.attachedTo.x, player.attachedTo.y);
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+
+            // Draw Particles
+            particles.forEach(p => {
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.fillRect(p.x, p.y, 3, 3);
+            });
+            ctx.globalAlpha = 1.0;
+
+            // Draw Player
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+            ctx.fillStyle = '#fff';
+            ctx.fill();
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#fff';
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            ctx.restore();
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // UI Logic
+        document.getElementById('start-btn').onclick = () => {
+            document.getElementById('start-overlay').classList.add('hidden');
+            gameState = 'PLAYING';
+            resetGame();
+        };
+
+        document.getElementById('restart-btn').onclick = () => {
+            document.getElementById('gameover-overlay').classList.add('hidden');
+            gameState = 'PLAYING';
+            resetGame();
+        };
+
+        document.getElementById('how-to-btn').onclick = () => {
+            document.getElementById('how-to-overlay').classList.remove('hidden');
+        };
+
+        document.getElementById('close-how-to').onclick = () => {
+            document.getElementById('how-to-overlay').classList.add('hidden');
+        };
+
+        init();
+    </script>
+</body>
+</html>
