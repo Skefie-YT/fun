@@ -870,5 +870,13 @@
     "category": "Puzzle",
     "accent": "#EF4444",
     "addedAt": "2026-11-26T19:58:36Z"
+  },
+  {
+    "slug": "crimson-drift",
+    "title": "Crimson Drift",
+    "description": "Steer through relentless homing darts and plasma sweeps, graze hazards for combos, and dash to survive!",
+    "category": "Reflex",
+    "accent": "#EF4444",
+    "addedAt": "2026-11-26T20:49:24Z"
   }
 ]
