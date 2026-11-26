@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Ricochet Ring Rush</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #0EA5E9;
+            --bg: #0f172a;
+            --fg: #f8fafc;
+        }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            background-color: var(--bg);
+            color: var(--fg);
+            font-family: 'Outfit', sans-serif;
+            overflow: hidden;
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+        }
+        #ui-top {
+            padding: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(15, 23, 42, 0.8);
+            z-index: 10;
+        }
+        .back-btn {
+            color: var(--fg);
+            text-decoration: none;
+            font-weight: bold;
+            padding: 0.5rem 1rem;
+            border: 2px solid var(--accent);
+            border-radius: 8px;
+            transition: 0.2s;
+        }
+        .back-btn:hover { background: var(--accent); }
+        #scores { text-align: center; }
+        .score-val { color: var(--accent); font-weight: 700; font-size: 1.2rem; }
+        #help-btn {
+            background: none;
+            border: 2px solid #64748b;
+            color: #64748b;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        #game-container {
+            flex-grow: 1;
+            position: relative;
+            touch-action: none;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(15, 23, 42, 0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 2rem;
+            z-index: 20;
+        }
+        .hidden { display: none !important; }
+        h1 { font-size: 2.5rem; color: var(--accent); margin-bottom: 1rem; text-shadow: 0 0 20px rgba(14, 165, 233, 0.4); }
+        p { margin-bottom: 2rem; max-width: 400px; line-height: 1.6; color: #cbd5e1; }
+        .btn-play {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 1rem 2.5rem;
+            font-size: 1.25rem;
+            font-weight: bold;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+        .btn-play:active { transform: scale(0.95); }
+        .controls-hint {
+            position: absolute;
+            bottom: 2rem;
+            font-size: 0.8rem;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="ui-top">
+    <a href="../../" class="back-btn">Back</a>
+    <div id="scores">
+        <div>SCORE <span id="score-display" class="score-val">0</span></div>
+        <div style="font-size: 0.7rem; color: #64748b;">BEST <span id="best-display">0</span></div>
+    </div>
+    <button id="help-btn">?</button>
+</div>
+
+<div id="game-container">
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- Screens -->
+    <div id="start-screen" class="overlay">
+        <h1>RICOCHET RING</h1>
+        <p>Pull back and release to sling your energy orb. Bounce off walls to shatter the spinning rings. Don't run out of energy!</p>
+        <button class="btn-play" onclick="startGame()">LAUNCH</button>
+        <div class="controls-hint">Drag to Aim &bull; Release to Shoot</div>
+    </div>
+
+    <div id="help-screen" class="overlay hidden">
+        <h2>HOW TO PLAY</h2>
+        <p style="text-align: left;">
+            1. <b>Sling</b> your orb into the spinning rings.<br>
+            2. <b>Bounce</b> off walls to keep your speed.<br>
+            3. <b>Shatter</b> rings to gain score and energy.<br>
+            4. <b>Game Over</b> if your orb stops or falls off-screen.
+        </p>
+        <button class="btn-play" onclick="toggleHelp()">CLOSE</button>
+    </div>
+
+    <div id="game-over-screen" class="overlay hidden">
+        <h2 style="color: #ef4444;">SYSTEM DEPLETED</h2>
+        <div style="margin: 1.5rem 0;">
+            <div style="font-size: 1rem;">FINAL SCORE</div>
+            <div id="final-score" style="font-size: 3rem; font-weight: bold; color: var(--accent);">0</div>
+        </div>
+        <button class="btn-play" onclick="startGame()">REBOOT</button>
+    </div>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const SLUG = 'ricochet-ring-rush';
+
+// Game State
+let score = 0;
+let bestScore = localStorage.getItem('fun_arcade_highscore_' + SLUG) || 0;
+let gameState = 'START'; // START, PLAYING, GAMEOVER
+let width, height;
+let player = { x: 0, y: 0, vx: 0, vy: 0, r: 10, pulling: false, startX: 0, startY: 0 };
+let targets = [];
+let particles = [];
+let trails = [];
+let energy = 100;
+
+// Config
+const FRICTION = 0.985;
+const SLING_SENSITIVITY = 0.12;
+const MAX_SPEED = 18;
+
+document.getElementById('best-display').textContent = bestScore;
+
+function resize() {
+    width = canvas.width = canvas.clientWidth;
+    height = canvas.height = canvas.clientHeight;
+    if (gameState === 'START') resetPlayer();
+}
+
+window.addEventListener('resize', resize);
+resize();
+
+function resetPlayer() {
+    player.x = width / 2;
+    player.y = height - 100;
+    player.vx = 0;
+    player.vy = 0;
+    player.pulling = false;
+    energy = 100;
+}
+
+function spawnTarget() {
+    const margin = 50;
+    targets.push({
+        x: margin + Math.random() * (width - margin * 2),
+        y: margin + Math.random() * (height * 0.6),
+        r: 25 + Math.random() * 20,
+        rot: 0,
+        rotVel: (Math.random() - 0.5) * 0.1,
+        hue: Math.random() * 360
+    });
+}
+
+// Controls
+const getPos = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const t = e.touches ? e.touches[0] : e;
+    return { x: t.clientX - rect.left, y: t.clientY - rect.top };
+};
+
+canvas.addEventListener('mousedown', (e) => {
+    if (gameState !== 'PLAYING' || Math.abs(player.vx) > 0.5 || Math.abs(player.vy) > 0.5) return;
+    player.pulling = true;
+    const pos = getPos(e);
+    player.startX = pos.x;
+    player.startY = pos.y;
+});
+
+window.addEventListener('mousemove', (e) => {
+    if (!player.pulling) return;
+    const pos = getPos(e);
+    player.curX = pos.x;
+    player.curY = pos.y;
+});
+
+window.addEventListener('mouseup', (e) => {
+    if (!player.pulling) return;
+    player.pulling = false;
+    const pos = getPos(e);
+    const dx = player.startX - pos.x;
+    const dy = player.startY - pos.y;
+    player.vx = Math.min(dx * SLING_SENSITIVITY, MAX_SPEED);
+    player.vy = Math.min(dy * SLING_SENSITIVITY, MAX_SPEED);
+    energy -= 5;
+});
+
+// Touch Support
+canvas.addEventListener('touchstart', (e) => { e.preventDefault(); canvas.dispatchEvent(new MouseEvent('mousedown', {clientX: e.touches[0].clientX, clientY: e.touches[0].clientY})); });
+window.addEventListener('touchmove', (e) => { e.preventDefault(); window.dispatchEvent(new MouseEvent('mousemove', {clientX: e.touches[0].clientX, clientY: e.touches[0].clientY})); });
+window.addEventListener('touchend', (e) => { window.dispatchEvent(new MouseEvent('mouseup', {})); });
+
+function startGame() {
+    score = 0;
+    energy = 100;
+    targets = [];
+    particles = [];
+    trails = [];
+    resetPlayer();
+    for(let i=0; i<3; i++) spawnTarget();
+    gameState = 'PLAYING';
+    document.getElementById('start-screen').classList.add('hidden');
+    document.getElementById('game-over-screen').classList.add('hidden');
+    updateUI();
+}
+
+function gameOver() {
+    gameState = 'GAMEOVER';
+    document.getElementById('game-over-screen').classList.remove('hidden');
+    document.getElementById('final-score').textContent = score;
+    if (score > bestScore) {
+        bestScore = score;
+        localStorage.setItem('fun_arcade_highscore_' + SLUG, bestScore);
+        document.getElementById('best-display').textContent = bestScore;
+    }
+}
+
+function toggleHelp() {
+    document.getElementById('help-screen').classList.toggle('hidden');
+}
+document.getElementById('help-btn').onclick = toggleHelp;
+
+function updateUI() {
+    document.getElementById('score-display').textContent = score;
+}
+
+function createExplosion(x, y, color) {
+    for (let i = 0; i < 12; i++) {
+        particles.push({
+            x, y,
+            vx: (Math.random() - 0.5) * 8,
+            vy: (Math.random() - 0.5) * 8,
+            life: 1.0,
+            color
+        });
+    }
+}
+
+function update() {
+    if (gameState !== 'PLAYING') return;
+
+    // Physics
+    player.x += player.vx;
+    player.y += player.vy;
+    player.vx *= FRICTION;
+    player.vy *= FRICTION;
+
+    // Wall Bounce
+    if (player.x < player.r || player.x > width - player.r) {
+        player.vx *= -0.9;
+        player.x = player.x < player.r ? player.r : width - player.r;
+    }
+    if (player.y < player.r) {
+        player.vy *= -0.9;
+        player.y = player.r;
+    }
+
+    // Out of bounds bottom
+    if (player.y > height + 50) {
+        gameOver();
+    }
+
+    // Stop detection
+    if (Math.abs(player.vx) < 0.1 && Math.abs(player.vy) < 0.1) {
+        player.vx = 0;
+        player.vy = 0;
+        if (energy <= 0) gameOver();
+    }
+
+    // Trail
+    if (Math.abs(player.vx) > 1) {
+        trails.push({ x: player.x, y: player.y, life: 1.0 });
+    }
+
+    // Collisions
+    targets.forEach((t, index) => {
+        const dx = player.x - t.x;
+        const dy = player.y - t.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist < t.r + player.r) {
+            // Hit!
+            createExplosion(t.x, t.y, `hsl(${t.hue}, 80%, 60%)`);
+            targets.splice(index, 1);
+            score += 10 + Math.floor(Math.abs(player.vx + player.vy));
+            energy = Math.min(100, energy + 15);
+            spawnTarget();
+            updateUI();
+            // Bounce off target slightly
+            player.vx *= 1.2;
+            player.vy *= 1.2;
+        }
+    });
+
+    // Particles
+    particles.forEach((p, i) => {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life -= 0.02;
+        if (p.life <= 0) particles.splice(i, 1);
+    });
+
+    trails.forEach((t, i) => {
+        t.life -= 0.05;
+        if (t.life <= 0) trails.splice(i, 1);
+    });
+
+    // Target animation
+    targets.forEach(t => t.rot += t.rotVel);
+}
+
+function draw() {
+    ctx.clearRect(0, 0, width, height);
+
+    // Draw Trails
+    trails.forEach(t => {
+        ctx.beginPath();
+        ctx.arc(t.x, t.y, player.r * t.life, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(14, 165, 233, ${t.life * 0.3})`;
+        ctx.fill();
+    });
+
+    // Draw Targets
+    targets.forEach(t => {
+        ctx.save();
+        ctx.translate(t.x, t.y);
+        ctx.rotate(t.rot);
+        ctx.strokeStyle = `hsl(${t.hue}, 80%, 60%)`;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(0, 0, t.r, 0, Math.PI * 1.5);
+        ctx.stroke();
+        // Pulsing core
+        ctx.globalAlpha = 0.3;
+        ctx.fillStyle = `hsl(${t.hue}, 80%, 60%)`;
+        ctx.beginPath();
+        ctx.arc(0, 0, t.r * 0.4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    });
+
+    // Draw Particles
+    particles.forEach(p => {
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = p.life;
+        ctx.fillRect(p.x, p.y, 4, 4);
+    });
+    ctx.globalAlpha = 1.0;
+
+    // Draw Sling line
+    if (player.pulling) {
+        ctx.beginPath();
+        ctx.moveTo(player.x, player.y);
+        ctx.lineTo(player.x - (player.curX - player.startX), player.y - (player.curY - player.startY));
+        ctx.strokeStyle = "rgba(255,255,255,0.4)";
+        ctx.setLineDash([5, 5]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+    }
+
+    // Draw Player
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, player.r, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff';
+    ctx.shadowBlur = 15;
+    ctx.shadowColor = '#0EA5E9';
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Energy Bar
+    if (gameState === 'PLAYING') {
+        ctx.fillStyle = '#334155';
+        ctx.fillRect(width / 2 - 50, height - 20, 100, 6);
+        ctx.fillStyle = energy > 20 ? '#0EA5E9' : '#ef4444';
+        ctx.fillRect(width / 2 - 50, height - 20, energy, 6);
+    }
+}
+
+function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+</body>
+</html>

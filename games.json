@@ -790,5 +790,13 @@
     "category": "Puzzle",
     "accent": "#EF4444",
     "addedAt": "2026-11-26T07:08:25Z"
+  },
+  {
+    "slug": "ricochet-ring-rush",
+    "title": "Ricochet Ring Rush",
+    "description": "Fling your energy orb to shatter spinning target rings using wall bounces to keep your combo alive!",
+    "category": "Physics",
+    "accent": "#0EA5E9",
+    "addedAt": "2026-11-26T08:57:13Z"
   }
 ]
