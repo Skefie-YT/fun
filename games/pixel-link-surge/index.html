@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pixel Link Surge</title>
+    <style>
+        :root {
+            --accent: #10B981;
+            --bg: #0f172a;
+            --text: #f8fafc;
+        }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background: var(--bg); font-family: 'Segoe UI', Tahoma, sans-serif;
+            color: var(--text); overflow: hidden; display: flex; flex-direction: column;
+        }
+        #game-header {
+            height: 60px; display: flex; align-items: center; justify-content: space-between;
+            padding: 0 20px; background: rgba(0,0,0,0.3); z-index: 10;
+        }
+        .back-btn {
+            color: var(--text); text-decoration: none; border: 1px solid var(--text);
+            padding: 4px 12px; border-radius: 4px; font-size: 14px;
+        }
+        #hud { display: flex; gap: 20px; font-weight: bold; }
+        #how-to-btn { cursor: pointer; background: var(--accent); border: none; color: white; width: 28px; height: 28px; border-radius: 50%; font-weight: bold; }
+        #game-container {
+            flex: 1; position: relative; display: flex; align-items: center; justify-content: center;
+        }
+        canvas { background: #1e293b; box-shadow: 0 0 40px rgba(0,0,0,0.5); cursor: pointer; max-width: 95vw; max-height: 80vh; }
+        .overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.9); display: flex; flex-direction: column;
+            align-items: center; justify-content: center; text-align: center; z-index: 20; padding: 20px;
+        }
+        .hidden { display: none !important; }
+        h1 { color: var(--accent); margin: 0 0 10px; }
+        .btn { 
+            background: var(--accent); color: white; border: none; padding: 12px 30px; 
+            font-size: 18px; border-radius: 8px; cursor: pointer; margin-top: 20px;
+        }
+        .btn:hover { filter: brightness(1.1); }
+        .stats-row { margin: 10px 0; font-size: 18px; }
+    </style>
+</head>
+<body>
+
+    <div id="game-header">
+        <a href="../../" class="back-btn">Back</a>
+        <div id="hud">
+            <span>Score: <span id="score-val">0</span></span>
+            <span>Best: <span id="best-val">0</span></span>
+        </div>
+        <button id="how-to-btn">?</button>
+    </div>
+
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+
+        <div id="start-screen" class="overlay">
+            <h1>Pixel Link Surge</h1>
+            <p>Connect same-colored adjacent pixels.<br>Bigger chains = Massive Scores!</p>
+            <p style="font-size: 12px; opacity: 0.7;">Don't let the grid lock up.</p>
+            <button class="btn" onclick="startGame()">Start Surge</button>
+        </div>
+
+        <div id="how-to-overlay" class="overlay hidden">
+            <h1>How To Play</h1>
+            <p>1. Tap a pixel to select it.</p>
+            <p>2. Tap adjacent pixels of the same color to grow your chain.</p>
+            <p>3. Tap the chain again to detonate it!</p>
+            <p>4. New pixels fall from above. Game ends if no moves remain.</p>
+            <button class="btn" onclick="toggleHelp()">Got it</button>
+        </div>
+
+        <div id="game-over" class="overlay hidden">
+            <h1 id="over-title">System Locked!</h1>
+            <div class="stats-row">Score: <span id="final-score">0</span></div>
+            <button class="btn" onclick="startGame()">Play Again</button>
+        </div>
+    </div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const slug = 'pixel-link-surge';
+    
+    const COLS = 7;
+    const ROWS = 9;
+    const TILE_SIZE = 45;
+    const COLORS = ['#10B981', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6'];
+    
+    let grid = [];
+    let currentChain = [];
+    let score = 0;
+    let particles = [];
+    let isPlaying = false;
+
+    function init() {
+        resize();
+        window.addEventListener('resize', resize);
+        document.getElementById('how-to-btn').onclick = toggleHelp;
+        loadBest();
+        
+        canvas.addEventListener('mousedown', handlePointer);
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            handlePointer(e.touches[0]);
+        }, {passive: false});
+    }
+
+    function resize() {
+        const container = document.getElementById('game-container');
+        const w = container.clientWidth;
+        const h = container.clientHeight;
+        const size = Math.min(w / (COLS + 1), h / (ROWS + 1));
+        canvas.width = COLS * size;
+        canvas.height = ROWS * size;
+    }
+
+    function loadBest() {
+        const best = localStorage.getItem('fun_arcade_highscore_' + slug) || 0;
+        document.getElementById('best-val').innerText = best;
+    }
+
+    function saveBest() {
+        const currentBest = localStorage.getItem('fun_arcade_highscore_' + slug) || 0;
+        if (score > currentBest) {
+            localStorage.setItem('fun_arcade_highscore_' + slug, score);
+            loadBest();
+        }
+    }
+
+    function startGame() {
+        document.getElementById('start-screen').classList.add('hidden');
+        document.getElementById('game-over').classList.add('hidden');
+        score = 0;
+        updateScore();
+        grid = [];
+        for (let r = 0; r < ROWS; r++) {
+            grid[r] = [];
+            for (let c = 0; c < COLS; c++) {
+                grid[r][c] = { 
+                    color: COLORS[Math.floor(Math.random() * COLORS.length)],
+                    y: r * (canvas.height / ROWS),
+                    targetY: r * (canvas.height / ROWS)
+                };
+            }
+        }
+        currentChain = [];
+        isPlaying = true;
+        requestAnimationFrame(gameLoop);
+    }
+
+    function handlePointer(e) {
+        if (!isPlaying) return;
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        const col = Math.floor(x / (canvas.width / COLS));
+        const row = Math.floor(y / (canvas.height / ROWS));
+
+        if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return;
+
+        const tile = {r: row, c: col};
+        const inChainIdx = currentChain.findIndex(t => t.r === row && t.c === col);
+
+        if (inChainIdx !== -1) {
+            if (currentChain.length >= 3) {
+                detonateChain();
+            } else {
+                currentChain = [];
+            }
+        } else {
+            if (currentChain.length === 0) {
+                currentChain.push(tile);
+            } else {
+                const last = currentChain[currentChain.length - 1];
+                const isNeighbor = Math.abs(last.r - row) + Math.abs(last.c - col) === 1;
+                if (isNeighbor && grid[row][col].color === grid[last.r][last.c].color) {
+                    currentChain.push(tile);
+                } else {
+                    currentChain = [tile];
+                }
+            }
+        }
+    }
+
+    function detonateChain() {
+        const color = grid[currentChain[0].r][currentChain[0].c].color;
+        score += Math.floor(currentChain.length * 10 * (1 + currentChain.length * 0.1));
+        updateScore();
+        
+        currentChain.forEach(pos => {
+            createParticles(pos.c * (canvas.width/COLS) + (canvas.width/COLS/2), pos.r * (canvas.height/ROWS) + (canvas.height/ROWS/2), color);
+            grid[pos.r][pos.c] = null;
+        });
+
+        currentChain = [];
+        applyGravity();
+        if (isGameOver()) endGame();
+    }
+
+    function applyGravity() {
+        for (let c = 0; c < COLS; c++) {
+            let emptySpace = 0;
+            for (let r = ROWS - 1; r >= 0; r--) {
+                if (grid[r][c] === null) {
+                    emptySpace++;
+                } else if (emptySpace > 0) {
+                    grid[r + emptySpace][c] = grid[r][c];
+                    grid[r + emptySpace][c].targetY = (r + emptySpace) * (canvas.height / ROWS);
+                    grid[r][c] = null;
+                }
+            }
+            for (let r = 0; r < emptySpace; r++) {
+                grid[r][c] = {
+                    color: COLORS[Math.floor(Math.random() * COLORS.length)],
+                    y: -100 - (r * 50),
+                    targetY: r * (canvas.height / ROWS)
+                };
+            }
+        }
+    }
+
+    function isGameOver() {
+        for (let r = 0; r < ROWS; r++) {
+            for (let c = 0; c < COLS; c++) {
+                const color = grid[r][c].color;
+                const neighbors = [[0,1],[0,-1],[1,0],[-1,0]];
+                let matching = 0;
+                for (let [dr, dc] of neighbors) {
+                    let nr = r + dr, nc = c + dc;
+                    if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS && grid[nr][nc].color === color) {
+                        matching++;
+                    }
+                }
+                // If any block has a same-colored neighbor, moves exist (needs 3 for a pop, but we let them tap around)
+                if (matching >= 1) return false;
+            }
+        }
+        return true;
+    }
+
+    function createParticles(x, y, color) {
+        for (let i = 0; i < 8; i++) {
+            particles.push({
+                x, y, color,
+                vx: (Math.random() - 0.5) * 10,
+                vy: (Math.random() - 0.5) * 10,
+                life: 1.0
+            });
+        }
+    }
+
+    function updateScore() {
+        document.getElementById('score-val').innerText = score;
+    }
+
+    function toggleHelp() {
+        document.getElementById('how-to-overlay').classList.toggle('hidden');
+    }
+
+    function endGame() {
+        isPlaying = false;
+        saveBest();
+        document.getElementById('final-score').innerText = score;
+        document.getElementById('game-over').classList.remove('hidden');
+    }
+
+    function gameLoop() {
+        if (!isPlaying) return;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        const w = canvas.width / COLS;
+        const h = canvas.height / ROWS;
+
+        // Update & Draw Tiles
+        for (let r = 0; r < ROWS; r++) {
+            for (let c = 0; c < COLS; c++) {
+                const tile = grid[r][c];
+                if (!tile) continue;
+                
+                if (tile.y < tile.targetY) {
+                    tile.y += (tile.targetY - tile.y) * 0.2;
+                    if (Math.abs(tile.y - tile.targetY) < 1) tile.y = tile.targetY;
+                }
+
+                const isSelected = currentChain.some(t => t.r === r && t.c === c);
+                
+                ctx.fillStyle = tile.color;
+                ctx.globalAlpha = 1.0;
+                ctx.beginPath();
+                ctx.roundRect(c * w + 4, tile.y + 4, w - 8, h - 8, 4);
+                ctx.fill();
+
+                if (isSelected) {
+                    ctx.strokeStyle = '#fff';
+                    ctx.lineWidth = 4;
+                    ctx.stroke();
+                    // pulsing core
+                    ctx.fillStyle = '#fff';
+                    ctx.globalAlpha = Math.sin(Date.now() / 100) * 0.3 + 0.5;
+                    ctx.fill();
+                    ctx.globalAlpha = 1.0;
+                }
+            }
+        }
+
+        // Draw Chain Lines
+        if (currentChain.length > 1) {
+            ctx.beginPath();
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 3;
+            ctx.lineJoin = 'round';
+            currentChain.forEach((pos, i) => {
+                const x = pos.c * w + w/2;
+                const y = grid[pos.r][pos.c].y + h/2;
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+        }
+
+        // Particles
+        for (let i = particles.length - 1; i >= 0; i--) {
+            const p = particles[i];
+            p.x += p.vx;
+            p.y += p.vy;
+            p.vy += 0.2;
+            p.life -= 0.02;
+            if (p.life <= 0) {
+                particles.splice(i, 1);
+            } else {
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life;
+                ctx.fillRect(p.x, p.y, 6, 6);
+            }
+        }
+        ctx.globalAlpha = 1.0;
+
+        requestAnimationFrame(gameLoop);
+    }
+
+    init();
+</script>
+</body>
+</html>

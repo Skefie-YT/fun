@@ -838,5 +838,13 @@
     "category": "Puzzle",
     "accent": "#E85D04",
     "addedAt": "2026-11-26T14:52:31Z"
+  },
+  {
+    "slug": "pixel-link-surge",
+    "title": "Pixel Link Surge",
+    "description": "Tap to link adjacent same-colored pixels into explosive chains before the board fills up and triggers a system crash!",
+    "category": "Puzzle",
+    "accent": "#10B981",
+    "addedAt": "2026-11-26T15:54:29Z"
   }
 ]
