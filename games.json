@@ -822,5 +822,13 @@
     "category": "Reflex",
     "accent": "#EC4899",
     "addedAt": "2026-11-26T11:58:19Z"
+  },
+  {
+    "slug": "shard-sentry-defense",
+    "title": "Shard Sentry",
+    "description": "Rotate your perimeter guards to intercept and shatter incoming void shards before they reach the central heart.",
+    "category": "Reflex",
+    "accent": "#14B8A6",
+    "addedAt": "2026-11-26T13:09:16Z"
   }
 ]

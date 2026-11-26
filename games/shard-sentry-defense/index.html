@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Shard Sentry</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #14B8A6;
+            --bg: #0a0a0c;
+            --text: #ffffff;
+        }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Orbitron', sans-serif;
+            overflow: hidden;
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+        }
+        #ui-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+            pointer-events: auto;
+        }
+        .back-btn {
+            color: var(--text);
+            text-decoration: none;
+            font-size: 14px;
+            border: 1px solid var(--accent);
+            padding: 5px 12px;
+            border-radius: 4px;
+            transition: background 0.3s;
+        }
+        .back-btn:hover { background: rgba(20, 184, 166, 0.2); }
+        .scores {
+            text-align: center;
+            line-height: 1.2;
+        }
+        .help-btn {
+            background: none;
+            border: 1px solid var(--accent);
+            color: var(--accent);
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        #game-canvas {
+            flex: 1;
+            width: 100%;
+            display: block;
+            touch-action: none;
+        }
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 20px;
+            z-index: 100;
+            pointer-events: auto;
+        }
+        .hidden { display: none !important; }
+        h1 { color: var(--accent); margin-bottom: 10px; font-size: 2.5rem; }
+        p { max-width: 400px; margin-bottom: 20px; line-height: 1.6; }
+        .btn-main {
+            background: var(--accent);
+            color: #000;
+            border: none;
+            padding: 15px 40px;
+            font-family: inherit;
+            font-weight: bold;
+            font-size: 1.2rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .btn-main:active { transform: scale(0.95); }
+        .mute-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(255,255,255,0.1);
+            border: none;
+            color: white;
+            padding: 8px;
+            border-radius: 50%;
+            cursor: pointer;
+            pointer-events: auto;
+        }
+    </style>
+</head>
+<body>
+    <div id="ui-layer">
+        <div class="header">
+            <a href="../../" class="back-btn">Back</a>
+            <div class="scores">
+                <div id="cur-score">SCORE: 0</div>
+                <div id="best-score" style="font-size: 12px; color: var(--accent);">BEST: 0</div>
+            </div>
+            <button class="help-btn" onclick="toggleHelp()">?</button>
+        </div>
+    </div>
+
+    <canvas id="game-canvas"></canvas>
+
+    <div id="start-screen" class="overlay">
+        <h1>SHARD SENTRY</h1>
+        <p>Incoming void shards are targeting the core. Rotate your sentry guards to block them! Do not let them breach the center.</p>
+        <button class="btn-main" onclick="startGame()">INITIALIZE</button>
+        <div style="margin-top: 30px; font-size: 12px; opacity: 0.7;">LEFT/RIGHT ARROWS or TOUCH SIDES to rotate</div>
+    </div>
+
+    <div id="help-overlay" class="overlay hidden" onclick="toggleHelp()">
+        <h1>HOW TO PLAY</h1>
+        <p>1. Shards fly in from all directions.<br>2. You control twin sentries orbiting the core.<br>3. Rotate to hit shards with sentries.<br>4. Missing one shard ends the sequence.</p>
+        <button class="btn-main">RESUME</button>
+    </div>
+
+    <div id="game-over" class="overlay hidden">
+        <h1 style="color: #ff4444;">BREACHED</h1>
+        <p id="final-stats"></p>
+        <button class="btn-main" onclick="startGame()">REBOOT</button>
+    </div>
+
+    <button class="mute-btn" id="mute-toggle" onclick="toggleMute()">🔊</button>
+
+    <script>
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        const slug = 'shard-sentry-defense';
+        
+        let gameState = 'START';
+        let score = 0;
+        let bestScore = localStorage.getItem('fun_arcade_highscore_' + slug) || 0;
+        let angle = 0;
+        let shards = [];
+        let particles = [];
+        let lastTime = 0;
+        let spawnTimer = 0;
+        let spawnRate = 2000;
+        let speedMult = 1;
+        let muted = false;
+        let inputDir = 0;
+
+        // Audio Context Setup
+        let audioCtx = null;
+        function playSound(freq, type, dur) {
+            if (muted || !audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + dur);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + dur);
+        }
+
+        function resize() {
+            canvas.width = window.innerWidth * window.devicePixelRatio;
+            canvas.height = window.innerHeight * window.devicePixelRatio;
+            ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        document.getElementById('best-score').innerText = `BEST: ${bestScore}`;
+
+        function toggleMute() {
+            muted = !muted;
+            document.getElementById('mute-toggle').innerText = muted ? '🔇' : '🔊';
+        }
+
+        function toggleHelp() {
+            document.getElementById('help-overlay').classList.toggle('hidden');
+        }
+
+        function startGame() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            score = 0;
+            angle = 0;
+            shards = [];
+            particles = [];
+            spawnRate = 2000;
+            speedMult = 1;
+            gameState = 'PLAYING';
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('game-over').classList.add('hidden');
+            document.getElementById('cur-score').innerText = `SCORE: 0`;
+            lastTime = performance.now();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function gameOver() {
+            gameState = 'GAMEOVER';
+            playSound(100, 'sawtooth', 0.5);
+            document.getElementById('game-over').classList.remove('hidden');
+            document.getElementById('final-stats').innerText = `Score: ${score}\nBest: ${bestScore}`;
+            if (score > bestScore) {
+                bestScore = score;
+                localStorage.setItem('fun_arcade_highscore_' + slug, bestScore);
+                document.getElementById('best-score').innerText = `BEST: ${bestScore}`;
+            }
+        }
+
+        window.addEventListener('keydown', e => {
+            if (e.key === 'ArrowLeft') inputDir = -1;
+            if (e.key === 'ArrowRight') inputDir = 1;
+        });
+        window.addEventListener('keyup', e => {
+            if (e.key === 'ArrowLeft' && inputDir === -1) inputDir = 0;
+            if (e.key === 'ArrowRight' && inputDir === 1) inputDir = 0;
+        });
+        window.addEventListener('touchstart', e => {
+            const x = e.touches[0].clientX;
+            inputDir = x < window.innerWidth / 2 ? -1 : 1;
+        });
+        window.addEventListener('touchend', () => inputDir = 0);
+
+        function createShard() {
+            const sideAngle = Math.random() * Math.PI * 2;
+            const dist = Math.max(canvas.width, canvas.height) * 0.6 / window.devicePixelRatio;
+            shards.push({
+                x: Math.cos(sideAngle) * dist,
+                y: Math.sin(sideAngle) * dist,
+                speed: (1.5 + Math.random() * 1.5) * speedMult,
+                size: 10 + Math.random() * 5
+            });
+        }
+
+        function createParticles(x, y, color) {
+            for (let i = 0; i < 8; i++) {
+                particles.push({
+                    x, y,
+                    vx: (Math.random() - 0.5) * 6,
+                    vy: (Math.random() - 0.5) * 6,
+                    life: 1,
+                    color
+                });
+            }
+        }
+
+        function gameLoop(now) {
+            if (gameState !== 'PLAYING') return;
+            const dt = now - lastTime;
+            lastTime = now;
+
+            const w = canvas.width / window.devicePixelRatio;
+            const h = canvas.height / window.devicePixelRatio;
+            const centerX = w / 2;
+            const centerY = h / 2;
+            const orbitRadius = 60;
+
+            // Update
+            angle += inputDir * 0.08;
+            spawnTimer += dt;
+            if (spawnTimer > spawnRate) {
+                createShard();
+                spawnTimer = 0;
+                spawnRate = Math.max(500, spawnRate * 0.98);
+                speedMult += 0.02;
+            }
+
+            ctx.fillStyle = '#0a0a0c';
+            ctx.fillRect(0, 0, w, h);
+
+            // Draw Core
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 15, 0, Math.PI * 2);
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.fillStyle = 'rgba(255,255,255,0.1)';
+            ctx.fill();
+
+            // Draw Sentries (Two blocks at opposite sides)
+            ctx.lineWidth = 6;
+            ctx.strokeStyle = '#14B8A6';
+            for (let i = 0; i < 2; i++) {
+                const sAngle = angle + (i * Math.PI);
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, orbitRadius, sAngle - 0.3, sAngle + 0.3);
+                ctx.stroke();
+            }
+
+            // Shards Logic
+            for (let i = shards.length - 1; i >= 0; i--) {
+                const s = shards[i];
+                const dx = -s.x;
+                const dy = -s.y;
+                const dLen = Math.sqrt(dx*dx + dy*dy);
+                s.x += (dx / dLen) * s.speed;
+                s.y += (dy / dLen) * s.speed;
+
+                const screenX = centerX + s.x;
+                const screenY = centerY + s.y;
+
+                // Collision Detection (Sentries are at orbitRadius distance)
+                const distToCenter = Math.sqrt(s.x * s.x + s.y * s.y);
+                if (distToCenter <= orbitRadius + 5 && distToCenter >= orbitRadius - 15) {
+                    const shardAngle = Math.atan2(s.y, s.x);
+                    // Check both sentries
+                    let hit = false;
+                    for (let j = 0; j < 2; j++) {
+                        const sentryA = ((angle + j * Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+                        let diff = Math.abs(shardAngle - sentryA);
+                        if (diff > Math.PI) diff = Math.PI * 2 - diff;
+                        if (diff < 0.4) hit = true;
+                    }
+
+                    if (hit) {
+                        createParticles(screenX, screenY, '#14B8A6');
+                        playSound(400 + Math.random() * 200, 'square', 0.1);
+                        shards.splice(i, 1);
+                        score += 10;
+                        document.getElementById('cur-score').innerText = `SCORE: ${score}`;
+                        continue;
+                    }
+                }
+
+                // Breach detection
+                if (distToCenter < 15) {
+                    gameOver();
+                }
+
+                // Draw Shard
+                ctx.fillStyle = '#ff4444';
+                ctx.save();
+                ctx.translate(screenX, screenY);
+                ctx.rotate(Math.atan2(dy, dx));
+                ctx.beginPath();
+                ctx.moveTo(8, 0); ctx.lineTo(-4, -4); ctx.lineTo(-4, 4); ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+            }
+
+            // Particles
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.02;
+                if (p.life <= 0) {
+                    particles.splice(i, 1);
+                } else {
+                    ctx.globalAlpha = p.life;
+                    ctx.fillStyle = p.color;
+                    ctx.fillRect(p.x, p.y, 3, 3);
+                }
+            }
+            ctx.globalAlpha = 1.0;
+
+            requestAnimationFrame(gameLoop);
+        }
+    </script>
+</body>
+</html>
