@@ -830,5 +830,13 @@
     "category": "Reflex",
     "accent": "#14B8A6",
     "addedAt": "2026-11-26T13:09:16Z"
+  },
+  {
+    "slug": "morphic-sequence-duel",
+    "title": "Morphic Sequence Duel",
+    "description": "Watch the shifting grid patterns, memorize the morphing shapes, and recreate the sequence before the system resets!",
+    "category": "Puzzle",
+    "accent": "#E85D04",
+    "addedAt": "2026-11-26T14:52:31Z"
   }
 ]
