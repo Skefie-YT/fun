@@ -758,5 +758,13 @@
     "category": "Arcade",
     "accent": "#EF4444",
     "addedAt": "2026-11-26T02:15:24Z"
+  },
+  {
+    "slug": "drum-dash-sync",
+    "title": "Drum Dash Sync",
+    "description": "Tap the left and right sectors in sync with incoming beat-bars to maintain your rhythm and survive the increasing tempo!",
+    "category": "Reflex",
+    "accent": "#E85D04",
+    "addedAt": "2026-11-26T03:51:55Z"
   }
 ]
