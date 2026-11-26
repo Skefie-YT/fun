@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Vertex Vibe</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #EF4444;
+            --bg: #0f172a;
+            --panel: rgba(30, 41, 59, 0.8);
+        }
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            background: var(--bg);
+            color: white;
+            font-family: 'Outfit', sans-serif;
+            overflow: hidden;
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #ui-top {
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            background: rgba(15, 23, 42, 0.9);
+            z-index: 10;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .back-btn {
+            color: white;
+            text-decoration: none;
+            background: rgba(255,255,255,0.1);
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        #stats {
+            display: flex;
+            gap: 20px;
+            font-weight: 700;
+        }
+
+        .help-btn {
+            cursor: pointer;
+            background: var(--accent);
+            border: none;
+            color: white;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            font-weight: bold;
+        }
+
+        canvas {
+            flex: 1;
+            touch-action: none;
+            display: block;
+        }
+
+        .overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.95);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .hidden { display: none !important; }
+
+        h1 {
+            margin: 0 0 10px 0;
+            color: var(--accent);
+            font-size: 3rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        p {
+            max-width: 400px;
+            line-height: 1.6;
+            color: #cbd5e1;
+        }
+
+        .btn-main {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            font-weight: 700;
+            border-radius: 50px;
+            cursor: pointer;
+            margin-top: 20px;
+            box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3);
+        }
+
+        .btn-main:hover {
+            transform: scale(1.05);
+        }
+
+        .controls-hint {
+            position: absolute;
+            bottom: 30px;
+            font-size: 0.8rem;
+            opacity: 0.6;
+        }
+
+        #mute-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(255,255,255,0.1);
+            border: none;
+            color: white;
+            padding: 10px;
+            border-radius: 50%;
+            cursor: pointer;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui-top">
+        <a href="../../" class="back-btn">Back</a>
+        <div id="stats">
+            <span>Score: <span id="cur-score">0</span></span>
+            <span>Best: <span id="best-score">0</span></span>
+        </div>
+        <button class="help-btn" onclick="toggleHelp()">?</button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="start-screen" class="overlay">
+        <h1>Vertex Vibe</h1>
+        <p>Tap a node to release a pulse. When a pulse hits nodes of the same color, they explode and chain! Clear the screen to progress.</p>
+        <button class="btn-main" onclick="startGame()">START MISSION</button>
+        <div class="controls-hint">TAP/CLICK TO TRIGGER • MATCH COLORS FOR CHAINS</div>
+    </div>
+
+    <div id="help-overlay" class="overlay hidden">
+        <h2>How to Play</h2>
+        <p>• Nodes grow when pulsed.<br>• If a node reaches max size OR is hit by its own color pulse, it bursts.<br>• Bursting nodes release 4 pulses in cardinal directions.<br>• Every chain reaction increases your score multiplier!</p>
+        <button class="btn-main" onclick="toggleHelp()">CLOSE</button>
+    </div>
+
+    <div id="game-over" class="overlay hidden">
+        <h2 style="font-size: 2.5rem;">GRID STABILIZED</h2>
+        <p id="final-stats">Score: 0</p>
+        <button class="btn-main" onclick="startGame()">RETRY</button>
+    </div>
+
+    <button id="mute-btn" onclick="toggleMute()">🔊</button>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const slug = 'vertex-vibe-chain';
+        
+        let score = 0;
+        let bestScore = localStorage.getItem('fun_arcade_highscore_' + slug) || 0;
+        document.getElementById('best-score').textContent = bestScore;
+
+        let state = 'menu';
+        let nodes = [];
+        let pulses = [];
+        let particles = [];
+        let combo = 0;
+        let gridCols = 6;
+        let gridRows = 8;
+        let colors = ['#EF4444', '#3B82F6', '#10B981', '#F59E0B'];
+        let isMuted = false;
+        let audioCtx = null;
+
+        function initAudio() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+
+        function playSound(freq, type = 'sine', duration = 0.1, vol = 0.1) {
+            if (isMuted || !audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + duration);
+        }
+
+        function toggleMute() {
+            isMuted = !isMuted;
+            document.getElementById('mute-btn').textContent = isMuted ? '🔇' : '🔊';
+        }
+
+        function toggleHelp() {
+            document.getElementById('help-overlay').classList.toggle('hidden');
+        }
+
+        window.addEventListener('resize', resize);
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight - 60;
+        }
+        resize();
+
+        class Node {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                this.radius = 12;
+                this.targetRadius = 12;
+                this.pulseTimer = 0;
+                this.active = true;
+            }
+            update() {
+                this.radius += (this.targetRadius - this.radius) * 0.1;
+            }
+            draw() {
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = this.color;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+                
+                // Inner shine
+                ctx.fillStyle = 'rgba(255,255,255,0.3)';
+                ctx.beginPath();
+                ctx.arc(this.x - this.radius*0.3, this.y - this.radius*0.3, this.radius*0.2, 0, Math.PI*2);
+                ctx.fill();
+            }
+            burst() {
+                if (!this.active) return;
+                this.active = false;
+                playSound(200 + combo * 50, 'square', 0.2, 0.05);
+                combo++;
+                score += 10 * combo;
+                document.getElementById('cur-score').textContent = score;
+                
+                // Create 4 pulses
+                const speeds = [[0, -5], [0, 5], [-5, 0], [5, 0]];
+                speeds.forEach(s => {
+                    pulses.push(new Pulse(this.x, this.y, s[0], s[1], this.color));
+                });
+
+                // Particles
+                for(let i=0; i<8; i++) {
+                    particles.push(new Particle(this.x, this.y, this.color));
+                }
+            }
+        }
+
+        class Pulse {
+            constructor(x, y, vx, vy, color) {
+                this.x = x;
+                this.y = y;
+                this.vx = vx;
+                this.vy = vy;
+                this.color = color;
+                this.life = 1;
+            }
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                if(this.x < 0 || this.x > canvas.width || this.y < 0 || this.y > canvas.height) {
+                    this.life = 0;
+                }
+                
+                nodes.forEach(node => {
+                    if(node.active) {
+                        let dx = node.x - this.x;
+                        let dy = node.y - this.y;
+                        let dist = Math.sqrt(dx*dx + dy*dy);
+                        if(dist < node.radius + 5) {
+                            if(node.color === this.color) {
+                                node.burst();
+                                this.life = 0;
+                            }
+                        }
+                    }
+                });
+            }
+            draw() {
+                ctx.strokeStyle = this.color;
+                ctx.lineWidth = 4;
+                ctx.beginPath();
+                ctx.moveTo(this.x, this.y);
+                ctx.lineTo(this.x - this.vx*2, this.y - this.vy*2);
+                ctx.stroke();
+            }
+        }
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                this.vx = (Math.random() - 0.5) * 10;
+                this.vy = (Math.random() - 0.5) * 10;
+                this.alpha = 1;
+            }
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.alpha -= 0.02;
+            }
+            draw() {
+                ctx.globalAlpha = this.alpha;
+                ctx.fillStyle = this.color;
+                ctx.fillRect(this.x, this.y, 3, 3);
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        function startGame() {
+            initAudio();
+            score = 0;
+            combo = 0;
+            document.getElementById('cur-score').textContent = '0';
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('game-over').classList.add('hidden');
+            state = 'playing';
+            generateLevel();
+        }
+
+        function generateLevel() {
+            nodes = [];
+            pulses = [];
+            particles = [];
+            const padding = 50;
+            const spacingX = (canvas.width - padding * 2) / (gridCols - 1);
+            const spacingY = (canvas.height - padding * 2) / (gridRows - 1);
+            
+            for(let i=0; i<gridCols; i++) {
+                for(let j=0; j<gridRows; j++) {
+                    let color = colors[Math.floor(Math.random() * colors.length)];
+                    nodes.push(new Node(padding + i * spacingX, padding + j * spacingY, color));
+                }
+            }
+        }
+
+        canvas.addEventListener('mousedown', handleClick);
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            handleClick(e.touches[0]);
+        });
+
+        function handleClick(e) {
+            if(state !== 'playing') return;
+            
+            const rect = canvas.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+            
+            let clickedAny = false;
+            nodes.forEach(node => {
+                if(node.active) {
+                    let dx = node.x - mx;
+                    let dy = node.y - my;
+                    let dist = Math.sqrt(dx*dx + dy*dy);
+                    if(dist < node.radius + 20) {
+                        combo = 0;
+                        node.burst();
+                        clickedAny = true;
+                    }
+                }
+            });
+        }
+
+        function update() {
+            if(state !== 'playing') return;
+
+            nodes.forEach(n => n.update());
+            
+            for(let i = pulses.length-1; i>=0; i--) {
+                pulses[i].update();
+                if(pulses[i].life <= 0) pulses.splice(i, 1);
+            }
+
+            for(let i = particles.length-1; i>=0; i--) {
+                particles[i].update();
+                if(particles[i].alpha <= 0) particles.splice(i, 1);
+            }
+
+            // Check Win
+            const activeNodes = nodes.filter(n => n.active);
+            if(activeNodes.length === 0) {
+                generateLevel();
+            }
+
+            // Basic Lose Check (Simplification: just endless for this arcade version, 
+            // or trigger game over if you run out of chain potential. 
+            // Here we allow player to keep clicking to clear.)
+        }
+
+        function draw() {
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw grid connections (faint)
+            ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            nodes.forEach((n, i) => {
+                if(!n.active) return;
+                nodes.forEach((m, j) => {
+                    if(i < j && m.active && Math.abs(n.x - m.x) < 150 && Math.abs(n.y - m.y) < 150) {
+                        ctx.moveTo(n.x, n.y);
+                        ctx.lineTo(m.x, m.y);
+                    }
+                });
+            });
+            ctx.stroke();
+
+            nodes.forEach(n => { if(n.active) n.draw(); });
+            pulses.forEach(p => p.draw());
+            particles.forEach(p => p.draw());
+
+            if(combo > 1) {
+                ctx.fillStyle = 'white';
+                ctx.font = '700 24px Outfit';
+                ctx.textAlign = 'center';
+                ctx.fillText(combo + 'x CHAIN!', canvas.width/2, 40);
+            }
+        }
+
+        function loop() {
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        function gameOver() {
+            state = 'gameOver';
+            if(score > bestScore) {
+                bestScore = score;
+                localStorage.setItem('fun_arcade_highscore_' + slug, bestScore);
+                document.getElementById('best-score').textContent = bestScore;
+            }
+            document.getElementById('final-stats').textContent = `Final Score: ${score}`;
+            document.getElementById('game-over').classList.remove('hidden');
+        }
+
+        requestAnimationFrame(loop);
+    </script>
+</body>
+</html>

@@ -782,5 +782,13 @@
     "category": "Puzzle",
     "accent": "#E85D04",
     "addedAt": "2026-11-26T05:57:53Z"
+  },
+  {
+    "slug": "vertex-vibe-chain",
+    "title": "Vertex Vibe",
+    "description": "Tap nodes to expand them into pulse waves. Trigger massive chain reactions by matching colors to clear the board!",
+    "category": "Puzzle",
+    "accent": "#EF4444",
+    "addedAt": "2026-11-26T07:08:25Z"
   }
 ]
