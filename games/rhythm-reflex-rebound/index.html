@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Rhythm Reflex Rebound</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #EC4899;
+            --bg: #0f172a;
+            --text: #f8fafc;
+        }
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Outfit', sans-serif;
+            overflow: hidden;
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+        }
+        #game-container {
+            position: relative;
+            flex: 1;
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
+            overflow: hidden;
+        }
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 20px;
+            background: rgba(0,0,0,0.3);
+            z-index: 50;
+        }
+        .back-btn {
+            color: var(--text);
+            text-decoration: none;
+            font-weight: bold;
+            background: rgba(255,255,255,0.1);
+            padding: 5px 12px;
+            border-radius: 8px;
+        }
+        .stats {
+            text-align: center;
+            flex: 1;
+        }
+        .stats span { margin: 0 10px; font-weight: 700; font-size: 1.1rem; }
+        #how-to-btn {
+            background: none;
+            border: 2px solid var(--accent);
+            color: var(--accent);
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        #canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        .overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            padding: 20px;
+            text-align: center;
+        }
+        .hidden { display: none !important; }
+        h1 { color: var(--accent); margin: 0 0 15px 0; text-transform: uppercase; letter-spacing: 2px; }
+        button.main-btn {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(236, 72, 153, 0.4);
+            transition: transform 0.1s;
+        }
+        button.main-btn:active { transform: scale(0.95); }
+        .controls-hint {
+            margin-top: 20px;
+            font-size: 0.9rem;
+            opacity: 0.7;
+        }
+        #combo-pop {
+            position: absolute;
+            top: 20%;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 3rem;
+            font-weight: 900;
+            color: var(--accent);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        #combo-pop.active {
+            opacity: 1;
+            animation: bounce 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        @keyframes bounce {
+            0% { transform: translateX(-50%) scale(0.5); }
+            50% { transform: translateX(-50%) scale(1.2); }
+            100% { transform: translateX(-50%) scale(1); }
+        }
+        #mute-btn {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(255,255,255,0.1);
+            border: none;
+            color: white;
+            padding: 10px;
+            border-radius: 50%;
+            cursor: pointer;
+            z-index: 110;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <a href="../../" class="back-btn">Back</a>
+    <div class="stats">
+        <span>SCORE: <span id="score-val">0</span></span>
+        <span>BEST: <span id="best-val">0</span></span>
+    </div>
+    <button id="how-to-btn">?</button>
+</header>
+
+<div id="game-container">
+    <canvas id="canvas"></canvas>
+    <div id="combo-pop">0</div>
+
+    <!-- Overlays -->
+    <div id="start-screen" class="overlay">
+        <h1>Rhythm Rebound</h1>
+        <p>Tap or press Space the exact moment the bouncing ball hits the floor markers to build your combo!</p>
+        <button class="main-btn" id="start-btn">PLAY NOW</button>
+        <div class="controls-hint">Click/Tap or Space to hit the beat</div>
+    </div>
+
+    <div id="how-to-overlay" class="overlay hidden">
+        <h1>How To Play</h1>
+        <p>1. The ball bounces in a steady rhythm.<br>2. Watch the glowing nodes on the floor.<br>3. Hit the beat right as the ball touches the ground.<br>4. Perfect timing earns higher points.<br>5. Miss a beat and the rhythm shatters!</p>
+        <button class="main-btn" id="close-how-to">GOT IT</button>
+    </div>
+
+    <div id="game-over-screen" class="overlay hidden">
+        <h1 style="color: #ef4444;">OFF BEAT!</h1>
+        <p>Final Score: <span id="final-score">0</span></p>
+        <button class="main-btn" id="restart-btn">RETRY</button>
+    </div>
+
+    <button id="mute-btn">🔊</button>
+</div>
+
+<script>
+const SLUG = 'rhythm-reflex-rebound';
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const scoreVal = document.getElementById('score-val');
+const bestVal = document.getElementById('best-val');
+const comboPop = document.getElementById('combo-pop');
+const muteBtn = document.getElementById('mute-btn');
+
+let score = 0;
+let best = localStorage.getItem('fun_arcade_highscore_' + SLUG) || 0;
+bestVal.textContent = best;
+
+let gameState = 'START';
+let combo = 0;
+let muted = false;
+let particles = [];
+
+// Rhythm Engine
+let tempo = 120; // BPM
+let lastBeatTime = 0;
+let beatDuration = 60000 / tempo;
+let ballY = 0;
+let ballX = 0;
+let isDescending = true;
+let hasHitThisBeat = false;
+
+function resize() {
+    canvas.width = canvas.parentElement.clientWidth;
+    canvas.height = canvas.parentElement.clientHeight;
+    ballX = canvas.width / 2;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// Audio Setup
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+function playTone(freq, type = 'sine', duration = 0.1) {
+    if (muted) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + duration);
+}
+
+function createParticles(x, y, color) {
+    for (let i = 0; i < 12; i++) {
+        particles.push({
+            x, y, 
+            vx: (Math.random() - 0.5) * 10,
+            vy: (Math.random() - 0.5) * 10,
+            life: 1,
+            color
+        });
+    }
+}
+
+function handleInput(e) {
+    if (e.repeat) return;
+    if (gameState !== 'PLAYING') return;
+
+    const now = Date.now();
+    const timeSinceBeat = now - lastBeatTime;
+    const diff = Math.min(Math.abs(timeSinceBeat), Math.abs(timeSinceBeat - beatDuration));
+    
+    // Timing Window (in ms)
+    const perfect = 60;
+    const good = 120;
+
+    if (diff < good && !hasHitThisBeat) {
+        hasHitThisBeat = true;
+        const accuracy = diff < perfect ? 2 : 1;
+        const gain = (10 * accuracy) + (combo * 2);
+        score += gain;
+        combo++;
+        
+        scoreVal.textContent = score;
+        comboPop.textContent = `${combo}x`;
+        comboPop.classList.add('active');
+        setTimeout(() => comboPop.classList.remove('active'), 200);
+
+        playTone(200 + (combo * 10), 'square', 0.1);
+        createParticles(ballX, canvas.height * 0.8, '#EC4899');
+        
+        // Increase difficulty
+        if (combo % 5 === 0) tempo += 2;
+        beatDuration = 60000 / tempo;
+    } else {
+        gameOver();
+    }
+}
+
+function gameOver() {
+    gameState = 'GAMEOVER';
+    document.getElementById('game-over-screen').classList.remove('hidden');
+    document.getElementById('final-score').textContent = score;
+    if (score > best) {
+        best = score;
+        localStorage.setItem('fun_arcade_highscore_' + SLUG, best);
+        bestVal.textContent = best;
+    }
+    playTone(100, 'sawtooth', 0.5);
+}
+
+function update(timestamp) {
+    if (gameState === 'PLAYING') {
+        const now = Date.now();
+        if (now - lastBeatTime >= beatDuration) {
+            // Logic for a missed beat
+            if (!hasHitThisBeat && score > 0) {
+                 gameOver();
+                 return;
+            }
+            lastBeatTime = now;
+            hasHitThisBeat = false;
+            playTone(150, 'sine', 0.05);
+        }
+
+        // Calculate ball progress (0 to 1)
+        let progress = (now - lastBeatTime) / beatDuration;
+        // Sin wave for bounce feel (abs(sin) creates the ground contact peaks)
+        let bounce = Math.abs(Math.sin(progress * Math.PI));
+        // Adjust ballY: high is 0.2 height, floor is 0.8 height
+        const floorY = canvas.height * 0.8;
+        const peakY = canvas.height * 0.3;
+        ballY = floorY - (bounce * (floorY - peakY));
+    }
+
+    particles.forEach((p, i) => {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life -= 0.02;
+        if (p.life <= 0) particles.splice(i, 1);
+    });
+
+    draw();
+    requestAnimationFrame(update);
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Draw Floor Line
+    ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(0, canvas.height * 0.8);
+    ctx.lineTo(canvas.width, canvas.height * 0.8);
+    ctx.stroke();
+
+    // Draw Hit Zone Node
+    const floorY = canvas.height * 0.8;
+    ctx.fillStyle = hasHitThisBeat ? '#EC4899' : 'rgba(236, 72, 153, 0.2)';
+    ctx.shadowBlur = hasHitThisBeat ? 20 : 5;
+    ctx.shadowColor = '#EC4899';
+    ctx.beginPath();
+    ctx.ellipse(ballX, floorY, 40, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Draw Particles
+    particles.forEach(p => {
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = p.life;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+        ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+
+    // Draw Ball
+    if (gameState === 'PLAYING') {
+        ctx.fillStyle = '#f8fafc';
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = 'white';
+        ctx.beginPath();
+        ctx.arc(ballX, ballY, 15, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+    }
+}
+
+// Events
+const startGame = () => {
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    score = 0;
+    combo = 0;
+    tempo = 120;
+    beatDuration = 60000 / tempo;
+    scoreVal.textContent = '0';
+    lastBeatTime = Date.now();
+    gameState = 'PLAYING';
+    document.getElementById('start-screen').classList.add('hidden');
+    document.getElementById('game-over-screen').classList.add('hidden');
+};
+
+document.getElementById('start-btn').onclick = startGame;
+document.getElementById('restart-btn').onclick = startGame;
+document.getElementById('how-to-btn').onclick = () => document.getElementById('how-to-overlay').classList.remove('hidden');
+document.getElementById('close-how-to').onclick = () => document.getElementById('how-to-overlay').classList.add('hidden');
+
+muteBtn.onclick = () => {
+    muted = !muted;
+    muteBtn.textContent = muted ? '🔇' : '🔊';
+};
+
+window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space') {
+        e.preventDefault();
+        handleInput(e);
+    }
+});
+canvas.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    handleInput(e);
+}, { passive: false });
+canvas.addEventListener('mousedown', (e) => {
+    handleInput(e);
+});
+
+requestAnimationFrame(update);
+</script>
+</body>
+</html>

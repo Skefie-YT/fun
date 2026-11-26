@@ -814,5 +814,13 @@
     "category": "Reflex",
     "accent": "#10B981",
     "addedAt": "2026-11-26T10:59:12Z"
+  },
+  {
+    "slug": "rhythm-reflex-rebound",
+    "title": "Rhythm Reflex Rebound",
+    "description": "Tap in sync as the bouncing rhythm ball hits the floor nodes to build your combo and survive the tempo shift!",
+    "category": "Reflex",
+    "accent": "#EC4899",
+    "addedAt": "2026-11-26T11:58:19Z"
   }
 ]
