@@ -806,5 +806,13 @@
     "category": "Reflex",
     "accent": "#EC4899",
     "addedAt": "2026-11-26T10:00:24Z"
+  },
+  {
+    "slug": "laser-lattice",
+    "title": "Laser Lattice",
+    "description": "Weave through telegraphed laser grids, phase-dash across beams, and collect emerald shards to survive.",
+    "category": "Reflex",
+    "accent": "#10B981",
+    "addedAt": "2026-11-26T10:59:12Z"
   }
 ]
