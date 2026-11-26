@@ -774,5 +774,13 @@
     "category": "Reflex",
     "accent": "#E85D04",
     "addedAt": "2026-11-26T04:57:44Z"
+  },
+  {
+    "slug": "ember-chain",
+    "title": "Ember Chain",
+    "description": "Ignite colored tiles to trigger cascading chain reactions, forge Ember Cores, and rack up combos before your moves run out.",
+    "category": "Puzzle",
+    "accent": "#E85D04",
+    "addedAt": "2026-11-26T05:57:53Z"
   }
 ]

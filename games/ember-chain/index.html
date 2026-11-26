@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Ember Chain — Fun Arcade</title>
+<style>
+  :root {
+    --bg: #0c0e14;
+    --panel: #151924;
+    --border: rgba(255, 255, 255, 0.08);
+    --accent: #E85D04;
+    --accent-glow: rgba(232, 93, 4, 0.45);
+    --text: #f4f6fb;
+    --muted: #8b95a8;
+  }
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  html, body {
+    width: 100%;
+    height: 100dvh;
+    overflow: hidden;
+    background: radial-gradient(circle at 50% 20%, #191d2b 0%, var(--bg) 75%);
+    color: var(--text);
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    display: flex;
+    flex-direction: column;
+  }
+  .topbar {
+    height: 54px;
+    padding: 0 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(12, 14, 20, 0.85);
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(8px);
+    flex-shrink: 0;
+    z-index: 20;
+  }
+  .back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 12px;
+    border-radius: 8px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 600;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .back-btn:hover {
+    border-color: var(--accent);
+    background: #1c2230;
+  }
+  .hud {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .hud-item {
+    text-align: center;
+    line-height: 1.15;
+  }
+  .hud-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .hud-val {
+    font-size: 16px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+  }
+  .hud-val.accent {
+    color: var(--accent);
+  }
+  .top-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .icon-btn {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .icon-btn:hover {
+    border-color: var(--accent);
+    background: #1c2230;
+  }
+  .stage {
+    flex: 1;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 10px;
+    overflow: hidden;
+  }
+  .status-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    max-width: 420px;
+    margin-bottom: 10px;
+    padding: 8px 14px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+  .moves-pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+    font-size: 14px;
+  }
+  .moves-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 30px;
+    height: 26px;
+    padding: 0 8px;
+    border-radius: 7px;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    box-shadow: 0 0 12px var(--accent-glow);
+  }
+  .moves-count.low {
+    background: #ef233c;
+    animation: pulseLow 0.8s infinite alternate;
+  }
+  @keyframes pulseLow {
+    from { transform: scale(1); }
+    to { transform: scale(1.08); }
+  }
+  .level-pill {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--muted);
+  }
+  .level-pill span {
+    color: var(--text);
+  }
+  .board-wrap {
+    position: relative;
+    padding: 8px;
+    background: rgba(21, 25, 36, 0.9);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55);
+  }
+  canvas {
+    display: block;
+    border-radius: 10px;
+    cursor: pointer;
+    touch-action: none;
+  }
+  .hint-bar {
+    margin-top: 10px;
+    font-size: 12px;
+    color: var(--muted);
+    text-align: center;
+  }
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(8, 10, 15, 0.84);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    z-index: 50;
+    opacity: 1;
+    transition: opacity 0.2s ease;
+  }
+  .overlay.hidden {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .card {
+    width: 100%;
+    max-width: 380px;
+    background: var(--panel);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 18px;
+    padding: 26px 24px;
+    text-align: center;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.65);
+  }
+  .badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgba(232, 93, 4, 0.16);
+    border: 1px solid rgba(232, 93, 4, 0.4);
+    color: var(--accent);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 10px;
+  }
+  .card h1 {
+    font-size: 28px;
+    font-weight: 900;
+    margin-bottom: 10px;
+    letter-spacing: -0.02em;
+  }
+  .card p {
+    font-size: 14px;
+    line-height: 1.55;
+    color: #c5cde0;
+    margin-bottom: 18px;
+  }
+  .rules-list {
+    text-align: left;
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 20px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #d3daea;
+  }
+  .rules-list div {
+    margin-bottom: 6px;
+  }
+  .rules-list div:last-child {
+    margin-bottom: 0;
+  }
+  .primary-btn {
+    width: 100%;
+    padding: 13px 20px;
+    border: none;
+    border-radius: 12px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 16px;
+    font-weight: 800;
+    cursor: pointer;
+    box-shadow: 0 8px 24px var(--accent-glow);
+    transition: transform 0.12s, filter 0.12s;
+  }
+  .primary-btn:hover {
+    filter: brightness(1.08);
+  }
+  .primary-btn:active {
+    transform: scale(0.97);
+  }
+  .stat-row {
+    display: flex;
+    justify-content: space-around;
+    margin: 16px 0 22px;
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 12px;
+  }
+  .stat-box .val {
+    font-size: 24px;
+    font-weight: 900;
+    color: var(--accent);
+  }
+  .stat-box .lbl {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-top: 2px;
+  }
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a href="../../" class="back-btn">&#8592; Back</a>
+    <div class="hud">
+      <div class="hud-item">
+        <div class="hud-label">Score</div>
+        <div class="hud-val" id="scoreVal">0</div>
+      </div>
+      <div class="hud-item">
+        <div class="hud-label">Best</div>
+        <div class="hud-val accent" id="bestVal">0</div>
+      </div>
+    </div>
+    <div class="top-actions">
+      <button class="icon-btn" id="muteBtn" title="Toggle Sound" aria-label="Toggle Sound">&#128266;</button>
+      <button class="icon-btn" id="helpBtn" title="How to Play" aria-label="How to Play">?</button>
+    </div>
+  </header>
+
+  <main class="stage">
+    <div class="status-bar">
+      <div class="moves-pill">
+        <span>Moves</span>
+        <span class="moves-count" id="movesVal">18</span>
+      </div>
+      <div class="level-pill">Next Bonus: <span id="nextBonusVal">600</span></div>
+    </div>
+
+    <div class="board-wrap" id="boardWrap">
+      <canvas id="gameCanvas"></canvas>
+    </div>
+
+    <div class="hint-bar">Tap or click any tile to ignite a chain reaction &bull; Arrow keys + Space supported</div>
+  </main>
+
+  <div class="overlay" id="startOverlay">
+    <div class="card">
+      <div class="badge">Puzzle &bull; Chain Reaction</div>
+      <h1>Ember Chain</h1>
+      <p>Ignite any tile to spark a chain reaction through matching neighbors. Bigger chains forge <strong>Ember Cores</strong> and refund moves!</p>
+      <div class="rules-list">
+        <div>&#128293; <strong>Ignite:</strong> Tap a tile to detonate it and all connected matching tiles.</div>
+        <div>&#9889; <strong>Ember Core:</strong> Chains of <strong>5+</strong> forge a Core that blasts a 3&times;3 area!</div>
+        <div>&#127919; <strong>Move Refund:</strong> Chains of <strong>4+</strong> grant +1 Move; <strong>7+</strong> grant +2 Moves.</div>
+      </div>
+      <button class="primary-btn" id="startBtn">Start Game</button>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="helpOverlay">
+    <div class="card">
+      <div class="badge">How to Play</div>
+      <h1>Ember Chain</h1>
+      <div class="rules-list">
+        <div>&#128293; <strong>Goal:</strong> Score as many points as possible before running out of moves.</div>
+        <div>&#128165; <strong>Chain Reactions:</strong> Clicking a tile ignites it, spreading to orthogonally adjacent tiles of the same color.</div>
+        <div>&#10024; <strong>Ember Cores:</strong> Clearing 5+ tiles in one move spawns a glowing Ember Core. Click it to blast a 3&times;3 zone and trigger nearby matches!</div>
+        <div>&#127918; <strong>Controls:</strong> Click/Tap any tile, or use Arrow Keys + Space/Enter.</div>
+      </div>
+      <button class="primary-btn" id="closeHelpBtn">Got It</button>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="gameOverOverlay">
+    <div class="card">
+      <div class="badge">Out of Moves</div>
+      <h1>Chain Complete!</h1>
+      <div class="stat-row">
+        <div class="stat-box">
+          <div class="val" id="finalScore">0</div>
+          <div class="lbl">Score</div>
+        </div>
+        <div class="stat-box">
+          <div class="val" id="finalBest">0</div>
+          <div class="lbl">Best</div>
+        </div>
+      </div>
+      <button class="primary-btn" id="restartBtn">Play Again</button>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const SLUG = 'ember-chain';
+  const HS_KEY = 'fun_arcade_highscore_' + SLUG;
+
+  const COLS = 7;
+  const ROWS = 8;
+  const COLORS = [
+    { name: 'ember', fill: '#E85D04', glow: 'rgba(232, 93, 4, 0.55)', inner: '#ff9e44' },
+    { name: 'cyan',  fill: '#00B4D8', glow: 'rgba(0, 180, 216, 0.55)', inner: '#72efdd' },
+    { name: 'berry', fill: '#E63946', glow: 'rgba(230, 57, 70, 0.55)', inner: '#ff8fa3' },
+    { name: 'lime',  fill: '#8AC926', glow: 'rgba(138, 201, 38, 0.55)', inner: '#c7f9cc' }
+  ];
+
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+  const boardWrap = document.getElementById('boardWrap');
+
+  const scoreEl = document.getElementById('scoreVal');
+  const bestEl = document.getElementById('bestVal');
+  const movesEl = document.getElementById('movesVal');
+  const nextBonusEl = document.getElementById('nextBonusVal');
+
+  const startOverlay = document.getElementById('startOverlay');
+  const helpOverlay = document.getElementById('helpOverlay');
+  const gameOverOverlay = document.getElementById('gameOverOverlay');
+
+  const startBtn = document.getElementById('startBtn');
+  const restartBtn = document.getElementById('restartBtn');
+  const helpBtn = document.getElementById('helpBtn');
+  const closeHelpBtn = document.getElementById('closeHelpBtn');
+  const muteBtn = document.getElementById('muteBtn');
+
+  let tileSize = 48;
+  let dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+  let grid = [];
+  let particles = [];
+  let floaters = [];
+  let score = 0;
+  let bestScore = parseInt(localStorage.getItem(HS_KEY) || '0', 10) || 0;
+  let moves = 18;
+  let nextBonusThreshold = 600;
+  let busy = false;
+  let gameActive = false;
+  let muted = false;
+  let cursor = { r: 3, c: 3, active: false };
+  let shakeTime = 0;
+
+  bestEl.textContent = bestScore;
+
+  // Web Audio API Synth
+  let audioCtx = null;
+  function ensureAudio() {
+    if (!audioCtx && !muted) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) audioCtx = new AC();
+    }
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume().catch(() => {});
+    }
+  }
+
+  function playPop(step) {
+    if (muted || !audioCtx) return;
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    const scale = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33, 659.25, 783.99, 880.00];
+    const freq = scale[Math.min(step, scale.length - 1)];
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(freq, now);
+    osc.frequency.exponentialRampToValueAtTime(freq * 1.45, now + 0.09);
+    gain.gain.setValueAtTime(0.14, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.15);
+  }
+
+  function playCoreBlast() {
+    if (muted || !audioCtx) return;
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(180, now);
+    osc.frequency.exponentialRampToValueAtTime(45, now + 0.28);
+    gain.gain.setValueAtTime(0.2, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.31);
+  }
+
+  muteBtn.addEventListener('click', () => {
+    muted = !muted;
+    muteBtn.innerHTML = muted ? '&#128263;' : '&#128266;';
+  });
+
+  function resize() {
+    const stage = document.querySelector('.stage');
+    const maxW = Math.min(stage.clientWidth - 36, 420);
+    const maxH = stage.clientHeight - 110;
+    tileSize = Math.floor(Math.min(maxW / COLS, maxH / ROWS));
+    tileSize = Math.max(34, Math.min(tileSize, 56));
+
+    const w = COLS * tileSize;
+    const h = ROWS * tileSize;
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function createTile(r, c, isCore = false) {
+    return {
+      color: Math.floor(Math.random() * COLORS.length),
+      isCore,
+      yOffset: 0,
+      scale: 1,
+      ignited: false
+    };
+  }
+
+  function initBoard() {
+    grid = [];
+    for (let r = 0; r < ROWS; r++) {
+      const row = [];
+      for (let c = 0; c < COLS; c++) {
+        row.push(createTile(r, c));
+      }
+      grid.push(row);
+    }
+    particles = [];
+    floaters = [];
+    score = 0;
+    moves = 18;
+    nextBonusThreshold = 600;
+    busy = false;
+    gameActive = true;
+    updateHUD();
+  }
+
+  function updateHUD() {
+    scoreEl.textContent = score;
+    if (score > bestScore) {
+      bestScore = score;
+      localStorage.setItem(HS_KEY, String(bestScore));
+    }
+    bestEl.textContent = bestScore;
+    movesEl.textContent = moves;
+    movesEl.classList.toggle('low', moves <= 4);
+    nextBonusEl.textContent = nextBonusThreshold;
+  }
+
+  function spawnParticles(x, y, color, count = 10) {
+    for (let i = 0; i < count; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 1.5 + Math.random() * 4;
+      particles.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        r: 2.5 + Math.random() * 3.5,
+        color,
+        alpha: 1
+      });
+    }
+  }
+
+  function spawnFloater(x, y, text, color = '#fff') {
+    floaters.push({ x, y, text, color, alpha: 1, vy: -1.1 });
+  }
+
+  async function triggerTile(r, c) {
+    if (busy || !gameActive) return;
+    const startTile = grid[r]?.[c];
+    if (!startTile) return;
+
+    ensureAudio();
+    busy = true;
+    moves--;
+    updateHUD();
+
+    const visited = new Set();
+    const queue = [{ r, c, step: 0 }];
+    const toClear = [];
+    const targetColor = startTile.color;
+    const isCoreStart = startTile.isCore;
+
+    if (isCoreStart) {
+      playCoreBlast();
+      shakeTime = 14;
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          const nr = r + dr, nc = c + dc;
+          if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS && grid[nr][nc]) {
+            const key = nr + ',' + nc;
+            if (!visited.has(key)) {
+              visited.add(key);
+              toClear.push({ r: nr, c: nc, step: 0 });
+            }
+          }
+        }
+      }
+    } else {
+      visited.add(r + ',' + c);
+      while (queue.length > 0) {
+        const curr = queue.shift();
+        toClear.push(curr);
+        const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+        for (const [dr, dc] of dirs) {
+          const nr = curr.r + dr, nc = curr.c + dc;
+          const key = nr + ',' + nc;
+          if (nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS && !visited.has(key)) {
+            const neighbor = grid[nr][nc];
+            if (neighbor && (neighbor.color === targetColor || neighbor.isCore)) {
+              visited.add(key);
+              queue.push({ r: nr, c: nc, step: curr.step + 1 });
+            }
+          }
+        }
+      }
+    }
+
+    // Animate chain wave
+    const maxStep = toClear.reduce((m, t) => Math.max(m, t.step), 0);
+    for (let s = 0; s <= maxStep; s++) {
+      const wave = toClear.filter(t => t.step === s);
+      wave.forEach(t => {
+        const tile = grid[t.r][t.c];
+        if (tile) {
+          tile.ignited = true;
+          const px = (t.c + 0.5) * tileSize;
+          const py = (t.r + 0.5) * tileSize;
+          const col = tile.isCore ? '#ffffff' : COLORS[tile.color].inner;
+          spawnParticles(px, py, col, 12);
+        }
+      });
+      playPop(s);
+      await new Promise(res => setTimeout(res, 55));
+    }
+
+    // Clear tiles & calculate score
+    const count = toClear.length;
+    const mult = count >= 7 ? 3 : count >= 4 ? 2 : 1;
+    const gained = count * 15 * mult;
+    score += gained;
+
+    if (count >= 6) shakeTime = 10;
+
+    let bonusMoves = 0;
+    if (count >= 7) bonusMoves = 2;
+    else if (count >= 4) bonusMoves = 1;
+    moves += bonusMoves;
+
+    while (score >= nextBonusThreshold) {
+      moves += 3;
+      nextBonusThreshold += 800;
+      spawnFloater(canvas.width / (2 * dpr), 60, '+3 MOVES BONUS!', '#ffd166');
+    }
+
+    const last = toClear[toClear.length - 1];
+    const fx = (last.c + 0.5) * tileSize;
+    const fy = (last.r + 0.5) * tileSize;
+    let label = `+${gained}`;
+    if (bonusMoves > 0) label += ` (+${bonusMoves}M)`;
+    spawnFloater(fx, fy, label, count >= 5 ? '#ffd166' : '#ffffff');
+
+    toClear.forEach(t => { grid[t.r][t.c] = null; });
+
+    // Forge Ember Core if 5+ cleared
+    if (count >= 5 && !isCoreStart) {
+      grid[last.r][last.c] = createTile(last.r, last.c, true);
+    }
+
+    // Apply gravity
+    for (let c = 0; c < COLS; c++) {
+      let writeRow = ROWS - 1;
+      for (let r = ROWS - 1; r >= 0; r--) {
+        if (grid[r][c] !== null) {
+          if (writeRow !== r) {
+            grid[writeRow][c] = grid[r][c];
+            grid[writeRow][c].yOffset = (r - writeRow) * tileSize;
+            grid[r][c] = null;
+          }
+          writeRow--;
+        }
+      }
+      for (let r = writeRow; r >= 0; r--) {
+        const nt = createTile(r, c, false);
+        nt.yOffset = -(writeRow + 1) * tileSize;
+        grid[r][c] = nt;
+      }
+    }
+
+    updateHUD();
+    await new Promise(res => setTimeout(res, 220));
+    busy = false;
+
+    if (moves <= 0) {
+      endGame();
+    }
+  }
+
+  function endGame() {
+    gameActive = false;
+    document.getElementById('finalScore').textContent = score;
+    document.getElementById('finalBest').textContent = bestScore;
+    gameOverOverlay.classList.remove('hidden');
+  }
+
+  function drawRoundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function loop() {
+    const w = COLS * tileSize;
+    const h = ROWS * tileSize;
+    ctx.clearRect(0, 0, w, h);
+
+    ctx.save();
+    if (shakeTime > 0) {
+      const mag = shakeTime * 0.45;
+      ctx.translate((Math.random() - 0.5) * mag, (Math.random() - 0.5) * mag);
+      shakeTime--;
+    }
+
+    // Draw grid background
+    ctx.fillStyle = '#0e121b';
+    ctx.fillRect(0, 0, w, h);
+
+    const pad = 4;
+    const size = tileSize - pad * 2;
+    const time = performance.now() * 0.004;
+
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const tile = grid[r]?.[c];
+        if (!tile) continue;
+
+        if (tile.yOffset < 0) {
+          tile.yOffset = Math.min(0, tile.yOffset + Math.max(4, -tile.yOffset * 0.28));
+        }
+
+        const x = c * tileSize + pad;
+        const y = r * tileSize + pad + tile.yOffset;
+
+        if (tile.isCore) {
+          const pulse = 0.85 + Math.sin(time * 2) * 0.15;
+          ctx.save();
+          ctx.shadowColor = '#ffffff';
+          ctx.shadowBlur = 14 * pulse;
+          const grad = ctx.createRadialGradient(x + size/2, y + size/2, 2, x + size/2, y + size/2, size * 0.6);
+          grad.addColorStop(0, '#ffffff');
+          grad.addColorStop(0.5, '#ffd166');
+          grad.addColorStop(1, '#E85D04');
+          ctx.fillStyle = grad;
+          drawRoundRect(x, y, size, size, 10);
+          ctx.fill();
+          ctx.restore();
+        } else {
+          const col = COLORS[tile.color];
+          ctx.save();
+          if (tile.ignited) {
+            ctx.shadowColor = '#fff';
+            ctx.shadowBlur = 16;
+          }
+          ctx.fillStyle = col.fill;
+          drawRoundRect(x, y, size, size, 9);
+          ctx.fill();
+
+          // Inner highlight
+          ctx.fillStyle = col.inner;
+          ctx.globalAlpha = 0.32;
+          drawRoundRect(x + 3, y + 3, size - 6, size * 0.42, 6);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+    }
+
+    // Keyboard cursor
+    if (cursor.active && gameActive) {
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2.5;
+      drawRoundRect(cursor.c * tileSize + 2, cursor.r * tileSize + 2, tileSize - 4, tileSize - 4, 10);
+      ctx.stroke();
+    }
+
+    // Particles
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.alpha -= 0.032;
+      if (p.alpha <= 0) {
+        particles.splice(i, 1);
+        continue;
+      }
+      ctx.save();
+      ctx.globalAlpha = p.alpha;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Floaters
+    for (let i = floaters.length - 1; i >= 0; i--) {
+      const f = floaters[i];
+      f.y += f.vy;
+      f.alpha -= 0.022;
+      if (f.alpha <= 0) {
+        floaters.splice(i, 1);
+        continue;
+      }
+      ctx.save();
+      ctx.globalAlpha = f.alpha;
+      ctx.font = '800 15px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#000';
+      ctx.fillText(f.text, f.x + 1, f.y + 1);
+      ctx.fillStyle = f.color;
+      ctx.fillText(f.text, f.x, f.y);
+      ctx.restore();
+    }
+
+    ctx.restore();
+    requestAnimationFrame(loop);
+  }
+
+  function handlePointer(e) {
+    if (!gameActive || busy) return;
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const c = Math.floor((clientX - rect.left) / tileSize);
+    const r = Math.floor((clientY - rect.top) / tileSize);
+    if (r >= 0 && r < ROWS && c >= 0 && c < COLS) {
+      cursor.active = false;
+      triggerTile(r, c);
+    }
+  }
+
+  canvas.addEventListener('pointerdown', handlePointer);
+
+  window.addEventListener('keydown', (e) => {
+    if (!gameActive) return;
+    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) {
+      e.preventDefault();
+      cursor.active = true;
+    }
+    if (e.key === 'ArrowUp') cursor.r = (cursor.r - 1 + ROWS) % ROWS;
+    else if (e.key === 'ArrowDown') cursor.r = (cursor.r + 1) % ROWS;
+    else if (e.key === 'ArrowLeft') cursor.c = (cursor.c - 1 + COLS) % COLS;
+    else if (e.key === 'ArrowRight') cursor.c = (cursor.c + 1) % COLS;
+    else if (e.key === ' ' || e.key === 'Enter') triggerTile(cursor.r, cursor.c);
+  });
+
+  startBtn.addEventListener('click', () => {
+    ensureAudio();
+    startOverlay.classList.add('hidden');
+    initBoard();
+  });
+
+  restartBtn.addEventListener('click', () => {
+    ensureAudio();
+    gameOverOverlay.classList.add('hidden');
+    initBoard();
+  });
+
+  helpBtn.addEventListener('click', () => helpOverlay.classList.remove('hidden'));
+  closeHelpBtn.addEventListener('click', () => helpOverlay.classList.add('hidden'));
+
+  initBoard();
+  gameActive = false;
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
