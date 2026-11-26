@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Gyro Balance Pro</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #F59E0B;
+            --bg: #0f172a;
+            --text: #f8fafc;
+        }
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Outfit', sans-serif;
+            overflow: hidden;
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+        }
+        #header {
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            background: rgba(0,0,0,0.3);
+            z-index: 100;
+        }
+        .back-btn {
+            color: var(--text);
+            text-decoration: none;
+            font-weight: bold;
+            border: 2px solid var(--accent);
+            padding: 4px 12px;
+            border-radius: 8px;
+        }
+        #hud {
+            display: flex;
+            gap: 20px;
+            font-weight: bold;
+        }
+        #game-container {
+            flex: 1;
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            touch-action: none;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            z-index: 1000;
+            padding: 20px;
+        }
+        .hidden { display: none !important; }
+        button {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 12px 32px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            border-radius: 12px;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: transform 0.1s;
+        }
+        button:active { transform: scale(0.95); }
+        .help-btn {
+            background: rgba(255,255,255,0.1);
+            border-radius: 50%;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        #controls-hint {
+            position: absolute;
+            bottom: 20px;
+            opacity: 0.6;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <a href="../../" class="back-btn">Back</a>
+        <div id="hud">
+            <span>SCORE: <span id="score-val">0</span></span>
+            <span>BEST: <span id="best-val">0</span></span>
+        </div>
+        <div class="help-btn" id="help-trigger">?</div>
+    </div>
+
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+
+        <!-- Start Screen -->
+        <div id="start-screen" class="overlay">
+            <h1 style="color: var(--accent)">GYRO BALANCE</h1>
+            <p>Tilt the platform to keep the core orb centered while catching falling energy cubes. Stay on the platform!</p>
+            <button id="start-btn">START ENGINE</button>
+            <div id="controls-hint">Move mouse or Drag/Tilt to balance</div>
+        </div>
+
+        <!-- Game Over -->
+        <div id="game-over" class="overlay hidden">
+            <h2 style="color: #ef4444">CONNECTION LOST</h2>
+            <p id="final-score-msg"></p>
+            <button id="restart-btn">RETRY</button>
+        </div>
+
+        <!-- How to Play -->
+        <div id="how-to-play" class="overlay hidden">
+            <h2>HOW TO PLAY</h2>
+            <ul style="text-align: left; line-height: 1.6;">
+                <li>Move mouse/finger to tilt the platform.</li>
+                <li>Keep the central orb from sliding off.</li>
+                <li>Catch falling <b>Amber Cubes</b> for points.</li>
+                <li>The platform gets smoother and harder as you score!</li>
+            </ul>
+            <button id="close-help">GOT IT</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreVal = document.getElementById('score-val');
+        const bestVal = document.getElementById('best-val');
+        const SLUG = 'gyro-balance-pro';
+
+        let score = 0;
+        let best = localStorage.getItem('fun_arcade_highscore_' + SLUG) || 0;
+        bestVal.innerText = best;
+
+        let state = 'START';
+        let tilt = 0;
+        let ball = { x: 0, y: 0, vx: 0, r: 12 };
+        let collectibles = [];
+        let particles = [];
+        let platformWidth = 300;
+        let lastTime = 0;
+        let shake = 0;
+
+        // Responsive sizing
+        function resize() {
+            const rect = canvas.parentElement.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+            platformWidth = Math.min(canvas.width * 0.8, 350);
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Controls
+        let targetTilt = 0;
+        const handleMove = (e) => {
+            const x = e.touches ? e.touches[0].clientX : e.clientX;
+            const rect = canvas.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            targetTilt = ((x - centerX) / (rect.width / 2)) * 0.6;
+        };
+        window.addEventListener('mousemove', handleMove);
+        window.addEventListener('touchmove', handleMove);
+
+        function initGame() {
+            score = 0;
+            scoreVal.innerText = "0";
+            ball = { x: 0, y: 0, vx: 0, r: 14 };
+            tilt = 0;
+            targetTilt = 0;
+            collectibles = [];
+            particles = [];
+            state = 'PLAYING';
+            document.querySelectorAll('.overlay').forEach(el => el.classList.add('hidden'));
+        }
+
+        function spawnCollectible() {
+            collectibles.push({
+                x: (Math.random() - 0.5) * platformWidth,
+                y: -canvas.height / 2,
+                vy: 2 + Math.random() * 2,
+                r: 8
+            });
+        }
+
+        function createExplosion(x, y, color) {
+            for(let i=0; i<10; i++) {
+                particles.push({
+                    x, y, 
+                    vx: (Math.random()-0.5)*10, 
+                    vy: (Math.random()-0.5)*10, 
+                    life: 1.0,
+                    color: color
+                });
+            }
+        }
+
+        function update(dt) {
+            if (state !== 'PLAYING') return;
+
+            // Smooth tilt
+            tilt += (targetTilt - tilt) * 0.1;
+
+            // Physics
+            const gravity = 0.5;
+            const friction = 0.99 - (score * 0.0001); // Gets slipperier
+            ball.vx += Math.sin(tilt) * gravity;
+            ball.vx *= friction;
+            ball.x += ball.vx;
+
+            // Falling items
+            if (Math.random() < 0.02) spawnCollectible();
+            
+            for (let i = collectibles.length - 1; i >= 0; i--) {
+                const c = collectibles[i];
+                c.y += c.vy;
+                
+                // Check platform collision (y=0 is platform top)
+                if (c.y >= -15 && c.y <= 15) {
+                    const dx = c.x - ball.x;
+                    if (Math.abs(dx) < 30) {
+                        score += 10;
+                        scoreVal.innerText = score;
+                        createExplosion(c.x, 0, '#F59E0B');
+                        collectibles.splice(i, 1);
+                        shake = 5;
+                    } else if (c.y > 10) {
+                        collectibles.splice(i, 1);
+                    }
+                }
+            }
+
+            // Particles
+            particles.forEach(p => {
+                p.x += p.vx; p.y += p.vy; p.life -= 0.02;
+            });
+            particles = particles.filter(p => p.life > 0);
+
+            // Death condition
+            if (Math.abs(ball.x) > platformWidth / 2 + ball.r) {
+                gameOver();
+            }
+            
+            if (shake > 0) shake *= 0.9;
+        }
+
+        function gameOver() {
+            state = 'GAMEOVER';
+            if (score > best) {
+                best = score;
+                localStorage.setItem('fun_arcade_highscore_' + SLUG, best);
+                bestVal.innerText = best;
+            }
+            document.getElementById('final-score-msg').innerText = `You earned ${score} points before tilting too far!`;
+            document.getElementById('game-over').classList.remove('hidden');
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.save();
+            ctx.translate(canvas.width / 2, canvas.height / 2 + 50);
+            
+            if (shake > 0) {
+                ctx.translate((Math.random()-0.5)*shake, (Math.random()-0.5)*shake);
+            }
+
+            // Draw tilted world
+            ctx.rotate(tilt);
+
+            // Platform
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = 'rgba(245, 158, 11, 0.4)';
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(-platformWidth/2, 0, platformWidth, 20);
+            ctx.strokeStyle = '#F59E0B';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(-platformWidth/2, 0, platformWidth, 20);
+
+            // Ball
+            ctx.beginPath();
+            ctx.arc(ball.x, -ball.r, ball.r, 0, Math.PI*2);
+            ctx.fillStyle = '#fff';
+            ctx.fill();
+            ctx.strokeStyle = '#60a5fa';
+            ctx.stroke();
+
+            // Collectibles
+            collectibles.forEach(c => {
+                ctx.fillStyle = '#F59E0B';
+                ctx.fillRect(c.x-c.r, c.y-c.r, c.r*2, c.r*2);
+            });
+
+            // Particles
+            particles.forEach(p => {
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.fillRect(p.x, p.y, 4, 4);
+            });
+            ctx.globalAlpha = 1.0;
+
+            ctx.restore();
+            
+            // Visual helper
+            if (state === 'PLAYING') {
+                ctx.fillStyle = "rgba(255,255,255,0.1)";
+                ctx.fillRect(canvas.width/2 - 1, 0, 2, canvas.height);
+            }
+        }
+
+        function loop(t) {
+            const dt = t - lastTime;
+            lastTime = t;
+            update(dt);
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        // UI Logic
+        document.getElementById('start-btn').onclick = initGame;
+        document.getElementById('restart-btn').onclick = initGame;
+        document.getElementById('help-trigger').onclick = () => document.getElementById('how-to-play').classList.remove('hidden');
+        document.getElementById('close-help').onclick = () => document.getElementById('how-to-play').classList.add('hidden');
+
+        requestAnimationFrame(loop);
+    </script>
+</body>
+</html>

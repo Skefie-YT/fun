@@ -886,5 +886,13 @@
     "category": "Puzzle",
     "accent": "#10B981",
     "addedAt": "2026-11-26T21:46:13Z"
+  },
+  {
+    "slug": "gyro-balance-pro",
+    "title": "Gyro Balance Pro",
+    "description": "Tilt the platform to catch falling gems and balance a central orb on an increasingly slippery peak!",
+    "category": "Physics",
+    "accent": "#F59E0B",
+    "addedAt": "2026-11-26T22:49:10Z"
   }
 ]
