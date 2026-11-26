@@ -742,5 +742,13 @@
     "category": "Puzzle",
     "accent": "#EF4444",
     "addedAt": "2026-11-25T23:45:21Z"
+  },
+  {
+    "slug": "kinetic-cradle",
+    "title": "Kinetic Cradle",
+    "description": "Click to tether your momentum orb to anchors and swing through the void to reach the portal before your energy fades!",
+    "category": "Physics",
+    "accent": "#EF4444",
+    "addedAt": "2026-11-26T00:54:48Z"
   }
 ]
