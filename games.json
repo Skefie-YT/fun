@@ -1022,5 +1022,13 @@
     "category": "Strategy",
     "accent": "#8B5CF6",
     "addedAt": "2026-11-27T19:52:25Z"
+  },
+  {
+    "slug": "cinder-sling",
+    "title": "Cinder Sling",
+    "description": "Pull back to sling your ember orb, bank off walls for multipliers, and shatter every ice crystal before your shots run out!",
+    "category": "Physics",
+    "accent": "#E85D04",
+    "addedAt": "2026-11-27T20:48:56Z"
   }
 ]
