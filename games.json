@@ -942,5 +942,13 @@
     "category": "Reflex",
     "accent": "#E85D04",
     "addedAt": "2026-11-27T08:57:12Z"
+  },
+  {
+    "slug": "surge-lock",
+    "title": "Surge Lock",
+    "description": "Tap or press Space to lock onto glowing nodes, reverse orbit, and chain combos as the ring accelerates!",
+    "category": "Reflex",
+    "accent": "#14B8A6",
+    "addedAt": "2026-11-27T09:59:00Z"
   }
 ]
