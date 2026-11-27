@@ -918,5 +918,13 @@
     "category": "Puzzle",
     "accent": "#F59E0B",
     "addedAt": "2026-11-27T03:53:25Z"
+  },
+  {
+    "slug": "nova-barrier-blitz",
+    "title": "Nova Barrier Blitz",
+    "description": "Drag to place defensive barriers and tap to fire plasma bursts to protect your core from waves of incoming void seekers!",
+    "category": "Action",
+    "accent": "#F59E0B",
+    "addedAt": "2026-11-27T04:58:30Z"
   }
 ]
