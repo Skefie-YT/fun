@@ -982,5 +982,13 @@
     "category": "Action",
     "accent": "#E85D04",
     "addedAt": "2026-11-27T14:22:55Z"
+  },
+  {
+    "slug": "prism-ricochet",
+    "title": "Prism Ricochet",
+    "description": "Drag to aim and sling your prism orb to shatter target nodes using wall bounces before your energy runs out!",
+    "category": "Physics",
+    "accent": "#8B5CF6",
+    "addedAt": "2026-11-27T15:51:41Z"
   }
 ]

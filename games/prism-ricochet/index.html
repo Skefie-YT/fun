@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Prism Ricochet</title>
+    <style>
+        :root {
+            --accent: #8B5CF6;
+            --bg: #0f172a;
+            --text: #f8fafc;
+        }
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            touch-action: none;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            overflow: hidden;
+        }
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+        }
+        header {
+            height: 60px;
+            padding: 0 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(15, 23, 42, 0.8);
+            z-index: 10;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .back-btn {
+            color: var(--text);
+            text-decoration: none;
+            font-weight: bold;
+            font-size: 14px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            background: rgba(255,255,255,0.1);
+        }
+        .stats {
+            display: flex;
+            gap: 20px;
+            font-family: monospace;
+            font-size: 18px;
+        }
+        .help-btn {
+            background: var(--accent);
+            border: none;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        canvas {
+            flex-grow: 1;
+            background: #020617;
+            display: block;
+        }
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            padding: 20px;
+            text-align: center;
+        }
+        .hidden {
+            display: none !important;
+        }
+        h1 {
+            color: var(--accent);
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        .btn-main {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            border-radius: 30px;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: transform 0.2s;
+        }
+        .btn-main:active { transform: scale(0.95); }
+        .footer-hint {
+            position: absolute;
+            bottom: 20px;
+            font-size: 12px;
+            opacity: 0.6;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <header>
+            <a href="../../" class="back-btn">Back</a>
+            <div class="stats">
+                <span>SCORE: <span id="score">0</span></span>
+                <span>BEST: <span id="best">0</span></span>
+            </div>
+            <button class="help-btn" id="help-trigger">?</button>
+        </header>
+        
+        <canvas id="gameCanvas"></canvas>
+
+        <div id="start-screen" class="overlay">
+            <h1>PRISM RICOCHET</h1>
+            <p>Drag anywhere to aim. Release to launch.<br>Shatter all nodes using physics ricochets!</p>
+            <button class="btn-main" id="start-btn">LAUNCH</button>
+            <div class="footer-hint">Mouse Drag or Touch to Aim</div>
+        </div>
+
+        <div id="help-screen" class="overlay hidden">
+            <h1>How to Play</h1>
+            <p>1. Pull back (drag) to determine power and angle.</p>
+            <p>2. Launch the orb to hit the glowing targets.</p>
+            <p>3. Use walls to bounce and reach tricky angles.</p>
+            <p>4. Don't run out of shots!</p>
+            <button class="btn-main" id="close-help">GOT IT</button>
+        </div>
+
+        <div id="game-over" class="overlay hidden">
+            <h1 id="over-title">OUT OF ENERGY</h1>
+            <p id="final-score">Score: 0</p>
+            <button class="btn-main" id="retry-btn">RETRY</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const bestEl = document.getElementById('best');
+        
+        const STORAGE_KEY = 'fun_arcade_highscore_prism-ricochet';
+        let score = 0;
+        let best = localStorage.getItem(STORAGE_KEY) || 0;
+        bestEl.innerText = best;
+
+        let gameActive = false;
+        let width, height;
+        let ball = { x: 0, y: 0, r: 12, vx: 0, vy: 0, active: false };
+        let targets = [];
+        let particles = [];
+        let dragStart = null;
+        let dragCurrent = null;
+        let shotsLeft = 5;
+        let level = 1;
+
+        function resize() {
+            width = canvas.width = canvas.clientWidth;
+            height = canvas.height = canvas.clientHeight;
+            if(!ball.active) resetBall();
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
+        function resetBall() {
+            ball.x = width / 2;
+            ball.y = height - 80;
+            ball.vx = 0;
+            ball.vy = 0;
+            ball.active = false;
+        }
+
+        function createLevel() {
+            targets = [];
+            const count = 3 + Math.min(level, 8);
+            for(let i=0; i<count; i++) {
+                targets.push({
+                    x: 50 + Math.random() * (width - 100),
+                    y: 100 + Math.random() * (height / 2),
+                    r: 15 + Math.random() * 15,
+                    color: `hsl(${Math.random() * 360}, 70%, 60%)`,
+                    hit: false
+                });
+            }
+        }
+
+        function spawnParticles(x, y, color) {
+            for(let i=0; i<12; i++) {
+                particles.push({
+                    x, y, 
+                    vx: (Math.random() - 0.5) * 10,
+                    vy: (Math.random() - 0.5) * 10,
+                    life: 1.0,
+                    color: color
+                });
+            }
+        }
+
+        function update() {
+            if(!gameActive) return;
+
+            if(ball.active) {
+                ball.x += ball.vx;
+                ball.y += ball.vy;
+
+                // Wall Bounces
+                if(ball.x - ball.r < 0 || ball.x + ball.r > width) {
+                    ball.vx *= -0.9;
+                    ball.x = ball.x < ball.r ? ball.r : width - ball.r;
+                }
+                if(ball.y - ball.r < 0) {
+                    ball.vy *= -0.9;
+                    ball.y = ball.r;
+                }
+                if(ball.y - ball.r > height) {
+                    ball.active = false;
+                    checkTurnEnd();
+                }
+
+                // Target Collisions
+                targets.forEach(t => {
+                    if(!t.hit) {
+                        const dx = ball.x - t.x;
+                        const dy = ball.y - t.y;
+                        const dist = Math.sqrt(dx*dx + dy*dy);
+                        if(dist < ball.r + t.r) {
+                            t.hit = true;
+                            score += 100;
+                            scoreEl.innerText = score;
+                            spawnParticles(t.x, t.y, t.color);
+                        }
+                    }
+                });
+
+                // Friction slightly
+                ball.vx *= 0.995;
+                ball.vy *= 0.995;
+
+                if(Math.abs(ball.vx) + Math.abs(ball.vy) < 0.5) {
+                    ball.active = false;
+                    checkTurnEnd();
+                }
+            }
+
+            particles.forEach((p, i) => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.02;
+                if(p.life <= 0) particles.splice(i, 1);
+            });
+
+            if(targets.every(t => t.hit)) {
+                level++;
+                shotsLeft = Math.min(shotsLeft + 2, 8);
+                createLevel();
+                resetBall();
+            }
+        }
+
+        function checkTurnEnd() {
+            resetBall();
+            shotsLeft--;
+            if(shotsLeft <= 0 && targets.some(t => !t.hit)) {
+                endGame();
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, width, height);
+
+            // Draw Targets
+            targets.forEach(t => {
+                if(!t.hit) {
+                    ctx.beginPath();
+                    ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2);
+                    ctx.fillStyle = t.color;
+                    ctx.shadowBlur = 15;
+                    ctx.shadowColor = t.color;
+                    ctx.fill();
+                    ctx.closePath();
+                    ctx.shadowBlur = 0;
+                }
+            });
+
+            // Draw Aim Line
+            if(dragStart && dragCurrent && !ball.active) {
+                const dx = dragStart.x - dragCurrent.x;
+                const dy = dragStart.y - dragCurrent.y;
+                ctx.beginPath();
+                ctx.moveTo(ball.x, ball.y);
+                ctx.lineTo(ball.x + dx, ball.y + dy);
+                ctx.strokeStyle = "rgba(139, 92, 246, 0.5)";
+                ctx.setLineDash([5, 5]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.closePath();
+            }
+
+            // Draw Particles
+            particles.forEach(p => {
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.fillRect(p.x, p.y, 4, 4);
+            });
+            ctx.globalAlpha = 1.0;
+
+            // Draw Ball
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+            ctx.fillStyle = "#8B5CF6";
+            ctx.shadowBlur = ball.active ? 15 : 0;
+            ctx.shadowColor = "#8B5CF6";
+            ctx.fill();
+            ctx.closePath();
+            ctx.shadowBlur = 0;
+
+            // HUD for shots
+            ctx.fillStyle = "white";
+            ctx.font = "14px monospace";
+            ctx.fillText(`ENERGY: ${'I'.repeat(shotsLeft)}`, 20, height - 20);
+
+            requestAnimationFrame(() => {
+                update();
+                draw();
+            });
+        }
+
+        function handleStart(e) {
+            if(!gameActive || ball.active) return;
+            const t = e.touches ? e.touches[0] : e;
+            dragStart = { x: t.clientX, y: t.clientY };
+            dragCurrent = { x: t.clientX, y: t.clientY };
+        }
+
+        function handleMove(e) {
+            if(!dragStart) return;
+            const t = e.touches ? e.touches[0] : e;
+            dragCurrent = { x: t.clientX, y: t.clientY };
+        }
+
+        function handleEnd() {
+            if(!dragStart || !dragCurrent) return;
+            const dx = dragStart.x - dragCurrent.x;
+            const dy = dragStart.y - dragCurrent.y;
+            const power = Math.sqrt(dx*dx + dy*dy);
+            
+            if(power > 10) {
+                ball.vx = dx * 0.15;
+                ball.vy = dy * 0.15;
+                ball.active = true;
+            }
+            
+            dragStart = null;
+            dragCurrent = null;
+        }
+
+        canvas.addEventListener('mousedown', handleStart);
+        window.addEventListener('mousemove', handleMove);
+        window.addEventListener('mouseup', handleEnd);
+        canvas.addEventListener('touchstart', handleStart);
+        window.addEventListener('touchmove', handleMove);
+        window.addEventListener('touchend', handleEnd);
+
+        function startGame() {
+            score = 0;
+            level = 1;
+            shotsLeft = 5;
+            scoreEl.innerText = score;
+            gameActive = true;
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('game-over').classList.add('hidden');
+            createLevel();
+            resetBall();
+        }
+
+        function endGame() {
+            gameActive = false;
+            if(score > best) {
+                best = score;
+                localStorage.setItem(STORAGE_KEY, best);
+                bestEl.innerText = best;
+            }
+            document.getElementById('final-score').innerText = `Final Score: ${score}`;
+            document.getElementById('game-over').classList.remove('hidden');
+        }
+
+        document.getElementById('start-btn').addEventListener('click', startGame);
+        document.getElementById('retry-btn').addEventListener('click', startGame);
+        document.getElementById('help-trigger').addEventListener('click', () => {
+            document.getElementById('help-screen').classList.remove('hidden');
+        });
+        document.getElementById('close-help').addEventListener('click', () => {
+            document.getElementById('help-screen').classList.add('hidden');
+        });
+
+        draw();
+    </script>
+</body>
+</html>
