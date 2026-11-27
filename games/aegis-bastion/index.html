@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Aegis Bastion — Fun Arcade</title>
+<style>
+  :root {
+    --bg: #09090f;
+    --panel: rgba(18, 16, 32, 0.88);
+    --border: rgba(139, 92, 246, 0.35);
+    --accent: #8B5CF6;
+    --accent-glow: rgba(139, 92, 246, 0.55);
+    --cyan: #22d3ee;
+    --gold: #fbbf24;
+    --danger: #f43f5e;
+    --text: #f8fafc;
+    --muted: #94a3b8;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
+  html, body {
+    width: 100%; height: 100dvh; overflow: hidden;
+    background: var(--bg); color: var(--text);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    touch-action: none;
+  }
+  #game-wrap {
+    position: relative; width: 100%; height: 100dvh;
+    display: flex; flex-direction: column;
+    background: radial-gradient(circle at 50% 50%, #151129 0%, #09090f 75%);
+  }
+  /* Top HUD */
+  .topbar {
+    position: relative; z-index: 20;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px; gap: 10px;
+    background: rgba(9, 9, 15, 0.78);
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(8px);
+  }
+  .left-group, .right-group { display: flex; align-items: center; gap: 10px; }
+  .back-btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 6px 12px; border-radius: 8px;
+    background: rgba(139, 92, 246, 0.14);
+    border: 1px solid var(--border);
+    color: var(--text); text-decoration: none;
+    font-size: 13px; font-weight: 600;
+    transition: all 0.15s ease;
+  }
+  .back-btn:hover { background: var(--accent); border-color: var(--accent); }
+  .hud-stats {
+    display: flex; align-items: center; gap: 14px;
+    font-size: 13px; font-weight: 700;
+  }
+  .stat-pill {
+    display: flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 8px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .stat-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .stat-val { color: var(--text); font-variant-numeric: tabular-nums; }
+  .stat-val.energy { color: var(--cyan); }
+  .stat-val.wave { color: var(--accent); }
+  .stat-val.best { color: var(--gold); }
+  .icon-btn {
+    width: 32px; height: 32px; border-radius: 8px;
+    border: 1px solid var(--border); background: rgba(139, 92, 246, 0.14);
+    color: var(--text); font-weight: 700; font-size: 14px;
+    cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+    transition: all 0.15s ease;
+  }
+  .icon-btn:hover { background: var(--accent); }
+
+  /* Canvas Area */
+  #canvas-container {
+    position: relative; flex: 1; width: 100%; overflow: hidden;
+  }
+  canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+
+  /* Bottom Action Bar */
+  .bottom-bar {
+    position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+    z-index: 15; display: flex; align-items: center; gap: 12px;
+    padding: 6px 14px; border-radius: 999px;
+    background: rgba(12, 10, 22, 0.85);
+    border: 1px solid var(--border);
+    backdrop-filter: blur(8px);
+    pointer-events: auto;
+  }
+  .nova-btn {
+    padding: 7px 16px; border-radius: 999px; border: none;
+    background: linear-gradient(135deg, #8B5CF6, #6366f1);
+    color: #fff; font-weight: 700; font-size: 12px; letter-spacing: 0.5px;
+    cursor: pointer; transition: all 0.15s ease;
+    box-shadow: 0 0 14px rgba(139, 92, 246, 0.45);
+  }
+  .nova-btn:disabled {
+    background: rgba(255,255,255,0.08); color: var(--muted);
+    box-shadow: none; cursor: not-allowed;
+  }
+  .nova-btn:not(:disabled):hover { transform: scale(1.05); }
+  .hint-text { font-size: 12px; color: var(--muted); white-space: nowrap; }
+
+  /* Overlays */
+  .overlay {
+    position: absolute; inset: 0; z-index: 30;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(7, 7, 13, 0.82); backdrop-filter: blur(6px);
+    padding: 20px;
+  }
+  .overlay.hidden { display: none; }
+  .card {
+    width: 100%; max-width: 420px;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 18px; padding: 26px 24px; text-align: center;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.6), 0 0 30px rgba(139, 92, 246, 0.18);
+  }
+  .card h1 {
+    font-size: 28px; font-weight: 800; margin-bottom: 8px;
+    background: linear-gradient(135deg, #fff 20%, #c4b5fd 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .card p { color: var(--muted); font-size: 14px; line-height: 1.55; margin-bottom: 18px; }
+  .primary-btn {
+    width: 100%; padding: 12px 20px; border-radius: 12px; border: none;
+    background: linear-gradient(135deg, #8B5CF6, #7c3aed);
+    color: #fff; font-size: 15px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 6px 20px rgba(139, 92, 246, 0.4);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  .primary-btn:hover { transform: translateY(-1px); box-shadow: 0 8px 26px rgba(139, 92, 246, 0.6); }
+  .rules-list {
+    text-align: left; font-size: 13px; color: #cbd5e1;
+    background: rgba(0,0,0,0.28); border-radius: 12px; padding: 14px 16px;
+    margin-bottom: 18px; list-style: none; display: flex; flex-direction: column; gap: 8px;
+  }
+  .rules-list li strong { color: var(--cyan); }
+  .final-stats {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px;
+  }
+  .final-box {
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px; padding: 10px;
+  }
+  .final-box .lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; }
+  .final-box .val { font-size: 20px; font-weight: 800; color: #fff; margin-top: 2px; }
+
+  @media (max-width: 640px) {
+    .hud-stats { gap: 6px; }
+    .stat-pill { padding: 4px 7px; font-size: 12px; }
+    .hint-text { display: none; }
+  }
+</style>
+</head>
+<body>
+<div id="game-wrap">
+  <div class="topbar">
+    <div class="left-group">
+      <a href="../../" class="back-btn">← Back</a>
+      <div class="hud-stats">
+        <div class="stat-pill"><span class="stat-label">Score</span><span class="stat-val" id="hud-score">0</span></div>
+        <div class="stat-pill"><span class="stat-label">Wave</span><span class="stat-val wave" id="hud-wave">1</span></div>
+        <div class="stat-pill"><span class="stat-label">Energy</span><span class="stat-val energy" id="hud-energy">100</span></div>
+        <div class="stat-pill"><span class="stat-label">Best</span><span class="stat-val best" id="hud-best">0</span></div>
+      </div>
+    </div>
+    <div class="right-group">
+      <button class="icon-btn" id="mute-btn" title="Toggle Sound">🔊</button>
+      <button class="icon-btn" id="help-btn" title="How to Play">?</button>
+    </div>
+  </div>
+
+  <div id="canvas-container">
+    <canvas id="gameCanvas"></canvas>
+    <div class="bottom-bar">
+      <button class="nova-btn" id="nova-btn" disabled>NOVA BLAST (0%)</button>
+      <span class="hint-text">Aim: Mouse/Touch • Click Socket: Build/Upgrade • Space: Nova</span>
+    </div>
+  </div>
+
+  <!-- Start Overlay -->
+  <div class="overlay" id="start-overlay">
+    <div class="card">
+      <h1>Aegis Bastion</h1>
+      <p>Defend the central Aegis Core from relentless waves of void invaders. Aim your manual pulse cannon and deploy upgradable turrets on the 6 orbital sockets!</p>
+      <button class="primary-btn" id="start-btn">Deploy Bastion</button>
+    </div>
+  </div>
+
+  <!-- How to Play Overlay -->
+  <div class="overlay hidden" id="help-overlay">
+    <div class="card">
+      <h1>How to Play</h1>
+      <ul class="rules-list">
+        <li><strong>Aim &amp; Fire:</strong> Move your mouse or drag on touchscreens to aim and auto-fire your Core's Pulse Cannon.</li>
+        <li><strong>Build Turrets:</strong> Click or tap any glowing empty socket around the core to build a Pulse Turret (50 Energy).</li>
+        <li><strong>Upgrade:</strong> Click an existing turret to upgrade it up to Level 3 for faster fire &amp; multi-shots!</li>
+        <li><strong>Nova Blast:</strong> Destroying enemies charges your Nova meter. Press <strong>Space</strong> or tap <strong>NOVA BLAST</strong> to unleash a screen-clearing shockwave.</li>
+      </ul>
+      <button class="primary-btn" id="close-help-btn">Got It</button>
+    </div>
+  </div>
+
+  <!-- Game Over Overlay -->
+  <div class="overlay hidden" id="gameover-overlay">
+    <div class="card">
+      <h1>Core Breached</h1>
+      <p id="gameover-msg">The void swarm overwhelmed your bastion.</p>
+      <div class="final-stats">
+        <div class="final-box"><div class="lbl">Final Score</div><div class="val" id="final-score">0</div></div>
+        <div class="final-box"><div class="lbl">Best Score</div><div class="val" id="final-best">0</div></div>
+      </div>
+      <button class="primary-btn" id="retry-btn">Play Again</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const SLUG = 'aegis-bastion';
+  const BEST_KEY = 'fun_arcade_highscore_' + SLUG;
+
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+  const container = document.getElementById('canvas-container');
+
+  const hudScore = document.getElementById('hud-score');
+  const hudWave = document.getElementById('hud-wave');
+  const hudEnergy = document.getElementById('hud-energy');
+  const hudBest = document.getElementById('hud-best');
+  const novaBtn = document.getElementById('nova-btn');
+  const muteBtn = document.getElementById('mute-btn');
+  const helpBtn = document.getElementById('help-btn');
+
+  const startOverlay = document.getElementById('start-overlay');
+  const helpOverlay = document.getElementById('help-overlay');
+  const gameoverOverlay = document.getElementById('gameover-overlay');
+
+  // Audio Synth
+  let audioCtx = null;
+  let muted = false;
+  function initAudio() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  }
+  function playTone(freq, type, dur, vol = 0.08, slide = 0) {
+    if (muted || !audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    if (slide) osc.frequency.exponentialRampToValueAtTime(Math.max(40, freq + slide), audioCtx.currentTime + dur);
+    gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.start(); osc.stop(audioCtx.currentTime + dur);
+  }
+
+  // Game State
+  let W = 800, H = 600, CX = 400, CY = 300;
+  let bestScore = parseInt(localStorage.getItem(BEST_KEY) || '0', 10);
+  hudBest.textContent = bestScore;
+
+  let state = 'start'; // start, playing, paused, gameover
+  let score = 0, wave = 1, energy = 100, coreHp = 100, maxCoreHp = 100;
+  let novaCharge = 0; // 0 to 100
+  let shake = 0;
+  let aimAngle = 0;
+  let pointer = { x: 0, y: 0, active: false };
+
+  let sockets = [];
+  let enemies = [];
+  let bullets = [];
+  let particles = [];
+  let floatTexts = [];
+  let shockwaves = [];
+
+  let waveEnemiesLeft = 0;
+  let spawnTimer = 0;
+  let coreFireTimer = 0;
+
+  const TURRET_COSTS = [50, 80, 130]; // Build Lv1, Upgrade Lv2, Upgrade Lv3
+
+  function resize() {
+    const rect = container.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = rect.width; H = rect.height;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    CX = W / 2; CY = H / 2;
+    updateSocketPositions();
+  }
+
+  function updateSocketPositions() {
+    const radius = Math.min(W, H) * 0.2;
+    const clampedR = Math.max(72, Math.min(130, radius));
+    for (let i = 0; i < 6; i++) {
+      const ang = (Math.PI * 2 / 6) * i - Math.PI / 2;
+      if (!sockets[i]) {
+        sockets[i] = { x: 0, y: 0, level: 0, cooldown: 0, angle: ang };
+      }
+      sockets[i].x = CX + Math.cos(ang) * clampedR;
+      sockets[i].y = CY + Math.sin(ang) * clampedR;
+    }
+  }
+
+  function resetGame() {
+    score = 0; wave = 1; energy = 100; coreHp = 100; maxCoreHp = 100;
+    novaCharge = 0; shake = 0;
+    enemies = []; bullets = []; particles = []; floatTexts = []; shockwaves = [];
+    sockets = [];
+    updateSocketPositions();
+    startWave(1);
+    updateHUD();
+  }
+
+  function startWave(w) {
+    wave = w;
+    waveEnemiesLeft = 6 + w * 3;
+    spawnTimer = 0.5;
+    addFloatText(CX, CY - 60, `WAVE ${w}`, '#8B5CF6', 18);
+  }
+
+  function updateHUD() {
+    hudScore.textContent = score;
+    hudWave.textContent = wave;
+    hudEnergy.textContent = energy;
+    if (score > bestScore) {
+      bestScore = score;
+      localStorage.setItem(BEST_KEY, bestScore);
+      hudBest.textContent = bestScore;
+    }
+    if (novaCharge >= 100) {
+      novaBtn.disabled = false;
+      novaBtn.textContent = 'NOVA BLAST READY!';
+    } else {
+      novaBtn.disabled = true;
+      novaBtn.textContent = `NOVA BLAST (${Math.floor(novaCharge)}%)`;
+    }
+  }
+
+  function addFloatText(x, y, text, color = '#fff', size = 13) {
+    floatTexts.push({ x, y, text, color, size, life: 1.0, vy: -28 });
+  }
+
+  function spawnParticles(x, y, color, count = 10, speed = 120) {
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const s = (0.3 + Math.random() * 0.7) * speed;
+      particles.push({
+        x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s,
+        life: 0.4 + Math.random() * 0.35, maxLife: 0.75,
+        color, size: 2 + Math.random() * 3
+      });
+    }
+  }
+
+  function spawnEnemy() {
+    const angle = Math.random() * Math.PI * 2;
+    const dist = Math.hypot(W, H) * 0.55 + 30;
+    const x = CX + Math.cos(angle) * dist;
+    const y = CY + Math.sin(angle) * dist;
+
+    const isBoss = (wave % 5 === 0 && waveEnemiesLeft === 1);
+    const roll = Math.random();
+    let type = 'scout';
+    let hp = 18 + wave * 5;
+    let speed = 68 + Math.min(80, wave * 4);
+    let radius = 12;
+    let color = '#f43f5e';
+    let reward = 12;
+
+    if (isBoss) {
+      type = 'boss';
+      hp = 180 + wave * 45;
+      speed = 34;
+      radius = 24;
+      color = '#fbbf24';
+      reward = 60;
+    } else if (wave >= 3 && roll < 0.25) {
+      type = 'brute';
+      hp = 45 + wave * 12;
+      speed = 42 + Math.min(40, wave * 2);
+      radius = 17;
+      color = '#fb923c';
+      reward = 22;
+    } else if (wave >= 2 && roll > 0.75) {
+      type = 'splitter';
+      hp = 22 + wave * 6;
+      speed = 58 + Math.min(60, wave * 3);
+      radius = 14;
+      color = '#e879f9';
+      reward = 15;
+    }
+
+    enemies.push({ x, y, hp, maxHp: hp, speed, radius, color, type, reward, hitFlash: 0 });
+  }
+
+  function triggerNova() {
+    if (novaCharge < 100 || state !== 'playing') return;
+    novaCharge = 0;
+    shake = 14;
+    playTone(140, 'sawtooth', 0.45, 0.16, -90);
+    shockwaves.push({ x: CX, y: CY, r: 20, maxR: Math.max(W, H) * 0.65, life: 1 });
+    for (let i = enemies.length - 1; i >= 0; i--) {
+      const e = enemies[i];
+      e.hp -= 120 + wave * 15;
+      e.hitFlash = 0.2;
+      const ang = Math.atan2(e.y - CY, e.x - CX);
+      e.x += Math.cos(ang) * 55;
+      e.y += Math.sin(ang) * 55;
+      if (e.hp <= 0) killEnemy(i);
+    }
+    updateHUD();
+  }
+
+  function killEnemy(idx) {
+    const e = enemies[idx];
+    score += e.reward * 10;
+    energy += e.reward;
+    novaCharge = Math.min(100, novaCharge + (e.type === 'boss' ? 35 : 8));
+    spawnParticles(e.x, e.y, e.color, e.type === 'boss' ? 28 : 12, 160);
+    addFloatText(e.x, e.y - 10, `+${e.reward}⚡`, '#22d3ee', 12);
+    playTone(260 + Math.random() * 120, 'triangle', 0.1, 0.06, -120);
+
+    if (e.type === 'splitter') {
+      for (let k = 0; k < 2; k++) {
+        const offA = Math.random() * Math.PI * 2;
+        enemies.push({
+          x: e.x + Math.cos(offA) * 14, y: e.y + Math.sin(offA) * 14,
+          hp: 10 + wave * 2, maxHp: 10 + wave * 2,
+          speed: 95, radius: 8, color: '#f0abfc', type: 'mini', reward: 5, hitFlash: 0
+        });
+      }
+    }
+    enemies.splice(idx, 1);
+    updateHUD();
+  }
+
+  function handleCanvasClick(clientX, clientY) {
+    if (state !== 'playing') return;
+    initAudio();
+    const rect = canvas.getBoundingClientRect();
+    const mx = clientX - rect.left;
+    const my = clientY - rect.top;
+
+    // Check if clicked a socket
+    for (const s of sockets) {
+      if (Math.hypot(mx - s.x, my - s.y) < 24) {
+        if (s.level < 3) {
+          const cost = TURRET_COSTS[s.level];
+          if (energy >= cost) {
+            energy -= cost;
+            s.level++;
+            spawnParticles(s.x, s.y, '#8B5CF6', 14, 110);
+            addFloatText(s.x, s.y - 18, s.level === 1 ? 'TURRET BUILT!' : `LV ${s.level}!`, '#fbbf24', 13);
+            playTone(440 + s.level * 140, 'sine', 0.18, 0.1, 180);
+            updateHUD();
+          } else {
+            addFloatText(s.x, s.y - 18, `NEED ${cost}⚡`, '#f43f5e', 12);
+            playTone(150, 'square', 0.1, 0.05);
+          }
+        }
+        return;
+      }
+    }
+  }
+
+  // Input Listeners
+  canvas.addEventListener('pointerdown', (e) => {
+    initAudio();
+    const rect = canvas.getBoundingClientRect();
+    pointer.x = e.clientX - rect.left;
+    pointer.y = e.clientY - rect.top;
+    pointer.active = true;
+    aimAngle = Math.atan2(pointer.y - CY, pointer.x - CX);
+    handleCanvasClick(e.clientX, e.clientY);
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    pointer.x = e.clientX - rect.left;
+    pointer.y = e.clientY - rect.top;
+    aimAngle = Math.atan2(pointer.y - CY, pointer.x - CX);
+  });
+  window.addEventListener('pointerup', () => { pointer.active = false; });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' && state === 'playing') {
+      e.preventDefault();
+      triggerNova();
+    }
+  });
+
+  novaBtn.addEventListener('click', triggerNova);
+  muteBtn.addEventListener('click', () => {
+    muted = !muted;
+    muteBtn.textContent = muted ? '🔇' : '🔊';
+  });
+  helpBtn.addEventListener('click', () => {
+    if (state === 'playing') state = 'paused';
+    helpOverlay.classList.remove('hidden');
+  });
+  document.getElementById('close-help-btn').addEventListener('click', () => {
+    helpOverlay.classList.add('hidden');
+    if (state === 'paused') state = 'playing';
+  });
+  document.getElementById('start-btn').addEventListener('click', () => {
+    initAudio();
+    startOverlay.classList.add('hidden');
+    resetGame();
+    state = 'playing';
+  });
+  document.getElementById('retry-btn').addEventListener('click', () => {
+    initAudio();
+    gameoverOverlay.classList.add('hidden');
+    resetGame();
+    state = 'playing';
+  });
+
+  // Main Loop
+  let lastTime = performance.now();
+  function loop(now) {
+    const dt = Math.min(0.05, (now - lastTime) / 1000);
+    lastTime = now;
+
+    if (state === 'playing') update(dt);
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  function update(dt) {
+    if (shake > 0) shake = Math.max(0, shake - dt * 35);
+
+    // Wave Spawning
+    if (waveEnemiesLeft > 0) {
+      spawnTimer -= dt;
+      if (spawnTimer <= 0) {
+        spawnEnemy();
+        waveEnemiesLeft--;
+        spawnTimer = Math.max(0.32, 1.25 - wave * 0.06);
+      }
+    } else if (enemies.length === 0) {
+      startWave(wave + 1);
+    }
+
+    // Core Manual Cannon (auto-fires toward aimAngle)
+    coreFireTimer -= dt;
+    if (coreFireTimer <= 0) {
+      coreFireTimer = 0.22;
+      const bx = CX + Math.cos(aimAngle) * 24;
+      const by = CY + Math.sin(aimAngle) * 24;
+      bullets.push({
+        x: bx, y: by,
+        vx: Math.cos(aimAngle) * 480, vy: Math.sin(aimAngle) * 480,
+        dmg: 14 + wave * 1.5, color: '#22d3ee', radius: 4
+      });
+      playTone(580, 'sine', 0.05, 0.025, -180);
+    }
+
+    // Turrets AI
+    for (const s of sockets) {
+      if (s.level === 0) continue;
+      s.cooldown -= dt;
+      if (s.cooldown <= 0 && enemies.length > 0) {
+        let nearest = null, minD = 320;
+        for (const e of enemies) {
+          const d = Math.hypot(e.x - s.x, e.y - s.y);
+          if (d < minD) { minD = d; nearest = e; }
+        }
+        if (nearest) {
+          s.angle = Math.atan2(nearest.y - s.y, nearest.x - s.x);
+          s.cooldown = s.level === 1 ? 0.65 : s.level === 2 ? 0.42 : 0.28;
+          const shots = s.level === 3 ? 2 : 1;
+          for (let k = 0; k < shots; k++) {
+            const spread = shots === 2 ? (k === 0 ? -0.07 : 0.07) : 0;
+            const a = s.angle + spread;
+            bullets.push({
+              x: s.x + Math.cos(a) * 14, y: s.y + Math.sin(a) * 14,
+              vx: Math.cos(a) * 440, vy: Math.sin(a) * 440,
+              dmg: 12 + s.level * 6, color: s.level === 3 ? '#fbbf24' : '#8B5CF6', radius: 3.5
+            });
+          }
+        }
+      }
+    }
+
+    // Bullets
+    for (let i = bullets.length - 1; i >= 0; i--) {
+      const b = bullets[i];
+      b.x += b.vx * dt; b.y += b.vy * dt;
+      if (b.x < -30 || b.x > W + 30 || b.y < -30 || b.y > H + 30) {
+        bullets.splice(i, 1); continue;
+      }
+      let hit = false;
+      for (let j = enemies.length - 1; j >= 0; j--) {
+        const e = enemies[j];
+        if (Math.hypot(b.x - e.x, b.y - e.y) < e.radius + b.radius) {
+          e.hp -= b.dmg;
+          e.hitFlash = 0.1;
+          spawnParticles(b.x, b.y, b.color, 3, 60);
+          if (e.hp <= 0) killEnemy(j);
+          hit = true;
+          break;
+        }
+      }
+      if (hit) bullets.splice(i, 1);
+    }
+
+    // Enemies
+    for (let i = enemies.length - 1; i >= 0; i--) {
+      const e = enemies[i];
+      if (e.hitFlash > 0) e.hitFlash -= dt;
+      const ang = Math.atan2(CY - e.y, CX - e.x);
+      e.x += Math.cos(ang) * e.speed * dt;
+      e.y += Math.sin(ang) * e.speed * dt;
+      if (Math.hypot(e.x - CX, e.y - CY) < 26 + e.radius) {
+        coreHp -= (e.type === 'boss' ? 35 : 15);
+        shake = 10;
+        spawnParticles(e.x, e.y, '#f43f5e', 14, 140);
+        playTone(110, 'sawtooth', 0.2, 0.12, -50);
+        enemies.splice(i, 1);
+        if (coreHp <= 0) {
+          coreHp = 0;
+          state = 'gameover';
+          document.getElementById('final-score').textContent = score;
+          document.getElementById('final-best').textContent = bestScore;
+          gameoverOverlay.classList.remove('hidden');
+        }
+      }
+    }
+
+    // Particles & Shockwaves & FloatTexts
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      p.life -= dt;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+    for (let i = shockwaves.length - 1; i >= 0; i--) {
+      const sw = shockwaves[i];
+      sw.r += (sw.maxR - sw.r) * dt * 7;
+      sw.life -= dt * 1.8;
+      if (sw.life <= 0) shockwaves.splice(i, 1);
+    }
+    for (let i = floatTexts.length - 1; i >= 0; i--) {
+      const ft = floatTexts[i];
+      ft.y += ft.vy * dt; ft.life -= dt;
+      if (ft.life <= 0) floatTexts.splice(i, 1);
+    }
+  }
+
+  function draw() {
+    ctx.save();
+    if (shake > 0) ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
+    ctx.clearRect(0, 0, W, H);
+
+    // Subtle tactical grid
+    ctx.strokeStyle = 'rgba(139, 92, 246, 0.07)';
+    ctx.lineWidth = 1;
+    const step = 48;
+    for (let x = CX % step; x < W; x += step) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+    for (let y = CY % step; y < H; y += step) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+
+    // Orbital ring
+    if (sockets.length) {
+      const r = Math.hypot(sockets[0].x - CX, sockets[0].y - CY);
+      ctx.beginPath(); ctx.arc(CX, CY, r, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(139, 92, 246, 0.2)'; ctx.setLineDash([6, 6]); ctx.stroke(); ctx.setLineDash([]);
+    }
+
+    // Shockwaves
+    for (const sw of shockwaves) {
+      ctx.beginPath(); ctx.arc(sw.x, sw.y, sw.r, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(139, 92, 246, ${sw.life})`;
+      ctx.lineWidth = 6 * sw.life; ctx.stroke();
+    }
+
+    // Sockets & Turrets
+    for (const s of sockets) {
+      ctx.save(); ctx.translate(s.x, s.y);
+      if (s.level === 0) {
+        ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(139, 92, 246, 0.1)'; ctx.fill();
+        ctx.strokeStyle = energy >= 50 ? 'rgba(34, 211, 238, 0.7)' : 'rgba(139, 92, 246, 0.35)';
+        ctx.lineWidth = 2; ctx.stroke();
+        ctx.fillStyle = energy >= 50 ? '#22d3ee' : '#64748b';
+        ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('+', 0, 1);
+      } else {
+        ctx.rotate(s.angle);
+        const col = s.level === 3 ? '#fbbf24' : s.level === 2 ? '#22d3ee' : '#8B5CF6';
+        ctx.fillStyle = '#1e1b4b'; ctx.strokeStyle = col; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = col;
+        ctx.fillRect(4, -3, 14, 6);
+        ctx.rotate(-s.angle);
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText(`L${s.level}`, 0, 3);
+      }
+      ctx.restore();
+    }
+
+    // Central Aegis Core
+    ctx.save(); ctx.translate(CX, CY);
+    // HP Ring
+    ctx.beginPath(); ctx.arc(0, 0, 30, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * (coreHp / maxCoreHp)));
+    ctx.strokeStyle = coreHp > 35 ? '#22d3ee' : '#f43f5e'; ctx.lineWidth = 4; ctx.stroke();
+    // Core body
+    ctx.rotate(aimAngle);
+    ctx.fillStyle = '#1e1b4b'; ctx.strokeStyle = '#8B5CF6'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(0, 0, 22, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#22d3ee'; ctx.fillRect(10, -4, 18, 8);
+    ctx.restore();
+
+    // Bullets
+    for (const b of bullets) {
+      ctx.beginPath(); ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
+      ctx.fillStyle = b.color; ctx.fill();
+    }
+
+    // Enemies
+    for (const e of enemies) {
+      ctx.save(); ctx.translate(e.x, e.y);
+      ctx.fillStyle = e.hitFlash > 0 ? '#fff' : e.color;
+      ctx.beginPath();
+      if (e.type === 'brute' || e.type === 'boss') {
+        for (let i = 0; i < 6; i++) {
+          const a = (Math.PI * 2 / 6) * i;
+          const px = Math.cos(a) * e.radius, py = Math.sin(a) * e.radius;
+          if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+      } else {
+        ctx.arc(0, 0, e.radius, 0, Math.PI * 2);
+      }
+      ctx.fill();
+      if (e.hp < e.maxHp) {
+        ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(-e.radius, -e.radius - 7, e.radius * 2, 3);
+        ctx.fillStyle = '#22d3ee'; ctx.fillRect(-e.radius, -e.radius - 7, (e.radius * 2) * (e.hp / e.maxHp), 3);
+      }
+      ctx.restore();
+    }
+
+    // Particles
+    for (const p of particles) {
+      ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+    }
+    ctx.globalAlpha = 1;
+
+    // Float Texts
+    for (const ft of floatTexts) {
+      ctx.globalAlpha = Math.max(0, ft.life);
+      ctx.fillStyle = ft.color;
+      ctx.font = `bold ${ft.size}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText(ft.text, ft.x, ft.y);
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  window.addEventListener('resize', resize);
+  resize();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

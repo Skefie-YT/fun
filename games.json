@@ -1014,5 +1014,13 @@
     "category": "Action",
     "accent": "#0EA5E9",
     "addedAt": "2026-11-27T18:47:38Z"
+  },
+  {
+    "slug": "aegis-bastion",
+    "title": "Aegis Bastion",
+    "description": "Aim your core cannon and deploy upgradable pulse turrets on 6 sockets to survive endless waves of void invaders.",
+    "category": "Strategy",
+    "accent": "#8B5CF6",
+    "addedAt": "2026-11-27T19:52:25Z"
   }
 ]
