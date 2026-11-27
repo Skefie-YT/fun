@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Cosmic Clash Survivor</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --accent: #14B8A6; --bg: #0a0a0c; }
+        * { box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
+        body { margin: 0; padding: 0; background: var(--bg); color: white; font-family: 'Orbitron', sans-serif; overflow: hidden; height: 100dvh; display: flex; flex-direction: column; }
+        
+        #game-header { height: 60px; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; background: rgba(0,0,0,0.5); border-bottom: 2px solid var(--accent); z-index: 100; }
+        .back-btn { text-decoration: none; color: white; border: 1px solid var(--accent); padding: 5px 12px; border-radius: 4px; font-size: 0.8rem; transition: 0.3s; }
+        .back-btn:hover { background: var(--accent); }
+        .stats { display: flex; gap: 20px; font-size: 0.9rem; }
+        .info-btn { background: none; border: 1px solid #fff; color: white; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; }
+
+        #game-container { flex: 1; position: relative; width: 100%; }
+        canvas { width: 100%; height: 100%; display: block; background: radial-gradient(circle, #1a1a2e 0%, #0a0a0c 100%); }
+
+        .overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.85); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 200; text-align: center; padding: 20px; transition: opacity 0.3s; }
+        .overlay.hidden { opacity: 0; pointer-events: none; }
+        h1 { color: var(--accent); margin: 0 0 10px; font-size: 2rem; }
+        .btn { background: var(--accent); color: white; border: none; padding: 15px 40px; font-family: inherit; font-size: 1.2rem; border-radius: 8px; cursor: pointer; margin-top: 20px; box-shadow: 0 0 15px var(--accent); }
+        .controls-hint { margin-top: 30px; font-size: 0.8rem; color: #888; }
+
+        #how-to-play { display: none; position: absolute; inset: 20px; background: #111; border: 2px solid var(--accent); padding: 20px; border-radius: 12px; z-index: 300; }
+        #how-to-play.visible { display: flex; flex-direction: column; }
+    </style>
+</head>
+<body>
+
+<div id="game-header">
+    <a href="../../" class="back-btn">Back</a>
+    <div class="stats">
+        <div>Score: <span id="score-display">0</span></div>
+        <div>Best: <span id="best-display">0</span></div>
+    </div>
+    <button class="info-btn" onclick="toggleHelp()">?</button>
+</div>
+
+<div id="game-container">
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- Start Screen -->
+    <div id="start-screen" class="overlay">
+        <h1>COSMIC CLASH</h1>
+        <p>Survive the void. Dodge homing drones and collect Orbs to trigger Nova Blasts!</p>
+        <button class="btn" onclick="startGame()">START MISSION</button>
+        <div class="controls-hint">DRAG or MOUSE to Move | Dodge Red Shards</div>
+    </div>
+
+    <!-- Game Over Screen -->
+    <div id="game-over" class="overlay hidden">
+        <h1 style="color: #ff4444;">SYSTEM CRITICAL</h1>
+        <p>Your vessel was consumed by the void.</p>
+        <div id="final-score">Score: 0</div>
+        <button class="btn" onclick="startGame()">REBOOT</button>
+    </div>
+
+    <!-- Help Screen -->
+    <div id="how-to-play">
+        <h2>How to Play</h2>
+        <ul style="text-align: left; line-height: 1.6;">
+            <li>Move your pilot to dodge red Drones and purple Shockwaves.</li>
+            <li>Collect <b>Cyan Orbs</b> to score and charge your Nova.</li>
+            <li>When fully charged, your ship emits a <b>Nova Pulse</b> that destroys nearby threats.</li>
+            <li>Speed and drone frequency increases every 10 seconds!</li>
+        </ul>
+        <button class="btn" onclick="toggleHelp()" style="margin-top:auto">GOT IT</button>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreDisplay = document.getElementById('score-display');
+    const bestDisplay = document.getElementById('best-display');
+    const startScreen = document.getElementById('start-screen');
+    const gameOverScreen = document.getElementById('game-over');
+    const finalScoreDisplay = document.getElementById('final-score');
+    const slug = 'cosmic-clash-survivor';
+
+    let score = 0;
+    let bestScore = localStorage.getItem('fun_arcade_highscore_' + slug) || 0;
+    let isPlaying = false;
+    let mouse = { x: 0, y: 0 };
+    let player = { x: 0, y: 0, radius: 12, charge: 0, maxCharge: 100 };
+    let enemies = [];
+    let collectibles = [];
+    let particles = [];
+    let shockwaves = [];
+    let frame = 0;
+    let difficulty = 1;
+
+    bestDisplay.innerText = bestScore;
+
+    function resize() {
+        canvas.width = canvas.offsetWidth;
+        canvas.height = canvas.offsetHeight;
+        if (!isPlaying) {
+            player.x = canvas.width / 2;
+            player.y = canvas.height / 2;
+            mouse.x = player.x;
+            mouse.y = player.y;
+        }
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // Input
+    const handleMove = (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        mouse.x = clientX - rect.left;
+        mouse.y = clientY - rect.top;
+    };
+    canvas.addEventListener('mousemove', handleMove);
+    canvas.addEventListener('touchmove', handleMove, { passive: false });
+
+    function toggleHelp() {
+        document.getElementById('how-to-play').classList.toggle('visible');
+    }
+
+    function spawnEnemy() {
+        const side = Math.floor(Math.random() * 4);
+        let x, y;
+        if(side === 0) { x = -20; y = Math.random() * canvas.height; }
+        else if(side === 1) { x = canvas.width + 20; y = Math.random() * canvas.height; }
+        else if(side === 2) { x = Math.random() * canvas.width; y = -20; }
+        else { x = Math.random() * canvas.width; y = canvas.height + 20; }
+        
+        enemies.push({
+            x, y, 
+            radius: 8 + Math.random() * 4,
+            speed: (1.5 + Math.random() * 1.5) * (difficulty * 0.5 + 0.5),
+            type: Math.random() > 0.9 ? 'pulse' : 'drone'
+        });
+    }
+
+    function spawnCollectible() {
+        collectibles.push({
+            x: 50 + Math.random() * (canvas.width - 100),
+            y: 50 + Math.random() * (canvas.height - 100),
+            radius: 6,
+            pulse: 0
+        });
+    }
+
+    function createParticles(x, y, color, count) {
+        for(let i=0; i<count; i++) {
+            particles.push({
+                x, y,
+                vx: (Math.random() - 0.5) * 6,
+                vy: (Math.random() - 0.5) * 6,
+                life: 1.0,
+                color: color
+            });
+        }
+    }
+
+    function startGame() {
+        score = 0;
+        difficulty = 1;
+        enemies = [];
+        collectibles = [];
+        particles = [];
+        shockwaves = [];
+        player.charge = 0;
+        isPlaying = true;
+        scoreDisplay.innerText = '0';
+        startScreen.classList.add('hidden');
+        gameOverScreen.classList.add('hidden');
+        resize();
+        requestAnimationFrame(update);
+    }
+
+    function gameOver() {
+        isPlaying = false;
+        if (score > bestScore) {
+            bestScore = score;
+            localStorage.setItem('fun_arcade_highscore_' + slug, bestScore);
+            bestDisplay.innerText = bestScore;
+        }
+        finalScoreDisplay.innerText = `Score: ${score}`;
+        gameOverScreen.classList.remove('hidden');
+    }
+
+    function triggerNova() {
+        shockwaves.push({ x: player.x, y: player.y, radius: 10, maxRadius: 200, opacity: 1 });
+        player.charge = 0;
+        // Audio hint: synth blip
+    }
+
+    function update() {
+        if (!isPlaying) return;
+        frame++;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Update Difficulty
+        if (frame % 600 === 0) difficulty += 0.2;
+
+        // Move Player towards mouse (smooth follow)
+        const dx = mouse.x - player.x;
+        const dy = mouse.y - player.y;
+        player.x += dx * 0.15;
+        player.y += dy * 0.15;
+
+        // Draw Player & Shield/Nova UI
+        ctx.beginPath();
+        ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+        ctx.fillStyle = '#fff';
+        ctx.fill();
+        ctx.strokeStyle = '#14B8A6';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+
+        // Draw Charge Ring
+        ctx.beginPath();
+        ctx.arc(player.x, player.y, player.radius + 6, -Math.PI/2, (-Math.PI/2) + (Math.PI*2 * (player.charge/player.maxCharge)));
+        ctx.strokeStyle = '#14B8A6';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Spawning
+        if (frame % Math.max(10, Math.floor(40 / (difficulty * 0.5 + 0.5))) === 0) spawnEnemy();
+        if (frame % 120 === 0) spawnCollectible();
+
+        // Update Shockwaves
+        for (let i = shockwaves.length - 1; i >= 0; i--) {
+            let s = shockwaves[i];
+            s.radius += 8;
+            s.opacity -= 0.02;
+            ctx.beginPath();
+            ctx.arc(s.x, s.y, s.radius, 0, Math.PI * 2);
+            ctx.strokeStyle = `rgba(20, 184, 166, ${s.opacity})`;
+            ctx.lineWidth = 4;
+            ctx.stroke();
+            if (s.opacity <= 0) shockwaves.splice(i, 1);
+        }
+
+        // Update Enemies
+        for (let i = enemies.length - 1; i >= 0; i--) {
+            let e = enemies[i];
+            const edx = player.x - e.x;
+            const edy = player.y - e.y;
+            const dist = Math.sqrt(edx*edx + edy*edy);
+            
+            // Homing movement
+            e.x += (edx / dist) * e.speed;
+            e.y += (edy / dist) * e.speed;
+
+            // Visuals
+            ctx.beginPath();
+            ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
+            ctx.fillStyle = '#ff4444';
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#ff4444';
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // Collision Player
+            if (dist < player.radius + e.radius) {
+                createParticles(player.x, player.y, '#ff4444', 20);
+                gameOver();
+            }
+
+            // Collision Shockwave
+            shockwaves.forEach(s => {
+                const sDist = Math.sqrt((e.x - s.x)**2 + (e.y - s.y)**2);
+                if (Math.abs(sDist - s.radius) < 15) {
+                    createParticles(e.x, e.y, '#14B8A6', 8);
+                    enemies.splice(i, 1);
+                    score += 5;
+                    scoreDisplay.innerText = score;
+                }
+            });
+        }
+
+        // Update Collectibles
+        for (let i = collectibles.length - 1; i >= 0; i--) {
+            let c = collectibles[i];
+            c.pulse += 0.1;
+            const dist = Math.sqrt((player.x - c.x)**2 + (player.y - c.y)**2);
+
+            ctx.beginPath();
+            ctx.arc(c.x, c.y, c.radius + Math.sin(c.pulse) * 2, 0, Math.PI * 2);
+            ctx.fillStyle = '#14B8A6';
+            ctx.fill();
+
+            if (dist < player.radius + c.radius + 5) {
+                score += 10;
+                scoreDisplay.innerText = score;
+                player.charge = Math.min(player.maxCharge, player.charge + 20);
+                createParticles(c.x, c.y, '#14B8A6', 12);
+                if (player.charge >= player.maxCharge) triggerNova();
+                collectibles.splice(i, 1);
+            }
+        }
+
+        // Update Particles
+        for (let i = particles.length - 1; i >= 0; i--) {
+            let p = particles[i];
+            p.x += p.vx;
+            p.y += p.vy;
+            p.life -= 0.02;
+            ctx.fillStyle = p.color;
+            ctx.globalAlpha = p.life;
+            ctx.fillRect(p.x, p.y, 3, 3);
+            ctx.globalAlpha = 1;
+            if (p.life <= 0) particles.splice(i, 1);
+        }
+
+        requestAnimationFrame(update);
+    }
+</script>
+</body>
+</html>

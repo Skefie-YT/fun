@@ -950,5 +950,13 @@
     "category": "Reflex",
     "accent": "#14B8A6",
     "addedAt": "2026-11-27T09:59:00Z"
+  },
+  {
+    "slug": "cosmic-clash-survivor",
+    "title": "Cosmic Clash Survivor",
+    "description": "Stay alive by weaving through aggressive homing drones and expanding shockwaves while collecting energy cores to blast back!",
+    "category": "Arcade",
+    "accent": "#14B8A6",
+    "addedAt": "2026-11-27T10:54:48Z"
   }
 ]
