@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Zenith Hook Dash</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #F59E0B;
+            --bg: #0F172A;
+        }
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-touch-callout: none;
+        }
+        body, html {
+            margin: 0; padding: 0;
+            width: 100%; height: 100dvh;
+            background: var(--bg);
+            color: white;
+            font-family: 'Outfit', sans-serif;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            width: 100%; height: 100%;
+            touch-action: none;
+        }
+        .ui-overlay {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; padding: 15px 20px;
+            display: flex; justify-content: space-between; align-items: center;
+            pointer-events: none;
+            z-index: 10;
+        }
+        .ui-overlay > * { pointer-events: auto; }
+        .score-box {
+            font-size: 20px;
+            font-weight: 700;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+        }
+        .btn {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: white; padding: 8px 15px;
+            border-radius: 20px; cursor: pointer;
+            text-decoration: none; font-size: 14px;
+            transition: background 0.2s;
+        }
+        .btn:hover { background: rgba(255,255,255,0.2); }
+        .modal {
+            position: absolute; inset: 0;
+            background: rgba(15, 23, 42, 0.95);
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            text-align: center; z-index: 100;
+            padding: 40px;
+        }
+        .hidden { display: none !important; }
+        h1 { color: var(--accent); margin: 0 0 10px 0; font-size: 36px; }
+        p { max-width: 400px; line-height: 1.6; margin-bottom: 25px; }
+        .play-btn {
+            background: var(--accent);
+            color: #000; border: none;
+            padding: 15px 40px; border-radius: 30px;
+            font-size: 20px; font-weight: 700; cursor: pointer;
+        }
+        .controls-hint {
+            position: absolute; bottom: 20px;
+            font-size: 12px; opacity: 0.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="ui-overlay">
+        <a href="../../" class="btn">Back</a>
+        <div class="score-box">Height: <span id="current-score">0</span>m</div>
+        <button class="btn" id="help-btn">?</button>
+    </div>
+
+    <div id="start-screen" class="modal">
+        <h1>Zenith Hook Dash</h1>
+        <p>Launch your orb between energy hooks. Click and hold to latch onto the nearest hook, build momentum, and release to soar upward before the static field catches you!</p>
+        <button class="play-btn" id="start-btn">START MISSION</button>
+        <div class="controls-hint">LMB / Touch: Hold to Hook • Release to Launch</div>
+    </div>
+
+    <div id="game-over-screen" class="modal hidden">
+        <h1 style="color: #EF4444">VOID LOSS</h1>
+        <p>The static field consumed your signal.</p>
+        <div style="font-size: 24px; margin-bottom: 20px;">
+            Score: <span id="final-score">0</span>m<br>
+            Best: <span id="best-score">0</span>m
+        </div>
+        <button class="play-btn" id="restart-btn">RETRY</button>
+    </div>
+
+    <div id="help-modal" class="modal hidden">
+        <h1>How to Play</h1>
+        <p>1. Tap and hold to grapple onto a nearby hook.<br>2. You will swing around the hook based on your entry speed.<br>3. Release at the peak of your swing to fly higher.<br>4. Don't fall into the rising red static field at the bottom!</p>
+        <button class="play-btn" id="close-help-btn">GOT IT</button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('current-score');
+        const finalScoreEl = document.getElementById('final-score');
+        const bestScoreEl = document.getElementById('best-score');
+        const startScreen = document.getElementById('start-screen');
+        const gameOverScreen = document.getElementById('game-over-screen');
+        const helpModal = document.getElementById('help-modal');
+
+        const SLUG = 'zenith-hook-dash';
+        let score = 0;
+        let best = localStorage.getItem('fun_arcade_highscore_' + SLUG) || 0;
+        let gameActive = false;
+
+        // Game Settings
+        const GRAVITY = 0.25;
+        const HOOK_RADIUS = 80;
+        const FRICTION = 0.995;
+        
+        let player = { x: 0, y: 0, vx: 0, vy: 0, radius: 10, tethered: null, angle: 0, dist: 0, angVel: 0 };
+        let hooks = [];
+        let cameraY = 0;
+        let staticY = 0;
+        let particles = [];
+
+        function init() {
+            resize();
+            player = {
+                x: canvas.width / 2,
+                y: canvas.height - 150,
+                vx: 5,
+                vy: -8,
+                radius: 12,
+                tethered: null,
+                angle: 0,
+                dist: 0,
+                angVel: 0
+            };
+            hooks = [];
+            cameraY = 0;
+            staticY = canvas.height + 200;
+            score = 0;
+            scoreEl.innerText = '0';
+            for(let i=0; i<10; i++) spawnHook(canvas.height - (i * 200) - 200);
+            gameActive = true;
+        }
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        function spawnHook(y) {
+            hooks.push({
+                x: 50 + Math.random() * (canvas.width - 100),
+                y: y,
+                r: 6,
+                pulse: 0
+            });
+        }
+
+        window.addEventListener('resize', resize);
+
+        function handleInputStart() {
+            if(!gameActive) return;
+            let closest = null;
+            let minDist = 250;
+
+            hooks.forEach(h => {
+                const d = Math.hypot(player.x - h.x, player.y - h.y);
+                if (d < minDist) {
+                    minDist = d;
+                    closest = h;
+                }
+            });
+
+            if (closest) {
+                player.tethered = closest;
+                player.dist = minDist;
+                player.angle = Math.atan2(player.y - closest.y, player.x - closest.x);
+                // Calculate tangential velocity component
+                const speed = Math.hypot(player.vx, player.vy);
+                const tangentAngle = player.angle + Math.PI/2;
+                const dot = (player.vx * Math.cos(tangentAngle) + player.vy * Math.sin(tangentAngle));
+                player.angVel = dot / player.dist;
+            }
+        }
+
+        function handleInputEnd() {
+            if (player.tethered) {
+                const tangentAngle = player.angle + Math.PI/2;
+                const speed = player.angVel * player.dist;
+                player.vx = Math.cos(tangentAngle) * speed;
+                player.vy = Math.sin(tangentAngle) * speed;
+                player.tethered = null;
+            }
+        }
+
+        canvas.addEventListener('mousedown', handleInputStart);
+        canvas.addEventListener('mouseup', handleInputEnd);
+        canvas.addEventListener('touchstart', (e) => { e.preventDefault(); handleInputStart(); });
+        canvas.addEventListener('touchend', (e) => { e.preventDefault(); handleInputEnd(); });
+
+        function update() {
+            if(!gameActive) return;
+
+            if (player.tethered) {
+                player.angle += player.angVel;
+                player.angVel *= FRICTION;
+                player.x = player.tethered.x + Math.cos(player.angle) * player.dist;
+                player.y = player.tethered.y + Math.sin(player.angle) * player.dist;
+            } else {
+                player.vy += GRAVITY;
+                player.x += player.vx;
+                player.y += player.vy;
+
+                // Bounce off walls
+                if (player.x < player.radius) { player.x = player.radius; player.vx *= -0.6; }
+                if (player.x > canvas.width - player.radius) { player.x = canvas.width - player.radius; player.vx *= -0.6; }
+            }
+
+            // Camera following
+            const targetCam = player.y - canvas.height * 0.6;
+            if (targetCam < cameraY) cameraY += (targetCam - cameraY) * 0.1;
+
+            // Score
+            const currentHeight = Math.floor(Math.abs(player.y - (canvas.height - 150)) / 10);
+            if (currentHeight > score) {
+                score = currentHeight;
+                scoreEl.innerText = score;
+            }
+
+            // Difficulty ramping for static field
+            const speedMult = 1 + (score / 500);
+            staticY -= 1.8 * speedMult;
+            
+            // Player below static field or bottom of screen
+            if (player.y - cameraY > canvas.height + 100 || player.y > staticY) {
+                gameOver();
+            }
+
+            // Keep hooks generating
+            const topHook = hooks[hooks.length - 1].y;
+            if (topHook > cameraY - 400) {
+                spawnHook(topHook - (150 + Math.random() * 100));
+            }
+            // Clean old hooks
+            if (hooks[0].y - cameraY > canvas.height + 200) hooks.shift();
+
+            // Simple particles
+            if (Math.random() > 0.8) {
+                particles.push({x: player.x, y: player.y, vx: (Math.random()-0.5)*2, vy: (Math.random()-0.5)*2, life: 1, c: player.tethered ? '#F59E0B' : '#60A5FA'});
+            }
+            particles.forEach((p, i) => {
+                p.x += p.vx; p.y += p.vy; p.life -= 0.02;
+                if(p.life <= 0) particles.splice(i, 1);
+            });
+        }
+
+        function draw() {
+            ctx.fillStyle = '#0F172A';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.save();
+            ctx.translate(0, -cameraY);
+
+            // Draw Static Field
+            const gradient = ctx.createLinearGradient(0, staticY, 0, staticY + 300);
+            gradient.addColorStop(0, 'rgba(239, 68, 68, 0.8)');
+            gradient.addColorStop(1, 'rgba(239, 68, 68, 0)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, staticY, canvas.width, 1000);
+            
+            // Draw Static Line
+            ctx.strokeStyle = '#EF4444';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            for(let i=0; i<canvas.width; i+=20) {
+                ctx.lineTo(i, staticY + Math.sin(Date.now()*0.01 + i)*5);
+            }
+            ctx.stroke();
+
+            // Particles
+            particles.forEach(p => {
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.c;
+                ctx.fillRect(p.x, p.y, 3, 3);
+            });
+            ctx.globalAlpha = 1;
+
+            // Hooks
+            hooks.forEach(h => {
+                h.pulse = Math.sin(Date.now() * 0.005) * 4;
+                ctx.beginPath();
+                ctx.arc(h.x, h.y, h.r + h.pulse/2, 0, Math.PI*2);
+                ctx.fillStyle = '#F59E0B';
+                ctx.fill();
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                
+                // Range glow
+                ctx.beginPath();
+                ctx.arc(h.x, h.y, 250, 0, Math.PI*2);
+                ctx.strokeStyle = 'rgba(245, 158, 11, 0.05)';
+                ctx.stroke();
+            });
+
+            // Tether line
+            if (player.tethered) {
+                ctx.beginPath();
+                ctx.moveTo(player.x, player.y);
+                ctx.lineTo(player.tethered.x, player.tethered.y);
+                ctx.strokeStyle = 'white';
+                ctx.setLineDash([5, 5]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+
+            // Player
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+            ctx.fillStyle = player.tethered ? '#F59E0B' : '#60A5FA';
+            ctx.fill();
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = player.tethered ? '#F59E0B' : '#60A5FA';
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+
+            ctx.restore();
+        }
+
+        function loop() {
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        function gameOver() {
+            gameActive = false;
+            if (score > best) {
+                best = score;
+                localStorage.setItem('fun_arcade_highscore_' + SLUG, best);
+            }
+            finalScoreEl.innerText = score;
+            bestScoreEl.innerText = best;
+            gameOverScreen.classList.remove('hidden');
+        }
+
+        document.getElementById('start-btn').onclick = () => {
+            startScreen.classList.add('hidden');
+            init();
+        };
+
+        document.getElementById('restart-btn').onclick = () => {
+            gameOverScreen.classList.add('hidden');
+            init();
+        };
+
+        document.getElementById('help-btn').onclick = () => {
+            helpModal.classList.remove('hidden');
+            gameActive = false;
+        };
+
+        document.getElementById('close-help-btn').onclick = () => {
+            helpModal.classList.add('hidden');
+            if (!startScreen.classList.contains('hidden') || !gameOverScreen.classList.contains('hidden')) return;
+            gameActive = true;
+        };
+
+        loop();
+    </script>
+</body>
+</html>

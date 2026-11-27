@@ -1038,5 +1038,13 @@
     "category": "Puzzle",
     "accent": "#F59E0B",
     "addedAt": "2026-11-27T21:49:03Z"
+  },
+  {
+    "slug": "zenith-hook-dash",
+    "title": "Zenith Hook Dash",
+    "description": "Fling your energy orb between moving hooks to outrun the rising static field. Use momentum to reach new heights!",
+    "category": "Physics",
+    "accent": "#F59E0B",
+    "addedAt": "2026-11-27T22:50:39Z"
   }
 ]
