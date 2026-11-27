@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Grid Gate Logic</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #EF4444;
+            --bg: #0f172a;
+            --tile-bg: #1e293b;
+            --tile-hover: #334155;
+        }
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100dvh;
+            background: var(--bg);
+            color: white;
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+        }
+        header {
+            position: absolute;
+            top: 0; width: 100%;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 1rem;
+            background: rgba(0,0,0,0.3);
+            z-index: 10;
+            font-family: 'Orbitron', sans-serif;
+        }
+        .back-btn {
+            color: white;
+            text-decoration: none;
+            background: rgba(255,255,255,0.1);
+            padding: 5px 12px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+        }
+        .stats {
+            display: flex;
+            gap: 20px;
+            font-size: 0.9rem;
+        }
+        .accent-text { color: var(--accent); font-weight: bold; }
+        
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding-top: 60px;
+        }
+        
+        #grid {
+            display: grid;
+            gap: 8px;
+            background: rgba(255,255,255,0.05);
+            padding: 10px;
+            border-radius: 12px;
+            border: 2px solid rgba(255,255,255,0.1);
+            max-width: 95vw;
+            max-height: 70vh;
+        }
+        
+        .tile {
+            width: 65px;
+            height: 65px;
+            background: var(--tile-bg);
+            border-radius: 8px;
+            cursor: pointer;
+            position: relative;
+            transition: background 0.2s, transform 0.1s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .tile:active { transform: scale(0.95); }
+        .tile.source { border: 2px solid var(--accent); cursor: default; }
+        .tile.gate { border: 2px dashed rgba(255,255,255,0.3); cursor: default; }
+        
+        .pipe {
+            position: absolute;
+            background: #475569;
+            border-radius: 4px;
+            transition: background 0.3s;
+        }
+        .pipe.active { background: var(--accent); box-shadow: 0 0 15px var(--accent); }
+
+        .overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.95);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            padding: 2rem;
+            text-align: center;
+        }
+        .hidden { display: none !important; }
+        h1 { font-family: 'Orbitron', sans-serif; color: var(--accent); margin-bottom: 10px; }
+        button {
+            background: var(--accent);
+            border: none;
+            color: white;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.1rem;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+        .timer-bar {
+            width: 80%;
+            height: 6px;
+            background: #334155;
+            border-radius: 3px;
+            margin: 20px 0;
+            overflow: hidden;
+        }
+        #progress { width: 100%; height: 100%; background: var(--accent); transition: width 0.1s linear; }
+        
+        @media (max-width: 500px) {
+            .tile { width: 50px; height: 50px; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <a href="../../" class="back-btn">Back</a>
+        <div class="stats">
+            <span>LVL: <span id="level-val" class="accent-text">1</span></span>
+            <span>BEST: <span id="best-val">0</span></span>
+        </div>
+        <button id="how-to-btn" style="margin:0; padding:4px 10px; font-size:0.8rem;">?</button>
+    </header>
+
+    <div id="game-container">
+        <div class="timer-bar"><div id="progress"></div></div>
+        <div id="grid"></div>
+    </div>
+
+    <div id="start-screen" class="overlay">
+        <h1>GRID GATE</h1>
+        <p>Rotate the conduits to link the power source to every output gate. The clock is ticking!</p>
+        <button onclick="startGame()">INITIALIZE</button>
+    </div>
+
+    <div id="game-over" class="overlay hidden">
+        <h1 id="over-title">SYSTEM OFFLINE</h1>
+        <p>Level reached: <span id="final-lvl" class="accent-text">0</span></p>
+        <button onclick="startGame()">REBOOT</button>
+    </div>
+
+    <div id="how-to-screen" class="overlay hidden">
+        <h1>HOW TO PLAY</h1>
+        <p>• Tap tiles to rotate them clockwise.</p>
+        <p>• Route the red energy beam from the [S] source to all [G] gates.</p>
+        <p>• Every completed level refills some time.</p>
+        <button onclick="toggleHowTo()">UNDERSTOOD</button>
+    </div>
+
+    <script>
+        const gridEl = document.getElementById('grid');
+        const progressEl = document.getElementById('progress');
+        const levelVal = document.getElementById('level-val');
+        const bestVal = document.getElementById('best-val');
+        
+        let state = {
+            level: 1,
+            gridSize: 4,
+            tiles: [],
+            timer: 100,
+            isPlaying: false,
+            best: localStorage.getItem('fun_arcade_highscore_grid-gate-logic') || 0
+        };
+
+        bestVal.textContent = state.best;
+
+        function toggleHowTo() {
+            document.getElementById('how-to-screen').classList.toggle('hidden');
+        }
+        document.getElementById('how-to-btn').onclick = toggleHowTo;
+
+        function createGrid() {
+            gridEl.innerHTML = '';
+            state.gridSize = state.level < 5 ? 4 : (state.level < 12 ? 5 : 6);
+            gridEl.style.gridTemplateColumns = `repeat(${state.gridSize}, 1fr)`;
+            
+            state.tiles = [];
+            for (let y = 0; y < state.gridSize; y++) {
+                for (let x = 0; x < state.gridSize; x++) {
+                    const type = (x === 0 && y === 0) ? 'source' : 
+                                 (x === state.gridSize-1 && y === state.gridSize-1) ? 'gate' : 'pipe';
+                    // Pipes have 1, 2, or 3 connections (North:1, East:2, South:4, West:8)
+                    let connections = [1, 2, 4, 8].filter(() => Math.random() > 0.4);
+                    if (connections.length === 0) connections = [2, 8];
+                    
+                    const tile = {
+                        x, y,
+                        type,
+                        rotation: Math.floor(Math.random() * 4),
+                        baseConnections: connections,
+                        currentConnections: [],
+                        active: false
+                    };
+                    
+                    const el = document.createElement('div');
+                    el.className = `tile ${type}`;
+                    if (type === 'source') el.innerHTML = '<span style="font-size:10px; opacity:0.6">[S]</span>';
+                    if (type === 'gate') el.innerHTML = '<span style="font-size:10px; opacity:0.6">[G]</span>';
+                    
+                    el.onclick = () => rotateTile(tile);
+                    tile.el = el;
+                    state.tiles.push(tile);
+                    gridEl.appendChild(el);
+                }
+            }
+            updateTileVisuals();
+            solveState();
+        }
+
+        function rotateTile(tile) {
+            if (!state.isPlaying || tile.type === 'source') return;
+            tile.rotation = (tile.rotation + 1) % 4;
+            updateTileVisuals();
+            solveState();
+            checkWin();
+        }
+
+        function updateTileVisuals() {
+            state.tiles.forEach(t => {
+                t.el.querySelectorAll('.pipe').forEach(p => p.remove());
+                
+                // Get actual directions after rotation
+                const dirs = t.baseConnections.map(d => {
+                    for(let i=0; i<t.rotation; i++) {
+                        if(d === 1) d = 2; else if(d === 2) d = 4; else if(d === 4) d = 8; else if(d === 8) d = 1;
+                    }
+                    return d;
+                });
+                t.currentConnections = dirs;
+
+                dirs.forEach(d => {
+                    const p = document.createElement('div');
+                    p.className = 'pipe';
+                    if (d === 1) { p.style.width = '6px'; p.style.height = '60%'; p.style.top = '0'; }
+                    if (d === 4) { p.style.width = '6px'; p.style.height = '60%'; p.style.bottom = '0'; }
+                    if (d === 2) { p.style.width = '60%'; p.style.height = '6px'; p.style.right = '0'; }
+                    if (d === 8) { p.style.width = '60%'; p.style.height = '6px'; p.style.left = '0'; }
+                    t.el.appendChild(p);
+                });
+            });
+        }
+
+        function solveState() {
+            state.tiles.forEach(t => t.active = false);
+            const source = state.tiles.find(t => t.type === 'source');
+            
+            const stack = [source];
+            source.active = true;
+
+            while (stack.length > 0) {
+                const curr = stack.pop();
+                curr.currentConnections.forEach(dir => {
+                    let nx = curr.x, ny = curr.y;
+                    let opposite = 0;
+                    if (dir === 1) { ny--; opposite = 4; }
+                    if (dir === 2) { nx++; opposite = 8; }
+                    if (dir === 4) { ny++; opposite = 1; }
+                    if (dir === 8) { nx--; opposite = 2; }
+
+                    const neighbor = state.tiles.find(t => t.x === nx && t.y === ny);
+                    if (neighbor && !neighbor.active && neighbor.currentConnections.includes(opposite)) {
+                        neighbor.active = true;
+                        stack.push(neighbor);
+                    }
+                });
+            }
+
+            state.tiles.forEach(t => {
+                t.el.querySelectorAll('.pipe').forEach(p => {
+                    if (t.active) p.classList.add('active');
+                    else p.classList.remove('active');
+                });
+                if (t.active && (t.type === 'source' || t.type === 'gate')) t.el.style.borderColor = 'var(--accent)';
+                else if (t.type === 'source') t.el.style.borderColor = 'var(--accent)';
+                else if (t.type === 'gate') t.el.style.borderColor = 'rgba(255,255,255,0.3)';
+            });
+        }
+
+        function checkWin() {
+            const gates = state.tiles.filter(t => t.type === 'gate');
+            if (gates.every(g => g.active)) {
+                state.level++;
+                state.timer = Math.min(100, state.timer + 25);
+                levelVal.textContent = state.level;
+                if (state.level > state.best) {
+                    state.best = state.level;
+                    bestVal.textContent = state.best;
+                    localStorage.setItem('fun_arcade_highscore_grid-gate-logic', state.best);
+                }
+                setTimeout(createGrid, 200);
+            }
+        }
+
+        function startGame() {
+            state.level = 1;
+            state.timer = 100;
+            state.isPlaying = true;
+            levelVal.textContent = '1';
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('game-over').classList.add('hidden');
+            createGrid();
+            requestAnimationFrame(gameLoop);
+        }
+
+        let lastTime = 0;
+        function gameLoop(timestamp) {
+            if (!state.isPlaying) return;
+            if (!lastTime) lastTime = timestamp;
+            const delta = timestamp - lastTime;
+            lastTime = timestamp;
+
+            state.timer -= delta * (0.005 + (state.level * 0.001));
+            progressEl.style.width = state.timer + '%';
+
+            if (state.timer <= 0) {
+                endGame();
+            } else {
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        function endGame() {
+            state.isPlaying = false;
+            document.getElementById('game-over').classList.remove('hidden');
+            document.getElementById('final-lvl').textContent = state.level;
+        }
+    </script>
+</body>
+</html>

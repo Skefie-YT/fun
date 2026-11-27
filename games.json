@@ -1046,5 +1046,13 @@
     "category": "Physics",
     "accent": "#F59E0B",
     "addedAt": "2026-11-27T22:50:39Z"
+  },
+  {
+    "slug": "grid-gate-logic",
+    "title": "Grid Gate Logic",
+    "description": "Rotate tiles to redirect energy beams into matching gates and power up the system core before the timer runs out!",
+    "category": "Puzzle",
+    "accent": "#EF4444",
+    "addedAt": "2026-11-27T23:44:44Z"
   }
 ]
