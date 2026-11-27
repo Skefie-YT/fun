@@ -990,5 +990,13 @@
     "category": "Physics",
     "accent": "#8B5CF6",
     "addedAt": "2026-11-27T15:51:41Z"
+  },
+  {
+    "slug": "glide-lock",
+    "title": "Glide Lock",
+    "description": "Slide neon drones across the grid until they hit walls or each other to reach the portal within the move limit.",
+    "category": "Puzzle",
+    "accent": "#EC4899",
+    "addedAt": "2026-11-27T16:58:06Z"
   }
 ]
