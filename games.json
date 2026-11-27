@@ -902,5 +902,13 @@
     "category": "Puzzle",
     "accent": "#E85D04",
     "addedAt": "2026-11-26T23:48:28Z"
+  },
+  {
+    "slug": "shard-pulse-td",
+    "title": "Shard Pulse TD",
+    "description": "Place pulse towers on a tactical grid to blast waves of crystal shards before they breach your core!",
+    "category": "Strategy",
+    "accent": "#EF4444",
+    "addedAt": "2026-11-27T01:00:11Z"
   }
 ]

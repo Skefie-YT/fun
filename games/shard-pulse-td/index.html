@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Shard Pulse TD</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #EF4444;
+            --bg: #0f172a;
+            --panel: #1e293b;
+            --text: #f8fafc;
+        }
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Orbitron', sans-serif;
+        }
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+        }
+        canvas {
+            flex: 1;
+            display: block;
+            touch-action: none;
+        }
+        .hud {
+            height: 60px;
+            background: rgba(15, 23, 42, 0.9);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 20px;
+            border-bottom: 2px solid var(--accent);
+            z-index: 10;
+        }
+        .back-btn {
+            color: var(--text);
+            text-decoration: none;
+            font-weight: bold;
+            font-size: 0.9rem;
+            border: 1px solid var(--text);
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+        .stats {
+            display: flex;
+            gap: 20px;
+            font-size: 0.9rem;
+        }
+        .accent-text {
+            color: var(--accent);
+            font-weight: bold;
+        }
+        #ui-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            pointer-events: none;
+            z-index: 20;
+        }
+        .menu-card {
+            background: var(--panel);
+            padding: 30px;
+            border-radius: 12px;
+            border: 2px solid var(--accent);
+            text-align: center;
+            pointer-events: auto;
+            max-width: 90%;
+            box-shadow: 0 0 30px rgba(239, 68, 68, 0.3);
+        }
+        .btn {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            font-family: 'Orbitron', sans-serif;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 6px;
+            margin-top: 20px;
+            transition: transform 0.1s;
+        }
+        .btn:active { transform: scale(0.95); }
+        .hidden { display: none !important; }
+        .help-btn {
+            cursor: pointer;
+            background: none;
+            border: 1px solid var(--text);
+            color: var(--text);
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+        }
+        #bottom-bar {
+            height: 40px;
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 0.7rem;
+            opacity: 0.7;
+            letter-spacing: 1px;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div class="hud">
+            <a href="../../" class="back-btn">Back</a>
+            <div class="stats">
+                <div>CREDITS: <span id="credits" class="accent-text">0</span></div>
+                <div>WAVE: <span id="wave" class="accent-text">1</span></div>
+                <div>BEST: <span id="best-score" class="accent-text">0</span></div>
+            </div>
+            <button class="help-btn" onclick="toggleHelp()">?</button>
+        </div>
+        <canvas id="canvas"></canvas>
+        <div id="bottom-bar">TAP GRID TO PLACE TURRET (COST: 50) | DEFEND THE CORE</div>
+
+        <div id="ui-layer">
+            <div id="start-card" class="menu-card">
+                <h1 style="margin-top:0; color:var(--accent)">SHARD PULSE</h1>
+                <p>Waves of void shards are approaching. Deploy pulse towers on the grid to protect your central core.</p>
+                <button class="btn" onclick="startGame()">INITIALIZE DEFENSE</button>
+            </div>
+
+            <div id="gameover-card" class="menu-card hidden">
+                <h2 style="margin-top:0">CORE BREACHED</h2>
+                <p>The system has collapsed.</p>
+                <p>Waves Cleared: <span id="final-wave" class="accent-text">0</span></p>
+                <button class="btn" onclick="startGame()">RETRY</button>
+            </div>
+
+            <div id="help-card" class="menu-card hidden">
+                <h3>SYSTEM INTEL</h3>
+                <p>• Shards move toward your central core.</p>
+                <p>• Click empty grid tiles to build towers (50cr).</p>
+                <p>• Towers auto-fire at the nearest shard.</p>
+                <p>• Earn credits for every shard destroyed.</p>
+                <button class="btn" onclick="toggleHelp()">CLOSE</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const slug = 'shard-pulse-td';
+
+        let state = {
+            active: false,
+            wave: 1,
+            credits: 150,
+            best: localStorage.getItem('fun_arcade_highscore_' + slug) || 0,
+            gridSize: 40,
+            cols: 0, rows: 0,
+            towers: [],
+            enemies: [],
+            projectiles: [],
+            particles: [],
+            spawnTimer: 0,
+            waveActive: false,
+            enemyCount: 0,
+            enemiesSpawned: 0
+        };
+
+        function initCanvas() {
+            const rect = canvas.parentElement.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+            state.cols = Math.floor(canvas.width / state.gridSize);
+            state.rows = Math.floor(canvas.height / state.gridSize);
+            document.getElementById('best-score').innerText = state.best;
+        }
+
+        window.addEventListener('resize', initCanvas);
+        initCanvas();
+
+        function toggleHelp() {
+            document.getElementById('help-card').classList.toggle('hidden');
+        }
+
+        function startGame() {
+            state.active = true;
+            state.wave = 1;
+            state.credits = 150;
+            state.towers = [];
+            state.enemies = [];
+            state.projectiles = [];
+            state.particles = [];
+            state.enemiesSpawned = 0;
+            state.enemyCount = 10;
+            state.spawnTimer = 0;
+            document.getElementById('start-card').classList.add('hidden');
+            document.getElementById('gameover-card').classList.add('hidden');
+            updateHUD();
+        }
+
+        function gameOver() {
+            state.active = false;
+            if (state.wave > state.best) {
+                state.best = state.wave;
+                localStorage.setItem('fun_arcade_highscore_' + slug, state.best);
+            }
+            document.getElementById('final-wave').innerText = state.wave;
+            document.getElementById('gameover-card').classList.remove('hidden');
+            document.getElementById('best-score').innerText = state.best;
+        }
+
+        function updateHUD() {
+            document.getElementById('credits').innerText = Math.floor(state.credits);
+            document.getElementById('wave').innerText = state.wave;
+        }
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (!state.active) return;
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            const gx = Math.floor(x / state.gridSize);
+            const gy = Math.floor(y / state.gridSize);
+
+            // Check center (Core area)
+            const cx = Math.floor(state.cols / 2);
+            const cy = Math.floor(state.rows / 2);
+            if (Math.abs(gx - cx) <= 1 && Math.abs(gy - cy) <= 1) return;
+
+            // Build tower
+            if (state.credits >= 50) {
+                const existing = state.towers.find(t => t.gx === gx && t.gy === gy);
+                if (!existing) {
+                    state.towers.push({
+                        gx, gy,
+                        x: gx * state.gridSize + state.gridSize / 2,
+                        y: gy * state.gridSize + state.gridSize / 2,
+                        fireCooldown: 0
+                    });
+                    state.credits -= 50;
+                    updateHUD();
+                    spawnParticles(gx * state.gridSize + 20, gy * state.gridSize + 20, '#fff', 5);
+                }
+            }
+        });
+
+        function spawnParticles(x, y, color, amt) {
+            for (let i = 0; i < amt; i++) {
+                state.particles.push({
+                    x, y,
+                    vx: (Math.random() - 0.5) * 4,
+                    vy: (Math.random() - 0.5) * 4,
+                    life: 1.0,
+                    color
+                });
+            }
+        }
+
+        function update() {
+            if (!state.active) return;
+
+            // Spawning
+            state.spawnTimer--;
+            if (state.spawnTimer <= 0 && state.enemiesSpawned < state.enemyCount) {
+                const side = Math.floor(Math.random() * 4);
+                let ex, ey;
+                if (side === 0) { ex = Math.random() * canvas.width; ey = -20; }
+                else if (side === 1) { ex = canvas.width + 20; ey = Math.random() * canvas.height; }
+                else if (side === 2) { ex = Math.random() * canvas.width; ey = canvas.height + 20; }
+                else { ex = -20; ey = Math.random() * canvas.height; }
+                
+                state.enemies.push({
+                    x: ex, y: ey,
+                    speed: 0.8 + (state.wave * 0.1),
+                    hp: 1 + Math.floor(state.wave / 3),
+                    size: 10 + Math.random() * 5
+                });
+                state.enemiesSpawned++;
+                state.spawnTimer = Math.max(20, 60 - state.wave * 2);
+            }
+
+            // Wave completion
+            if (state.enemiesSpawned >= state.enemyCount && state.enemies.length === 0) {
+                state.wave++;
+                state.enemiesSpawned = 0;
+                state.enemyCount += 5;
+                state.credits += 100;
+                updateHUD();
+            }
+
+            const coreX = canvas.width / 2;
+            const coreY = canvas.height / 2;
+
+            // Enemy logic
+            state.enemies.forEach((en, index) => {
+                const dx = coreX - en.x;
+                const dy = coreY - en.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                en.x += (dx / dist) * en.speed;
+                en.y += (dy / dist) * en.speed;
+
+                if (dist < 30) {
+                    gameOver();
+                }
+            });
+
+            // Tower firing
+            state.towers.forEach(t => {
+                t.fireCooldown--;
+                if (t.fireCooldown <= 0) {
+                    let target = null;
+                    let minDist = 150;
+                    state.enemies.forEach(en => {
+                        const d = Math.sqrt((t.x - en.x)**2 + (t.y - en.y)**2);
+                        if (d < minDist) {
+                            minDist = d;
+                            target = en;
+                        }
+                    });
+
+                    if (target) {
+                        state.projectiles.push({
+                            x: t.x, y: t.y,
+                            tx: target.x, ty: target.y,
+                            vx: ((target.x - t.x) / minDist) * 7,
+                            vy: ((target.y - t.y) / minDist) * 7,
+                            life: 60
+                        });
+                        t.fireCooldown = 35;
+                    }
+                }
+            });
+
+            // Projectiles
+            state.projectiles.forEach((p, pi) => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life--;
+
+                state.enemies.forEach((en, ei) => {
+                    const d = Math.sqrt((p.x - en.x)**2 + (p.y - en.y)**2);
+                    if (d < en.size) {
+                        en.hp--;
+                        p.life = 0;
+                        spawnParticles(en.x, en.y, '#fff', 3);
+                        if (en.hp <= 0) {
+                            state.enemies.splice(ei, 1);
+                            state.credits += 10;
+                            updateHUD();
+                            spawnParticles(en.x, en.y, '#EF4444', 8);
+                        }
+                    }
+                });
+
+                if (p.life <= 0) state.projectiles.splice(pi, 1);
+            });
+
+            // Particles
+            state.particles.forEach((p, i) => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.02;
+                if (p.life <= 0) state.particles.splice(i, 1);
+            });
+        }
+
+        function draw() {
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Grid
+            ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+            ctx.beginPath();
+            for (let x = 0; x <= canvas.width; x += state.gridSize) {
+                ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height);
+            }
+            for (let y = 0; y <= canvas.height; y += state.gridSize) {
+                ctx.moveTo(0, y); ctx.lineTo(canvas.width, y);
+            }
+            ctx.stroke();
+
+            // Core
+            const coreX = canvas.width / 2;
+            const coreY = canvas.height / 2;
+            const time = Date.now() / 500;
+            const pulse = Math.sin(time) * 5;
+            
+            ctx.shadowBlur = 15 + pulse;
+            ctx.shadowColor = '#EF4444';
+            ctx.fillStyle = '#EF4444';
+            ctx.beginPath();
+            ctx.arc(coreX, coreY, 20 + pulse, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // Towers
+            state.towers.forEach(t => {
+                ctx.fillStyle = '#475569';
+                ctx.fillRect(t.gx * state.gridSize + 5, t.gy * state.gridSize + 5, state.gridSize - 10, state.gridSize - 10);
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(t.x, t.y, 4, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Enemies
+            state.enemies.forEach(en => {
+                ctx.fillStyle = '#EF4444';
+                ctx.save();
+                ctx.translate(en.x, en.y);
+                ctx.rotate(Date.now() / 200);
+                ctx.fillRect(-en.size/2, -en.size/2, en.size, en.size);
+                ctx.restore();
+            });
+
+            // Projectiles
+            ctx.fillStyle = '#60a5fa';
+            state.projectiles.forEach(p => {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Particles
+            state.particles.forEach(p => {
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.fillRect(p.x, p.y, 2, 2);
+            });
+            ctx.globalAlpha = 1.0;
+        }
+
+        function loop() {
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        loop();
+    </script>
+</body>
+</html>
