@@ -974,5 +974,13 @@
     "category": "Reflex",
     "accent": "#EF4444",
     "addedAt": "2026-11-27T13:01:19Z"
+  },
+  {
+    "slug": "orbit-defender",
+    "title": "Orbit Defender",
+    "description": "Rotate your defensive ring to block incoming energy spheres and protect your central core from destruction!",
+    "category": "Action",
+    "accent": "#E85D04",
+    "addedAt": "2026-11-27T14:22:55Z"
   }
 ]
