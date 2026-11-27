@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Skyline Crane - Fun Arcade</title>
+<style>
+  :root {
+    --accent: #0EA5E9;
+    --accent-glow: rgba(14, 165, 233, 0.45);
+    --bg-dark: #070B14;
+    --panel: rgba(15, 23, 42, 0.88);
+    --border: rgba(148, 163, 184, 0.2);
+    --text: #F8FAFC;
+    --muted: #94A3B8;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; user-select: none; }
+  html, body {
+    width: 100%; height: 100dvh; overflow: hidden;
+    background: var(--bg-dark); color: var(--text);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    display: flex; flex-direction: column;
+  }
+  header {
+    height: 52px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 14px; background: rgba(7, 11, 20, 0.92);
+    border-bottom: 1px solid var(--border); z-index: 20;
+  }
+  .back-btn {
+    text-decoration: none; color: var(--text); font-size: 13px; font-weight: 600;
+    padding: 6px 12px; border-radius: 8px; background: rgba(255,255,255,0.07);
+    border: 1px solid var(--border); transition: background 0.15s;
+  }
+  .back-btn:hover { background: rgba(255,255,255,0.14); }
+  .hud {
+    display: flex; align-items: center; gap: 14px; font-size: 13px; font-weight: 600;
+  }
+  .hud-item { display: flex; flex-direction: column; align-items: center; line-height: 1.15; }
+  .hud-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+  .hud-val { font-size: 15px; color: #fff; font-variant-numeric: tabular-nums; }
+  .hud-val.accent { color: var(--accent); }
+  .header-actions { display: flex; align-items: center; gap: 8px; }
+  .icon-btn {
+    width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--border);
+    background: rgba(255,255,255,0.07); color: var(--text); font-size: 14px; font-weight: 700;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s;
+  }
+  .icon-btn:hover { background: rgba(255,255,255,0.15); }
+
+  main {
+    position: relative; flex: 1; width: 100%; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+  }
+  canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+
+  .mobile-controls {
+    position: absolute; bottom: 14px; left: 0; right: 0;
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 0 18px; pointer-events: none; z-index: 10;
+  }
+  .ctrl-group { display: flex; gap: 10px; pointer-events: auto; }
+  .ctrl-btn {
+    width: 56px; height: 56px; border-radius: 16px;
+    background: rgba(15, 23, 42, 0.72); border: 1px solid rgba(255,255,255,0.18);
+    color: #fff; font-size: 20px; font-weight: 700; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    backdrop-filter: blur(6px); transition: transform 0.08s, background 0.12s;
+  }
+  .ctrl-btn:active { transform: scale(0.93); background: rgba(14, 165, 233, 0.35); }
+  .drop-btn {
+    width: 112px; height: 56px; border-radius: 16px;
+    background: linear-gradient(135deg, #0EA5E9, #0284C7);
+    border: 1px solid rgba(255,255,255,0.3); color: #fff;
+    font-size: 14px; font-weight: 800; letter-spacing: 0.06em;
+    box-shadow: 0 4px 18px var(--accent-glow); pointer-events: auto; cursor: pointer;
+  }
+  .drop-btn:active { transform: scale(0.95); }
+  @media (min-width: 769px) and (pointer: fine) {
+    .mobile-controls { display: none; }
+  }
+
+  .overlay {
+    position: absolute; inset: 0; background: rgba(7, 11, 20, 0.78);
+    backdrop-filter: blur(8px); display: flex; flex-direction: column;
+    align-items: center; justify-content: center; padding: 20px; z-index: 30;
+    transition: opacity 0.2s;
+  }
+  .overlay.hidden { opacity: 0; pointer-events: none; }
+  .card {
+    width: 100%; max-width: 390px; background: var(--panel);
+    border: 1px solid var(--border); border-radius: 18px; padding: 26px 22px;
+    text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+  }
+  .card h1 { font-size: 28px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 8px; }
+  .card h1 span { color: var(--accent); }
+  .card p { font-size: 14px; color: var(--muted); line-height: 1.5; margin-bottom: 20px; }
+  .primary-btn {
+    width: 100%; padding: 13px 20px; border-radius: 12px; border: none;
+    background: linear-gradient(135deg, #0EA5E9, #0284C7); color: #fff;
+    font-size: 16px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 6px 20px var(--accent-glow); transition: transform 0.1s;
+  }
+  .primary-btn:active { transform: scale(0.97); }
+  .stats-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px;
+  }
+  .stat-box {
+    background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+    border-radius: 12px; padding: 10px;
+  }
+  .stat-box .lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; }
+  .stat-box .val { font-size: 20px; font-weight: 800; color: #fff; margin-top: 2px; }
+
+  .hint-bar {
+    position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+    font-size: 12px; color: var(--muted); background: rgba(15, 23, 42, 0.75);
+    padding: 6px 14px; border-radius: 20px; border: 1px solid var(--border);
+    white-space: nowrap; pointer-events: none;
+  }
+  .help-list { text-align: left; font-size: 13px; color: var(--muted); line-height: 1.6; margin-bottom: 18px; }
+  .help-list li { margin-bottom: 6px; margin-left: 16px; }
+  .help-list strong { color: var(--text); }
+</style>
+</head>
+<body>
+  <header>
+    <a href="../../" class="back-btn">Back</a>
+    <div class="hud">
+      <div class="hud-item">
+        <span class="hud-label">Score</span>
+        <span class="hud-val accent" id="scoreVal">0</span>
+      </div>
+      <div class="hud-item">
+        <span class="hud-label">Floors</span>
+        <span class="hud-val" id="floorVal">0</span>
+      </div>
+      <div class="hud-item">
+        <span class="hud-label">Best</span>
+        <span class="hud-val" id="bestVal">0</span>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="icon-btn" id="muteBtn" title="Toggle Sound">🔊</button>
+      <button class="icon-btn" id="helpBtn" title="How to Play">?</button>
+    </div>
+  </header>
+
+  <main>
+    <canvas id="gameCanvas"></canvas>
+
+    <div class="mobile-controls" id="mobileControls">
+      <div class="ctrl-group">
+        <button class="ctrl-btn" id="btnLeft">◀</button>
+        <button class="ctrl-btn" id="btnRight">▶</button>
+      </div>
+      <button class="drop-btn" id="btnDrop">DROP</button>
+    </div>
+
+    <div class="overlay" id="startOverlay">
+      <div class="card">
+        <h1>Skyline <span>Crane</span></h1>
+        <p>Steer the magnetic crane trolley and time your drops to stack cargo crates into the stratosphere. Watch out for pendulum sway and high-altitude wind gusts!</p>
+        <button class="primary-btn" id="startBtn">Start Building</button>
+      </div>
+      <div class="hint-bar">A / D or Arrows to Steer • Space / Tap to Drop</div>
+    </div>
+
+    <div class="overlay hidden" id="gameOverOverlay">
+      <div class="card">
+        <h1>Tower <span>Toppled!</span></h1>
+        <p id="gameOverMsg">Your skyscraper lost its balance.</p>
+        <div class="stats-grid">
+          <div class="stat-box">
+            <div class="lbl">Final Score</div>
+            <div class="val" id="finalScore">0</div>
+          </div>
+          <div class="stat-box">
+            <div class="lbl">Best Score</div>
+            <div class="val" id="finalBest">0</div>
+          </div>
+        </div>
+        <button class="primary-btn" id="restartBtn">Play Again</button>
+      </div>
+    </div>
+
+    <div class="overlay hidden" id="helpOverlay">
+      <div class="card">
+        <h1>How to <span>Play</span></h1>
+        <ul class="help-list">
+          <li><strong>Steer:</strong> Use <strong>A / D</strong> or <strong>Arrow Keys</strong> (or on-screen buttons) to move the crane trolley left and right.</li>
+          <li><strong>Drop:</strong> Press <strong>Space</strong> or tap <strong>DROP</strong> to release the magnetic grapple.</li>
+          <li><strong>Physics:</strong> Moving the trolley makes the cable swing! Counter-steer to steady the crate before dropping.</li>
+          <li><strong>Perfect Stack:</strong> Land a crate within tight alignment for a <strong>SNAP</strong> bonus and combo multiplier!</li>
+        </ul>
+        <button class="primary-btn" id="closeHelpBtn">Got It</button>
+      </div>
+    </div>
+  </main>
+
+<script>
+(() => {
+  const SLUG = 'skyline-crane';
+  const HS_KEY = 'fun_arcade_highscore_' + SLUG;
+
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+
+  const scoreVal = document.getElementById('scoreVal');
+  const floorVal = document.getElementById('floorVal');
+  const bestVal = document.getElementById('bestVal');
+  const finalScore = document.getElementById('finalScore');
+  const finalBest = document.getElementById('finalBest');
+
+  const startOverlay = document.getElementById('startOverlay');
+  const gameOverOverlay = document.getElementById('gameOverOverlay');
+  const helpOverlay = document.getElementById('helpOverlay');
+
+  const muteBtn = document.getElementById('muteBtn');
+  const helpBtn = document.getElementById('helpBtn');
+  const closeHelpBtn = document.getElementById('closeHelpBtn');
+  const startBtn = document.getElementById('startBtn');
+  const restartBtn = document.getElementById('restartBtn');
+
+  let W = 0, H = 0, dpr = 1;
+  let bestScore = parseInt(localStorage.getItem(HS_KEY) || '0', 10) || 0;
+  bestVal.textContent = bestScore;
+
+  // Audio
+  let muted = false;
+  let audioCtx = null;
+  function initAudio() {
+    if (!audioCtx) { 
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) audioCtx = new AC();
+    }
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  }
+  function playTone(freq, type, dur, vol = 0.12, slide = 0) {
+    if (muted || !audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    if (slide) osc.frequency.exponentialRampToValueAtTime(Math.max(40, freq + slide), audioCtx.currentTime + dur);
+    gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + dur);
+  }
+
+  muteBtn.addEventListener('click', () => {
+    muted = !muted;
+    muteBtn.textContent = muted ? '🔇' : '🔊';
+  });
+
+  // Game State
+  let state = 'START'; // START, PLAY, GAMEOVER
+  let score = 0;
+  let combo = 0;
+  let cameraY = 0;
+  let targetCameraY = 0;
+  let shake = 0;
+  let wind = 0;
+  let targetWind = 0;
+  let windTimer = 0;
+
+  const CRATE_H = 38;
+  const BASE_CRATE_W = 110;
+  const CABLE_LEN = 115;
+  const GRAVITY = 1350;
+
+  let keys = { left: false, right: false };
+  let stack = []; // { x, y, w, h, color, angle, settle } (y is world-up from ground=0)
+  let falling = null; // { x, y, vx, vy, w, h, color, angle, vAngle }
+  let debris = [];
+  let particles = [];
+  let floatTexts = [];
+
+  let crane = {
+    x: 0,
+    vx: 0,
+    angle: 0,
+    vAngle: 0,
+    hasCrate: true,
+    crateW: BASE_CRATE_W,
+    crateColor: '#0EA5E9',
+    reloadTimer: 0
+  };
+
+  const COLORS = ['#0EA5E9', '#38BDF8', '#0284C7', '#6366F1', '#14B8A6', '#F59E0B', '#EC4899'];
+
+  function resize() {
+    const rect = canvas.parentElement.getBoundingClientRect();
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = rect.width;
+    H = rect.height;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function spawnCrateOnCrane() {
+    const floor = stack.length;
+    const shrink = Math.min(44, floor * 1.4);
+    crane.crateW = Math.max(54, BASE_CRATE_W - shrink);
+    crane.crateColor = COLORS[floor % COLORS.length];
+    crane.hasCrate = true;
+  }
+
+  function resetGame() {
+    score = 0;
+    combo = 0;
+    cameraY = 0;
+    targetCameraY = 0;
+    shake = 0;
+    wind = 0;
+    targetWind = 0;
+    windTimer = 0;
+    stack = [
+      { x: 0, y: CRATE_H / 2, w: 160, h: CRATE_H, color: '#334155', angle: 0, isBase: true }
+    ];
+    falling = null;
+    debris = [];
+    particles = [];
+    floatTexts = [];
+    crane.x = 0;
+    crane.vx = 0;
+    crane.angle = 0;
+    crane.vAngle = 0;
+    crane.reloadTimer = 0;
+    spawnCrateOnCrane();
+    updateHUD();
+  }
+
+  function updateHUD() {
+    scoreVal.textContent = score;
+    floorVal.textContent = Math.max(0, stack.length - 1);
+    if (score > bestScore) {
+      bestScore = score;
+      localStorage.setItem(HS_KEY, String(bestScore));
+    }
+    bestVal.textContent = bestScore;
+  }
+
+  function addFloatText(x, y, text, color = '#fff') {
+    floatTexts.push({ x, y, text, color, life: 1.0 });
+  }
+
+  function spawnParticles(x, y, color, count = 14) {
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = 50 + Math.random() * 160;
+      particles.push({
+        x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp + 40,
+        size: 3 + Math.random() * 4, color, life: 0.6 + Math.random() * 0.4
+      });
+    }
+  }
+
+  function dropCrate() {
+    if (state !== 'PLAY' || !crane.hasCrate || falling) return;
+    initAudio();
+    const craneWorldY = cameraY + H - 85;
+    const cx = crane.x + Math.sin(crane.angle) * CABLE_LEN;
+    const cy = craneWorldY - Math.cos(crane.angle) * CABLE_LEN;
+    const tangVx = crane.vx + Math.cos(crane.angle) * crane.vAngle * CABLE_LEN;
+    const tangVy = Math.sin(crane.angle) * crane.vAngle * CABLE_LEN;
+
+    falling = {
+      x: cx,
+      y: cy,
+      vx: tangVx * 0.65,
+      vy: tangVy,
+      w: crane.crateW,
+      h: CRATE_H,
+      color: crane.crateColor,
+      angle: crane.angle * 0.5,
+      vAngle: crane.vAngle * 0.3
+    };
+    crane.hasCrate = false;
+    crane.reloadTimer = 0.45;
+    playTone(280, 'sine', 0.14, 0.1, -120);
+  }
+
+  function triggerGameOver(reason) {
+    state = 'GAMEOVER';
+    shake = 14;
+    playTone(130, 'sawtooth', 0.45, 0.16, -80);
+    finalScore.textContent = score;
+    finalBest.textContent = bestScore;
+    document.getElementById('gameOverMsg').textContent = reason;
+    gameOverOverlay.classList.remove('hidden');
+  }
+
+  // Controls
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = true;
+    if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = true;
+    if (e.code === 'Space' || e.code === 'ArrowDown') {
+      if (state === 'PLAY') { e.preventDefault(); dropCrate(); }
+    }
+  });
+  window.addEventListener('keyup', (e) => {
+    if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = false;
+    if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = false;
+  });
+
+  const btnLeft = document.getElementById('btnLeft');
+  const btnRight = document.getElementById('btnRight');
+  const btnDrop = document.getElementById('btnDrop');
+
+  const bindHold = (el, key) => {
+    el.addEventListener('pointerdown', (e) => { e.preventDefault(); keys[key] = true; });
+    el.addEventListener('pointerup', () => { keys[key] = false; });
+    el.addEventListener('pointerleave', () => { keys[key] = false; });
+    el.addEventListener('pointercancel', () => { keys[key] = false; });
+  };
+  bindHold(btnLeft, 'left');
+  bindHold(btnRight, 'right');
+  btnDrop.addEventListener('pointerdown', (e) => { e.preventDefault(); dropCrate(); });
+
+  startBtn.addEventListener('click', () => {
+    initAudio();
+    resetGame();
+    state = 'PLAY';
+    startOverlay.classList.add('hidden');
+  });
+  restartBtn.addEventListener('click', () => {
+    initAudio();
+    resetGame();
+    state = 'PLAY';
+    gameOverOverlay.classList.add('hidden');
+  });
+  helpBtn.addEventListener('click', () => { helpOverlay.classList.remove('hidden'); });
+  closeHelpBtn.addEventListener('click', () => { helpOverlay.classList.add('hidden'); });
+
+  let lastTime = performance.now();
+  function loop(now) {
+    const dt = Math.min(0.033, (now - lastTime) / 1000);
+    lastTime = now;
+    update(dt);
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  function update(dt) {
+    if (shake > 0) shake = Math.max(0, shake - dt * 32);
+
+    // Particles & float texts
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy -= 380 * dt;
+      p.life -= dt;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+    for (let i = floatTexts.length - 1; i >= 0; i--) {
+      const f = floatTexts[i];
+      f.y += 36 * dt;
+      f.life -= dt;
+      if (f.life <= 0) floatTexts.splice(i, 1);
+    }
+    for (let i = debris.length - 1; i >= 0; i--) {
+      const d = debris[i];
+      d.x += d.vx * dt;
+      d.y += d.vy * dt;
+      d.vy -= GRAVITY * dt;
+      d.angle += d.vAngle * dt;
+      if (d.y < cameraY - 200) debris.splice(i, 1);
+    }
+
+    if (state !== 'PLAY') return;
+
+    // Wind gusts after floor 3
+    const floors = stack.length - 1;
+    if (floors >= 3) {
+      windTimer -= dt;
+      if (windTimer <= 0) {
+        windTimer = 4.5 + Math.random() * 3.5;
+        const strength = Math.min(1.0, 0.3 + floors * 0.04);
+        targetWind = (Math.random() < 0.5 ? -1 : 1) * strength * 140;
+      }
+      wind += (targetWind - wind) * dt * 1.8;
+    }
+
+    // Crane trolley movement
+    const maxRail = Math.min(200, W * 0.36);
+    const accel = 1150;
+    let ax = 0;
+    if (keys.left) ax -= accel;
+    if (keys.right) ax += accel;
+    crane.vx += ax * dt;
+    crane.vx *= Math.pow(0.06, dt);
+    crane.x += crane.vx * dt;
+    if (crane.x < -maxRail) { crane.x = -maxRail; crane.vx = 0; }
+    if (crane.x > maxRail) { crane.x = maxRail; crane.vx = 0; }
+
+    // Pendulum physics
+    const gOverL = 9.5;
+    const angularAcc = -gOverL * Math.sin(crane.angle) - (ax * 0.0014) * Math.cos(crane.angle) + (wind * 0.006);
+    crane.vAngle += angularAcc * dt;
+    crane.vAngle *= Math.pow(0.55, dt);
+    crane.angle += crane.vAngle * dt;
+
+    // Reload crate
+    if (!crane.hasCrate && !falling) {
+      crane.reloadTimer -= dt;
+      if (crane.reloadTimer <= 0) spawnCrateOnCrane();
+    }
+
+    // Falling crate
+    if (falling) {
+      falling.vx += wind * 0.45 * dt;
+      falling.vy -= GRAVITY * dt;
+      falling.x += falling.vx * dt;
+      falling.y += falling.vy * dt;
+      falling.angle += falling.vAngle * dt;
+
+      const top = stack[stack.length - 1];
+      const targetY = top.y + top.h / 2 + falling.h / 2;
+
+      if (falling.y <= targetY && falling.vy < 0) {
+        const dx = falling.x - top.x;
+        const maxOffset = (top.w + falling.w) * 0.48;
+
+        if (Math.abs(dx) > maxOffset) {
+          // Missed!
+          debris.push({ ...falling, vAngle: dx > 0 ? -3.5 : 3.5 });
+          falling = null;
+          triggerGameOver('The crate missed the tower!');
+          return;
+        }
+
+        // Check overhang stability
+        const overhang = Math.abs(dx);
+        const isPerfect = overhang <= 10 && Math.abs(falling.angle) < 0.08;
+
+        let landedX = falling.x;
+        if (isPerfect) {
+          landedX = top.x;
+          combo++;
+          const pts = 100 + combo * 50;
+          score += pts;
+          shake = 4;
+          playTone(520 + combo * 40, 'triangle', 0.22, 0.14, 180);
+          spawnParticles(landedX, targetY, '#38BDF8', 18);
+          addFloatText(landedX, targetY + 26, `PERFECT! +${pts}`, '#38BDF8');
+        } else {
+          combo = 0;
+          const pts = Math.max(20, Math.round(80 - overhang));
+          score += pts;
+          shake = 3;
+          playTone(150, 'sine', 0.12, 0.14, -40);
+          spawnParticles(landedX, targetY, falling.color, 10);
+          addFloatText(landedX, targetY + 22, `+${pts}`, '#F8FAFC');
+        }
+
+        stack.push({
+          x: landedX,
+          y: targetY,
+          w: falling.w,
+          h: falling.h,
+          color: falling.color,
+          angle: isPerfect ? 0 : falling.angle * 0.25
+        });
+        falling = null;
+        updateHUD();
+
+        // Check center of mass of tower
+        let sumX = 0;
+        for (let i = 1; i < stack.length; i++) sumX += stack[i].x;
+        const avgX = sumX / (stack.length - 1);
+        if (Math.abs(avgX) > 78) {
+          triggerGameOver('Center of mass shifted too far—the tower collapsed!');
+          return;
+        }
+
+        // Pan camera up
+        const idealCam = Math.max(0, (stack.length - 3) * CRATE_H);
+        targetCameraY = idealCam;
+      } else if (falling.y < cameraY - 100) {
+        falling = null;
+        triggerGameOver('The crate fell into the abyss!');
+        return;
+      }
+    }
+
+    cameraY += (targetCameraY - cameraY) * dt * 4.5;
+  }
+
+  function worldToScreenY(wy) {
+    return H - 60 - (wy - cameraY);
+  }
+
+  function draw() {
+    // Sky gradient based on altitude
+    const alt = Math.min(1, cameraY / 1600);
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, alt > 0.5 ? '#020617' : '#0B1120');
+    grad.addColorStop(1, alt > 0.5 ? '#0F172A' : '#1E293B');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.save();
+    if (shake > 0) {
+      ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
+    }
+
+    const centerX = W / 2;
+
+    // Ground
+    const groundY = worldToScreenY(0);
+    if (groundY < H + 40) {
+      ctx.fillStyle = '#0F172A';
+      ctx.fillRect(0, groundY, W, H - groundY + 40);
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(0, groundY, W, 4);
+    }
+
+    // Stack
+    for (const b of stack) {
+      const sy = worldToScreenY(b.y);
+      if (sy < -80 || sy > H + 80) continue;
+      ctx.save();
+      ctx.translate(centerX + b.x, sy);
+      ctx.rotate(b.angle || 0);
+      ctx.fillStyle = b.color;
+      ctx.fillRect(-b.w / 2, -b.h / 2, b.w, b.h);
+      ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(-b.w / 2 + 1, -b.h / 2 + 1, b.w - 2, b.h - 2);
+      ctx.restore();
+    }
+
+    // Falling crate
+    if (falling) {
+      const sy = worldToScreenY(falling.y);
+      ctx.save();
+      ctx.translate(centerX + falling.x, sy);
+      ctx.rotate(falling.angle);
+      ctx.fillStyle = falling.color;
+      ctx.fillRect(-falling.w / 2, -falling.h / 2, falling.w, falling.h);
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(-falling.w / 2 + 1, -falling.h / 2 + 1, falling.w - 2, falling.h - 2);
+      ctx.restore();
+    }
+
+    // Debris
+    for (const d of debris) {
+      const sy = worldToScreenY(d.y);
+      ctx.save();
+      ctx.translate(centerX + d.x, sy);
+      ctx.rotate(d.angle);
+      ctx.fillStyle = d.color;
+      ctx.globalAlpha = 0.85;
+      ctx.fillRect(-d.w / 2, -d.h / 2, d.w, d.h);
+      ctx.restore();
+    }
+
+    // Crane Rail & Trolley
+    const railY = 34;
+    ctx.fillStyle = '#334155';
+    ctx.fillRect(0, railY - 4, W, 8);
+    const trolleyX = centerX + crane.x;
+    ctx.fillStyle = '#0EA5E9';
+    ctx.fillRect(trolleyX - 22, railY - 10, 44, 20);
+    ctx.strokeStyle = '#E2E8F0';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(trolleyX - 22, railY - 10, 44, 20);
+
+    // Cable & Hanging Crate
+    const hookX = trolleyX + Math.sin(crane.angle) * CABLE_LEN;
+    const hookY = railY + Math.cos(crane.angle) * CABLE_LEN;
+    ctx.beginPath(); 
+    ctx.moveTo(trolleyX, railY + 10);
+    ctx.lineTo(hookX, hookY);
+    ctx.strokeStyle = '#94A3B8';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+
+    // Magnet
+    ctx.fillStyle = '#E2E8F0';
+    ctx.fillRect(hookX - 10, hookY - 4, 20, 8);
+
+    if (crane.hasCrate) {
+      ctx.save();
+      ctx.translate(hookX, hookY + CRATE_H / 2 + 4);
+      ctx.rotate(-crane.angle * 0.5);
+      ctx.fillStyle = crane.crateColor;
+      ctx.fillRect(-crane.crateW / 2, -CRATE_H / 2, crane.crateW, CRATE_H);
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(-crane.crateW / 2 + 1, -CRATE_H / 2 + 1, crane.crateW - 2, CRATE_H - 2);
+      ctx.restore();
+    }
+
+    // Particles
+    for (const p of particles) {
+      const sy = worldToScreenY(p.y);
+      ctx.globalAlpha = Math.max(0, p.life);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(centerX + p.x - p.size / 2, sy - p.size / 2, p.size, p.size);
+    }
+    ctx.globalAlpha = 1;
+
+    // Float texts
+    ctx.font = 'bold 15px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    for (const f of floatTexts) {
+      const sy = worldToScreenY(f.y);
+      ctx.globalAlpha = Math.max(0, f.life);
+      ctx.fillStyle = f.color;
+      ctx.fillText(f.text, centerX + f.x, sy);
+    }
+    ctx.globalAlpha = 1;
+
+    // Wind indicator
+    if (Math.abs(wind) > 12 && state === 'PLAY') {
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.78)';
+      ctx.fillRect(14, 54, 118, 28);
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.4)';
+      ctx.strokeRect(14, 54, 118, 28);
+      ctx.fillStyle = '#38BDF8';
+      ctx.font = 'bold 12px system-ui, sans-serif';
+      ctx.textAlign = 'left';
+      const dir = wind > 0 ? '→' : '←';
+      ctx.fillText(`WIND ${dir} ${Math.round(Math.abs(wind))}`, 24, 72);
+    }
+
+    ctx.restore();
+  }
+
+  resetGame();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

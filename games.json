@@ -926,5 +926,13 @@
     "category": "Action",
     "accent": "#F59E0B",
     "addedAt": "2026-11-27T04:58:30Z"
+  },
+  {
+    "slug": "skyline-crane",
+    "title": "Skyline Crane",
+    "description": "Steer the swinging crane trolley and time your magnetic drops to stack crates into the stratosphere!",
+    "category": "Physics",
+    "accent": "#0EA5E9",
+    "addedAt": "2026-11-27T05:58:51Z"
   }
 ]
