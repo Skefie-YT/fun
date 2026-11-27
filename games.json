@@ -998,5 +998,13 @@
     "category": "Puzzle",
     "accent": "#EC4899",
     "addedAt": "2026-11-27T16:58:06Z"
+  },
+  {
+    "slug": "nebula-tilt-stack",
+    "title": "Nebula Tilt Stack",
+    "description": "Drop neon shapes onto a tilting platform. Keep them balanced as the platform shifts and the stack grows higher!",
+    "category": "Physics",
+    "accent": "#F59E0B",
+    "addedAt": "2026-11-27T17:53:57Z"
   }
 ]

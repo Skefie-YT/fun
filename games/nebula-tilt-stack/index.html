@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Nebula Tilt Stack</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #F59E0B;
+            --bg: #0f172a;
+            --text: #f8fafc;
+        }
+        * { box-sizing: border-box; touch-action: none; }
+        body {
+            margin: 0; padding: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Outfit', sans-serif;
+            overflow: hidden;
+            height: 100dvh;
+            display: flex; flex-direction: column;
+        }
+        #game-container {
+            position: relative;
+            flex: 1;
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            overflow: hidden;
+            background: radial-gradient(circle at 50% 50%, #1e293b 0%, #0f172a 100%);
+        }
+        canvas { display: block; width: 100%; height: 100%; }
+        .hud {
+            position: absolute;
+            top: 0; left: 0; width: 100%;
+            padding: 15px 20px;
+            display: flex; justify-content: space-between; align-items: center;
+            z-index: 10;
+            background: linear-gradient(to bottom, rgba(15,23,42,0.8), transparent);
+        }
+        .back-btn {
+            color: var(--text); text-decoration: none;
+            background: rgba(255,255,255,0.1);
+            padding: 6px 12px; border-radius: 8px; font-weight: bold;
+            transition: background 0.2s;
+        }
+        .score-box { text-align: center; }
+        .score-val { font-size: 24px; font-weight: 700; color: var(--accent); }
+        .label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; opacity: 0.8; }
+
+        .overlay {
+            position: absolute; inset: 0;
+            background: rgba(15,23,42,0.9);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 20; padding: 40px; text-align: center;
+        }
+        h1 { margin: 0 0 10px; color: var(--accent); }
+        .btn { 
+            background: var(--accent); color: #000; border: none;
+            padding: 12px 30px; border-radius: 50px; font-size: 18px;
+            font-weight: 700; cursor: pointer; margin-top: 20px;
+        }
+        .btn:hover { transform: scale(1.05); }
+        .hidden { display: none !important; }
+        .info-btn { 
+            width: 32px; height: 32px; border-radius: 50%; 
+            border: 2px solid var(--text); background: none; color: var(--text);
+            font-weight: bold; cursor: pointer; opacity: 0.7;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div class="hud">
+            <a href="../../" class="back-btn">Back</a>
+            <div class="score-box">
+                <div class="label">Blocks</div>
+                <div id="score" class="score-val">0</div>
+            </div>
+            <div class="score-box">
+                <div class="label">Best</div>
+                <div id="best" class="score-val">0</div>
+            </div>
+            <button class="info-btn" onclick="toggleHelp()">?</button>
+        </div>
+
+        <canvas id="canvas"></canvas>
+
+        <div id="start-screen" class="overlay">
+            <h1>NEBULA TILT</h1>
+            <p>Drop shapes to build a tower. Balance the platform by distributing weight evenly. One fall and it's game over!</p>
+            <button class="btn" onclick="startGame()">START STACKING</button>
+        </div>
+
+        <div id="game-over" class="overlay hidden">
+            <h1 style="color: #ef4444;">TOWER TOPPLED</h1>
+            <p>Your stack reached <span id="final-score">0</span> blocks.</p>
+            <button class="btn" onclick="startGame()">TRY AGAIN</button>
+        </div>
+
+        <div id="help-screen" class="overlay hidden" onclick="toggleHelp()">
+            <h2>HOW TO PLAY</h2>
+            <p>1. Tap or Click to drop the swinging block.<br>2. Aim for the center to keep the beam stable.<br>3. Watch the tilt! Too much weight on one side will dump your tower.</p>
+            <button class="btn">GOT IT</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const bestEl = document.getElementById('best');
+        const finalScoreEl = document.getElementById('final-score');
+
+        let state = 'start';
+        let score = 0;
+        let best = localStorage.getItem('fun_arcade_highscore_nebula-tilt-stack') || 0;
+        bestEl.innerText = best;
+
+        const GRAVITY = 0.25;
+        const FRICTION = 0.98;
+        
+        let platform = { x: 0, y: 0, w: 200, h: 15, angle: 0, va: 0 };
+        let blocks = [];
+        let activeBlock = null;
+        let swingPhase = 0;
+        let particles = [];
+
+        function resize() {
+            canvas.width = canvas.offsetWidth * window.devicePixelRatio;
+            canvas.height = canvas.offsetHeight * window.devicePixelRatio;
+            ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+            platform.x = canvas.offsetWidth / 2;
+            platform.y = canvas.offsetHeight - 120;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        function createBlock() {
+            return {
+                x: canvas.offsetWidth / 2,
+                y: 60,
+                w: 40 + Math.random() * 30,
+                h: 25 + Math.random() * 15,
+                vx: 0, vy: 0,
+                angle: 0,
+                color: `hsl(${Math.random() * 40 + 20}, 90%, 55%)`,
+                dropped: false,
+                landed: false
+            };
+        }
+
+        function startGame() {
+            score = 0;
+            scoreEl.innerText = '0';
+            blocks = [];
+            platform.angle = 0;
+            platform.va = 0;
+            activeBlock = createBlock();
+            state = 'playing';
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('game-over').classList.add('hidden');
+            requestAnimationFrame(loop);
+        }
+
+        function toggleHelp() {
+            document.getElementById('help-screen').classList.toggle('hidden');
+        }
+
+        function drop() {
+            if (state === 'playing' && activeBlock && !activeBlock.dropped) {
+                activeBlock.dropped = true;
+                playSound(200, 0.1);
+            }
+        }
+
+        window.addEventListener('mousedown', drop);
+        window.addEventListener('touchstart', (e) => { e.preventDefault(); drop(); });
+
+        function playSound(freq, dur) {
+            try {
+                const actx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = actx.createOscillator();
+                const gain = actx.createGain();
+                osc.frequency.value = freq;
+                osc.type = 'sine';
+                gain.gain.setValueAtTime(0.1, actx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, actx.currentTime + dur);
+                osc.connect(gain);
+                gain.connect(actx.destination);
+                osc.start();
+                osc.stop(actx.currentTime + dur);
+            } catch(e) {}
+        }
+
+        function checkCollision(b) {
+            // Simplified AABB to tilted platform collision
+            // Transform block point to platform space
+            const dx = b.x - platform.x;
+            const dy = b.y + b.h/2 - platform.y;
+            const rotatedX = dx * Math.cos(-platform.angle) - dy * Math.sin(-platform.angle);
+            const rotatedY = dx * Math.sin(-platform.angle) + dy * Math.cos(-platform.angle);
+
+            if (Math.abs(rotatedX) < platform.w / 2 && Math.abs(rotatedY) < platform.h / 2) {
+                return true;
+            }
+            
+            // Check collision with other blocks
+            for (let other of blocks) {
+                if (other !== b && Math.abs(b.x - other.x) < (b.w + other.w)/2 && Math.abs(b.y - other.y) < (b.h + other.h)/2) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function loop() {
+            if (state !== 'playing') return;
+            ctx.clearRect(0, 0, canvas.offsetWidth, canvas.offsetHeight);
+
+            // Draw Platform Base
+            ctx.fillStyle = '#334155';
+            ctx.beginPath();
+            ctx.moveTo(platform.x - 20, canvas.offsetHeight);
+            ctx.lineTo(platform.x + 20, canvas.offsetHeight);
+            ctx.lineTo(platform.x, platform.y);
+            ctx.fill();
+
+            // Platform Physics
+            let weightBalance = 0;
+            blocks.forEach(b => {
+                if (b.landed) weightBalance += (b.x - platform.x) * (b.w * b.h * 0.00015);
+            });
+            platform.va += weightBalance * 0.005;
+            platform.va *= FRICTION;
+            platform.angle += platform.va;
+
+            // Draw Platform
+            ctx.save();
+            ctx.translate(platform.x, platform.y);
+            ctx.rotate(platform.angle);
+            ctx.fillStyle = '#F59E0B';
+            ctx.fillRect(-platform.w/2, -platform.h/2, platform.w, platform.h);
+            ctx.restore();
+
+            // Active Block Logic
+            if (activeBlock) {
+                if (!activeBlock.dropped) {
+                    swingPhase += 0.04;
+                    activeBlock.x = canvas.offsetWidth / 2 + Math.sin(swingPhase) * 120;
+                } else {
+                    activeBlock.vy += GRAVITY;
+                    activeBlock.y += activeBlock.vy;
+
+                    if (checkCollision(activeBlock)) {
+                        activeBlock.landed = true;
+                        activeBlock.vy = 0;
+                        blocks.push(activeBlock);
+                        score++;
+                        scoreEl.innerText = score;
+                        playSound(400 + (score * 20), 0.1);
+                        activeBlock = createBlock();
+                    } else if (activeBlock.y > canvas.offsetHeight) {
+                        gameOver();
+                    }
+                }
+
+                ctx.fillStyle = activeBlock.color;
+                ctx.fillRect(activeBlock.x - activeBlock.w/2, activeBlock.y - activeBlock.h/2, activeBlock.w, activeBlock.h);
+            }
+
+            // Render Blocks
+            blocks.forEach((b, i) => {
+                // Relative movement based on tilt
+                let tiltShift = Math.sin(platform.angle) * 2;
+                b.x += tiltShift;
+                b.y += Math.abs(Math.sin(platform.angle)) * 0.5;
+
+                ctx.fillStyle = b.color;
+                ctx.fillRect(b.x - b.w/2, b.y - b.h/2, b.w, b.h);
+
+                if (b.y > canvas.offsetHeight || Math.abs(platform.angle) > 1.2) gameOver();
+            });
+
+            requestAnimationFrame(loop);
+        }
+
+        function gameOver() {
+            state = 'over';
+            finalScoreEl.innerText = score;
+            if (score > best) {
+                best = score;
+                localStorage.setItem('fun_arcade_highscore_nebula-tilt-stack', best);
+                bestEl.innerText = best;
+            }
+            document.getElementById('game-over').classList.remove('hidden');
+            playSound(150, 0.5);
+        }
+    </script>
+</body>
+</html>
