@@ -1006,5 +1006,13 @@
     "category": "Physics",
     "accent": "#F59E0B",
     "addedAt": "2026-11-27T17:53:57Z"
+  },
+  {
+    "slug": "aero-grapple",
+    "title": "Aero Grapple",
+    "description": "Hold to grapple overhead drones, build swinging momentum, and release to launch across the neon skyline.",
+    "category": "Action",
+    "accent": "#0EA5E9",
+    "addedAt": "2026-11-27T18:47:38Z"
   }
 ]
