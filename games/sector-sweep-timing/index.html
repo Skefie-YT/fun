@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sector Sweep</title>
+    <style>
+        :root {
+            --accent: #E85D04;
+            --bg: #0a0a0c;
+            --text: #ffffff;
+        }
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            overflow: hidden;
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+        }
+        #game-container {
+            position: relative;
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            touch-action: none;
+        }
+        canvas {
+            max-width: 100%;
+            max-height: 100%;
+        }
+        .hud {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 10;
+            pointer-events: none;
+        }
+        .hud * { pointer-events: auto; }
+        .back-btn {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+        .back-btn:hover { background: rgba(255, 255, 255, 0.2); }
+        .stats {
+            text-align: center;
+            font-weight: bold;
+            letter-spacing: 1px;
+        }
+        .help-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            color: white;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 18px;
+        }
+        .overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            padding: 20px;
+            text-align: center;
+        }
+        .hidden { display: none !important; }
+        .btn {
+            background: var(--accent);
+            border: none;
+            color: white;
+            padding: 12px 30px;
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 50px;
+            cursor: pointer;
+            margin-top: 20px;
+            text-transform: uppercase;
+            box-shadow: 0 0 15px var(--accent);
+        }
+        .btn:active { transform: scale(0.95); }
+        .hint { margin-top: 40px; font-size: 12px; opacity: 0.6; text-transform: uppercase; letter-spacing: 2px; }
+    </style>
+</head>
+<body>
+    <div class="hud">
+        <a href="../../" class="back-btn">Back</a>
+        <div class="stats">
+            SCORE: <span id="score-val">0</span> | BEST: <span id="best-val">0</span>
+        </div>
+        <button class="help-btn" id="help-btn">?</button>
+    </div>
+
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+
+        <div id="start-screen" class="overlay">
+            <h1 style="color: var(--accent); font-size: 48px; margin: 0;">SECTOR SWEEP</h1>
+            <p style="max-width: 300px; line-height: 1.5;">Tap precisely when the scanning needle aligns with the target sector to clear it. Don't miss!</p>
+            <button class="btn" id="start-btn">Initiate</button>
+            <div class="hint">Tap or Space to Strike</div>
+        </div>
+
+        <div id="help-overlay" class="overlay hidden">
+            <h2>How to Play</h2>
+            <ul style="text-align: left; max-width: 280px; font-size: 14px;">
+                <li>Watch the rotating white scanner.</li>
+                <li>Tap when it overlaps a colored sector.</li>
+                <li>Missing or hitting empty space resets your streak.</li>
+                <li>Clear all sectors to advance levels!</li>
+            </ul>
+            <button class="btn" id="close-help">Got it</button>
+        </div>
+
+        <div id="game-over" class="overlay hidden">
+            <h2 style="color: #ff4444; font-size: 32px;">SYSTEM FAILURE</h2>
+            <div id="final-score-stats"></div>
+            <button class="btn" id="retry-btn">Reboot</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const slug = 'sector-sweep-timing';
+        const accent = '#E85D04';
+
+        let score = 0;
+        let best = localStorage.getItem('fun_arcade_highscore_' + slug) || 0;
+        let gameState = 'START';
+        let rotation = 0;
+        let sectors = [];
+        let level = 1;
+        let speed = 0.05;
+        let particles = [];
+        let shake = 0;
+
+        document.getElementById('best-val').innerText = best;
+
+        function resize() {
+            const size = Math.min(window.innerWidth, window.innerHeight - 80);
+            canvas.width = size * 2;
+            canvas.height = size * 2;
+            canvas.style.width = size + 'px';
+            canvas.style.height = size + 'px';
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        function initLevel() {
+            sectors = [];
+            const count = Math.min(3 + Math.floor(level / 2), 8);
+            const arcSize = Math.max(0.3, 0.8 - (level * 0.03));
+            for (let i = 0; i < count; i++) {
+                sectors.push({
+                    start: (Math.PI * 2 / count) * i,
+                    size: arcSize,
+                    active: true
+                });
+            }
+            speed = 0.04 + (level * 0.005);
+        }
+
+        function spawnParticles(x, y, color) {
+            for (let i = 0; i < 15; i++) {
+                particles.push({
+                    x, y,
+                    vx: (Math.random() - 0.5) * 10,
+                    vy: (Math.random() - 0.5) * 10,
+                    life: 1.0,
+                    color: color
+                });
+            }
+        }
+
+        function handleAction() {
+            if (gameState !== 'PLAYING') return;
+
+            let hit = false;
+            const normalizedRot = rotation % (Math.PI * 2);
+
+            for (let s of sectors) {
+                if (!s.active) continue;
+                
+                // Check if needle (normalizedRot) is within sector arc
+                let diff = normalizedRot - s.start;
+                while (diff < 0) diff += Math.PI * 2;
+                while (diff > Math.PI * 2) diff -= Math.PI * 2;
+
+                if (diff <= s.size) {
+                    s.active = false;
+                    hit = true;
+                    score += 10 * level;
+                    document.getElementById('score-val').innerText = score;
+                    spawnParticles(canvas.width/2 + Math.cos(rotation)*180, canvas.height/2 + Math.sin(rotation)*180, accent);
+                    break;
+                }
+            }
+
+            if (!hit) {
+                gameOver();
+            } else {
+                if (sectors.every(s => !s.active)) {
+                    level++;
+                    initLevel();
+                }
+            }
+        }
+
+        function gameOver() {
+            gameState = 'GAMEOVER';
+            shake = 20;
+            if (score > best) {
+                best = score;
+                localStorage.setItem('fun_arcade_highscore_' + slug, best);
+                document.getElementById('best-val').innerText = best;
+            }
+            document.getElementById('final-score-stats').innerHTML = `<p>SCORE: ${score}</p><p>LEVEL: ${level}</p>`;
+            document.getElementById('game-over').classList.remove('hidden');
+        }
+
+        function update() {
+            if (gameState === 'PLAYING') {
+                rotation += speed;
+                if (rotation > Math.PI * 2) rotation -= Math.PI * 2;
+            }
+
+            particles.forEach((p, i) => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.02;
+                if (p.life <= 0) particles.splice(i, 1);
+            });
+
+            if (shake > 0) shake *= 0.9;
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.save();
+            if (shake > 1) ctx.translate((Math.random()-0.5)*shake, (Math.random()-0.5)*shake);
+
+            const cx = canvas.width / 2;
+            const cy = canvas.height / 2;
+            const radius = canvas.width * 0.35;
+
+            // Base Ring
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+            ctx.lineWidth = 40;
+            ctx.stroke();
+
+            // Sectors
+            sectors.forEach(s => {
+                if (!s.active) return;
+                ctx.beginPath();
+                ctx.arc(cx, cy, radius, s.start, s.start + s.size);
+                ctx.strokeStyle = accent;
+                ctx.lineWidth = 40;
+                ctx.lineCap = 'round';
+                ctx.stroke();
+            });
+
+            // Needle
+            if (gameState === 'PLAYING') {
+                ctx.beginPath();
+                ctx.moveTo(cx, cy);
+                ctx.lineTo(cx + Math.cos(rotation) * (radius + 40), cy + Math.sin(rotation) * (radius + 40));
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 8;
+                ctx.lineCap = 'round';
+                ctx.stroke();
+                
+                // Inner Glow Dot
+                ctx.beginPath();
+                ctx.arc(cx, cy, 10, 0, Math.PI*2);
+                ctx.fillStyle = '#fff';
+                ctx.fill();
+            }
+
+            // Particles
+            particles.forEach(p => {
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.fillRect(p.x, p.y, 6, 6);
+            });
+
+            ctx.restore();
+            requestAnimationFrame(() => {
+                update();
+                draw();
+            });
+        }
+
+        // Controls
+        const triggerAction = (e) => {
+            if (e.type === 'keydown' && e.code !== 'Space') return;
+            if (gameState === 'PLAYING') handleAction();
+        };
+
+        window.addEventListener('mousedown', triggerAction);
+        window.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            triggerAction(e);
+        }, {passive: false});
+        window.addEventListener('keydown', triggerAction);
+
+        document.getElementById('start-btn').onclick = () => {
+            score = 0;
+            level = 1;
+            document.getElementById('score-val').innerText = '0';
+            document.getElementById('start-screen').classList.add('hidden');
+            initLevel();
+            gameState = 'PLAYING';
+        };
+
+        document.getElementById('retry-btn').onclick = () => {
+            score = 0;
+            level = 1;
+            document.getElementById('score-val').innerText = '0';
+            document.getElementById('game-over').classList.add('hidden');
+            initLevel();
+            gameState = 'PLAYING';
+        };
+
+        document.getElementById('help-btn').onclick = () => {
+            document.getElementById('help-overlay').classList.remove('hidden');
+        };
+        document.getElementById('close-help').onclick = () => {
+            document.getElementById('help-overlay').classList.add('hidden');
+        };
+
+        draw();
+    </script>
+</body>
+</html>
