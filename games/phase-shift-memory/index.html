@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Phase Shift Memory</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #0EA5E9;
+            --bg: #020617;
+            --card: #1e293b;
+            --text: #f8fafc;
+        }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100dvh; background: var(--bg); font-family: 'Inter', sans-serif; color: var(--text); overflow: hidden; }
+        
+        .hud {
+            position: absolute; top: 0; left: 0; width: 100%; height: 60px; padding: 0 20px;
+            display: flex; justify-content: space-between; align-items: center; z-index: 100;
+            background: rgba(2, 6, 23, 0.8); backdrop-filter: blur(10px);
+        }
+        .back-btn { text-decoration: none; color: var(--text); font-weight: 600; font-size: 14px; padding: 8px 16px; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; transition: 0.2s; }
+        .back-btn:hover { background: rgba(255,255,255,0.1); }
+        .scores { font-family: 'Orbitron', sans-serif; font-size: 14px; text-align: center; }
+        .scores span { color: var(--accent); }
+        .info-btn { background: none; border: 1px solid rgba(255,255,255,0.2); color: var(--text); font-size: 18px; width: 34px; height: 34px; border-radius: 50%; cursor: pointer; }
+
+        #game-container {
+            position: relative; width: 100%; height: 100dvh; display: flex; flex-direction: column; justify-content: center; align-items: center;
+        }
+
+        .grid-container {
+            display: grid; gap: 10px; padding: 20px; background: rgba(255,255,255,0.05); border-radius: 16px; border: 1px solid rgba(255,255,255,0.1);
+            max-width: 90vw; max-height: 70vh;
+        }
+
+        .tile {
+            width: 60px; height: 60px; background: var(--card); border-radius: 8px; cursor: pointer;
+            transition: transform 0.2s, background 0.3s; position: relative;
+        }
+        .tile:active { transform: scale(0.95); }
+        .tile.active { background: var(--accent); box-shadow: 0 0 15px var(--accent); }
+        .tile.error { background: #ef4444; box-shadow: 0 0 15px #ef4444; }
+        .tile.success { background: #22c55e; box-shadow: 0 0 15px #22c55e; }
+
+        .overlay {
+            position: absolute; inset: 0; background: rgba(2, 6, 23, 0.9); z-index: 200;
+            display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 20px;
+        }
+        .overlay.hidden { display: none; }
+        h1 { font-family: 'Orbitron', sans-serif; margin: 0 0 10px; color: var(--accent); }
+        .btn-main {
+            background: var(--accent); color: white; border: none; padding: 12px 32px; border-radius: 30px;
+            font-size: 18px; font-weight: bold; cursor: pointer; margin-top: 20px; transition: 0.2s;
+        }
+        .btn-main:hover { transform: translateY(-2px); filter: brightness(1.1); }
+
+        .status-msg {
+            margin-bottom: 15px; font-family: 'Orbitron', sans-serif; font-size: 20px; height: 30px;
+            color: var(--accent); text-transform: uppercase; letter-spacing: 2px;
+        }
+
+        #timer-bar { width: 200px; height: 4px; background: rgba(255,255,255,0.1); margin-bottom: 20px; border-radius: 2px; overflow: hidden; }
+        #timer-fill { height: 100%; width: 100%; background: var(--accent); transition: width 0.1s linear; }
+
+        @media (max-width: 500px) {
+            .tile { width: 50px; height: 50px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="hud">
+        <a href="../../" class="back-btn">Back</a>
+        <div class="scores">
+            LEVEL: <span id="level-val">1</span> | BEST: <span id="best-val">0</span>
+        </div>
+        <button class="info-btn" onclick="toggleAbout()">?</button>
+    </div>
+
+    <div id="game-container">
+        <div class="status-msg" id="status-msg">READY?</div>
+        <div id="timer-bar"><div id="timer-fill"></div></div>
+        <div class="grid-container" id="grid"></div>
+    </div>
+
+    <div id="start-overlay" class="overlay">
+        <h1>PHASE SHIFT</h1>
+        <p>A pattern of blocks will appear briefly. Remember their positions and click them once they vanish!</p>
+        <p style="font-size: 14px; opacity: 0.8;">Difficulty increases every 3 levels with larger grids.</p>
+        <button class="btn-main" onclick="startGame()">INITIALIZE PHASE</button>
+    </div>
+
+    <div id="about-overlay" class="overlay hidden">
+        <h1>HOW TO PLAY</h1>
+        <ul style="text-align: left; line-height: 1.6;">
+            <li>Watch the blue tiles light up.</li>
+            <li>Wait for the "RECALL" signal.</li>
+            <li>Tap the tiles you memorized.</li>
+            <li>One mistake and the phase collapses!</li>
+        </ul>
+        <button class="btn-main" onclick="toggleAbout()">GOT IT</button>
+    </div>
+
+    <div id="gameover-overlay" class="overlay hidden">
+        <h1 style="color: #ef4444;">PHASE COLLAPSE</h1>
+        <p id="final-score">Level Reached: 1</p>
+        <button class="btn-main" onclick="startGame()">REBOOT SYSTEM</button>
+    </div>
+
+    <script>
+        const slug = 'phase-shift-memory';
+        const gridEl = document.getElementById('grid');
+        const statusEl = document.getElementById('status-msg');
+        const timerFill = document.getElementById('timer-fill');
+        
+        let level = 1;
+        let pattern = [];
+        let userInputs = [];
+        let isAcceptingInput = false;
+        let bestScore = localStorage.getItem('fun_arcade_highscore_' + slug) || 0;
+        document.getElementById('best-val').innerText = bestScore;
+
+        function toggleAbout() {
+            document.getElementById('about-overlay').classList.toggle('hidden');
+        }
+
+        function startGame() {
+            level = 1;
+            document.getElementById('start-overlay').classList.add('hidden');
+            document.getElementById('gameover-overlay').classList.add('hidden');
+            nextLevel();
+        }
+
+        function updateScores() {
+            document.getElementById('level-val').innerText = level;
+            if (level > bestScore) {
+                bestScore = level;
+                localStorage.setItem('fun_arcade_highscore_' + slug, bestScore);
+                document.getElementById('best-val').innerText = bestScore;
+            }
+        }
+
+        function getGridSize() {
+            if (level < 4) return 3;
+            if (level < 8) return 4;
+            if (level < 15) return 5;
+            return 6;
+        }
+
+        function getPatternSize() {
+            return 2 + Math.floor(level / 1.5);
+        }
+
+        function createGrid() {
+            const size = getGridSize();
+            gridEl.innerHTML = '';
+            gridEl.style.gridTemplateColumns = `repeat(${size}, 1fr)`;
+            
+            for (let i = 0; i < size * size; i++) {
+                const tile = document.createElement('div');
+                tile.className = 'tile';
+                tile.dataset.index = i;
+                tile.addEventListener('click', () => handleTileClick(i));
+                gridEl.appendChild(tile);
+            }
+        }
+
+        function nextLevel() {
+            updateScores();
+            isAcceptingInput = false;
+            userInputs = [];
+            createGrid();
+            
+            const size = getGridSize();
+            const count = getPatternSize();
+            pattern = [];
+            
+            const indices = Array.from({length: size * size}, (_, i) => i);
+            for (let i = 0; i < count; i++) {
+                const rand = Math.floor(Math.random() * indices.length);
+                pattern.push(indices.splice(rand, 1)[0]);
+            }
+
+            setTimeout(showPattern, 800);
+        }
+
+        function showPattern() {
+            statusEl.innerText = "MEMORIZE";
+            statusEl.style.color = "#0EA5E9";
+            timerFill.style.width = "100%";
+
+            const tiles = document.querySelectorAll('.tile');
+            pattern.forEach(idx => {
+                tiles[idx].classList.add('active');
+            });
+
+            const showTime = Math.max(500, 1500 - (level * 50));
+            
+            setTimeout(() => {
+                tiles.forEach(t => t.classList.remove('active'));
+                startRecall();
+            }, showTime);
+        }
+
+        function startRecall() {
+            statusEl.innerText = "RECALL";
+            statusEl.style.color = "#22c55e";
+            isAcceptingInput = true;
+            
+            // Start a timer for input
+            let start = Date.now();
+            const duration = 5000 + (level * 200);
+            
+            function updateTimer() {
+                if (!isAcceptingInput) return;
+                let elapsed = Date.now() - start;
+                let remaining = Math.max(0, 100 - (elapsed / duration * 100));
+                timerFill.style.width = remaining + "%";
+                
+                if (remaining <= 0) {
+                    gameOver();
+                } else {
+                    requestAnimationFrame(updateTimer);
+                }
+            }
+            requestAnimationFrame(updateTimer);
+        }
+
+        function handleTileClick(index) {
+            if (!isAcceptingInput) return;
+            
+            const tile = gridEl.children[index];
+            if (userInputs.includes(index)) return;
+
+            if (pattern.includes(index)) {
+                userInputs.push(index);
+                tile.classList.add('success');
+                playSound(440 + (userInputs.length * 40), 0.1);
+                
+                if (userInputs.length === pattern.length) {
+                    isAcceptingInput = false;
+                    statusEl.innerText = "PERFECT";
+                    setTimeout(() => {
+                        level++;
+                        nextLevel();
+                    }, 600);
+                }
+            } else {
+                tile.classList.add('error');
+                playSound(150, 0.3);
+                gameOver();
+            }
+        }
+
+        function gameOver() {
+            isAcceptingInput = false;
+            document.getElementById('final-score').innerText = `You mastered Level ${level}`;
+            document.getElementById('gameover-overlay').classList.remove('hidden');
+            statusEl.innerText = "CRITICAL ERROR";
+            statusEl.style.color = "#ef4444";
+        }
+
+        // Mini Audio Engine
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playSound(freq, duration) {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + duration);
+        }
+    </script>
+</body>
+</html>

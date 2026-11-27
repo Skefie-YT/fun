@@ -958,5 +958,13 @@
     "category": "Arcade",
     "accent": "#14B8A6",
     "addedAt": "2026-11-27T10:54:48Z"
+  },
+  {
+    "slug": "phase-shift-memory",
+    "title": "Phase Shift Memory",
+    "description": "Memorize the hidden grid patterns and recreate them before they shift out of phase in this high-speed memory challenge.",
+    "category": "Puzzle",
+    "accent": "#0EA5E9",
+    "addedAt": "2026-11-27T11:51:24Z"
   }
 ]
