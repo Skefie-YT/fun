@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Nebula Link Burst</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #F59E0B;
+            --bg: #0f172a;
+            --panel: rgba(30, 41, 59, 0.8);
+        }
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            background: var(--bg);
+            color: white;
+            font-family: 'Outfit', sans-serif;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 100dvh;
+        }
+        #game-header {
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 15px;
+            background: rgba(15, 23, 42, 0.9);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            z-index: 10;
+        }
+        .back-btn {
+            color: white;
+            text-decoration: none;
+            font-size: 14px;
+            border: 1px solid white;
+            padding: 4px 10px;
+            border-radius: 4px;
+        }
+        .stats-group {
+            display: flex;
+            gap: 15px;
+            font-weight: 700;
+            font-size: 14px;
+        }
+        .stat-val { color: var(--accent); }
+        #help-btn {
+            background: none;
+            border: 1px solid white;
+            color: white;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        #canvas-container {
+            flex: 1;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 10px;
+        }
+        canvas {
+            max-width: 100%;
+            max-height: 100%;
+            background: #020617;
+            border-radius: 12px;
+            box-shadow: 0 0 40px rgba(0,0,0,0.5);
+            touch-action: none;
+        }
+        .overlay {
+            position: absolute;
+            inset: 0;
+            background: var(--panel);
+            backdrop-filter: blur(8px);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            z-index: 20;
+            padding: 20px;
+        }
+        .hidden { display: none !important; }
+        h1 { color: var(--accent); margin-top: 0; }
+        .btn-main {
+            background: var(--accent);
+            color: #000;
+            border: none;
+            padding: 12px 30px;
+            font-size: 18px;
+            font-weight: 700;
+            border-radius: 30px;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: transform 0.1s;
+        }
+        .btn-main:active { transform: scale(0.95); }
+        #how-to-play {
+            max-width: 300px;
+            line-height: 1.5;
+            font-size: 14px;
+        }
+        .mute-btn {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: none;
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            opacity: 0.6;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-header">
+        <a href="../../" class="back-btn">Back</a>
+        <div class="stats-group">
+            <div>SCORE: <span id="score-val" class="stat-val">0</span></div>
+            <div>BEST: <span id="best-val" class="stat-val">0</span></div>
+        </div>
+        <button id="help-btn">?</button>
+    </div>
+
+    <div id="canvas-container">
+        <canvas id="gameCanvas"></canvas>
+
+        <!-- Overlays -->
+        <div id="start-overlay" class="overlay">
+            <h1>Nebula Link</h1>
+            <p id="how-to-play">Drag through 3 or more stars of the same color to burst them. Be quick! More stars arrive every few seconds.</p>
+            <button class="btn-main" onclick="startGame()">PLAY</button>
+        </div>
+
+        <div id="help-overlay" class="overlay hidden">
+            <h2>How to Play</h2>
+            <p>1. Drag your finger/mouse across adjacent stars of the same color.<br>2. Release to burst a chain of 3+ stars.<br>3. Don't let the grid fill up completely!</p>
+            <button class="btn-main" onclick="toggleHelp()">CLOSE</button>
+        </div>
+
+        <div id="gameover-overlay" class="overlay hidden">
+            <h1 style="color: #ef4444;">OVERLOAD!</h1>
+            <p>Your nebula has collapsed.</p>
+            <p>Final Score: <span id="final-score">0</span></p>
+            <button class="btn-main" onclick="startGame()">RETRY</button>
+        </div>
+    </div>
+
+    <button class="mute-btn" onclick="toggleMute()">🔊</button>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const SLUG = 'nebula-link-burst';
+    
+    let score = 0;
+    let bestScore = localStorage.getItem('fun_arcade_highscore_' + SLUG) || 0;
+    let gameActive = false;
+    let mute = false;
+    let lastSpawn = 0;
+    let spawnRate = 4000; // ms
+
+    const COLS = 6;
+    const ROWS = 8;
+    const COLORS = ['#F59E0B', '#EF4444', '#3B82F6', '#10B981', '#A855F7'];
+    let grid = [];
+    let selection = [];
+    let particles = [];
+
+    // Audio context
+    let audioCtx;
+    function initAudio() { if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+    function playTone(freq, type, dur) {
+        if (mute || !audioCtx) return;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + dur);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + dur);
+    }
+
+    function resize() {
+        const container = canvas.parentElement;
+        const size = Math.min(container.clientWidth, container.clientHeight);
+        canvas.width = 360;
+        canvas.height = 480;
+        updateBest();
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function updateBest() {
+        document.getElementById('best-val').innerText = bestScore;
+    }
+
+    function startGame() {
+        initAudio();
+        score = 0;
+        spawnRate = 4000;
+        document.getElementById('score-val').innerText = '0';
+        document.getElementById('start-overlay').classList.add('hidden');
+        document.getElementById('gameover-overlay').classList.add('hidden');
+        
+        grid = [];
+        for(let r=0; r<ROWS; r++) {
+            grid[r] = [];
+            for(let c=0; c<COLS; c++) {
+                grid[r][c] = r > 4 ? { color: COLORS[Math.floor(Math.random()*COLORS.length)], scale: 1, pop: 0 } : null;
+            }
+        }
+        
+        gameActive = true;
+        lastSpawn = performance.now();
+        requestAnimationFrame(loop);
+    }
+
+    function spawnRow() {
+        // Shift all up
+        for(let r=0; r<ROWS-1; r++) {
+            grid[r] = grid[r+1];
+        }
+        // New bottom row
+        grid[ROWS-1] = [];
+        for(let c=0; c<COLS; c++) {
+            grid[ROWS-1][c] = { color: COLORS[Math.floor(Math.random()*COLORS.length)], scale: 0, pop: 0 };
+        }
+        
+        // Check game over
+        for(let c=0; c<COLS; c++) {
+            if(grid[0][c]) gameOver();
+        }
+
+        spawnRate = Math.max(1500, spawnRate * 0.98);
+        playTone(150, 'sine', 0.2);
+    }
+
+    function gameOver() {
+        gameActive = false;
+        if(score > bestScore) {
+            bestScore = score;
+            localStorage.setItem('fun_arcade_highscore_' + SLUG, bestScore);
+            updateBest();
+        }
+        document.getElementById('final-score').innerText = score;
+        document.getElementById('gameover-overlay').classList.remove('hidden');
+    }
+
+    function toggleHelp() {
+        document.getElementById('help-overlay').classList.toggle('hidden');
+    }
+
+    function toggleMute() {
+        mute = !mute;
+        document.querySelector('.mute-btn').innerText = mute ? '🔇' : '🔊';
+    }
+
+    // Input Handling
+    let isDragging = false;
+    const getPos = (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        return {
+            x: (clientX - rect.left) * (canvas.width / rect.width),
+            y: (clientY - rect.top) * (canvas.height / rect.height)
+        };
+    };
+
+    const handleStart = (e) => {
+        if(!gameActive) return;
+        isDragging = true;
+        selection = [];
+        handleMove(e);
+    };
+
+    const handleMove = (e) => {
+        if(!isDragging || !gameActive) return;
+        const pos = getPos(e);
+        const c = Math.floor(pos.x / (canvas.width/COLS));
+        const r = Math.floor(pos.y / (canvas.height/ROWS));
+
+        if(r >= 0 && r < ROWS && c >= 0 && c < COLS && grid[r][c]) {
+            const item = grid[r][c];
+            const last = selection[selection.length - 1];
+
+            if(!last) {
+                selection.push({r, c, color: item.color});
+                playTone(400, 'triangle', 0.05);
+            } else if (last.r === r && last.c === c) {
+                // Stay same
+            } else if (selection.length > 1 && selection[selection.length-2].r === r && selection[selection.length-2].c === c) {
+                selection.pop();
+                playTone(300, 'triangle', 0.05);
+            } else {
+                const dist = Math.abs(last.r - r) + Math.abs(last.c - c);
+                if(dist === 1 && item.color === last.color) {
+                    if(!selection.find(s => s.r === r && s.c === c)) {
+                        selection.push({r, c, color: item.color});
+                        playTone(400 + selection.length * 50, 'triangle', 0.05);
+                    }
+                }
+            }
+        }
+    };
+
+    const handleEnd = () => {
+        if(!isDragging) return;
+        isDragging = false;
+        if(selection.length >= 3) {
+            burstSelection();
+        }
+        selection = [];
+    };
+
+    function burstSelection() {
+        const count = selection.length;
+        score += count * 10 * (count - 2);
+        document.getElementById('score-val').innerText = score;
+        
+        selection.forEach(s => {
+            createParticles(s.c * (canvas.width/COLS) + (canvas.width/COLS/2), s.r * (canvas.height/ROWS) + (canvas.height/ROWS/2), s.color);
+            grid[s.r][s.c] = null;
+        });
+        
+        playTone(600, 'square', 0.1);
+        playTone(200, 'sine', 0.2);
+        applyGravity();
+    }
+
+    function applyGravity() {
+        for(let c=0; c<COLS; c++) {
+            let empty = ROWS - 1;
+            for(let r=ROWS-1; r>=0; r--) {
+                if(grid[r][c]) {
+                    const temp = grid[r][c];
+                    grid[r][c] = null;
+                    grid[empty][c] = temp;
+                    empty--;
+                }
+            }
+        }
+    }
+
+    function createParticles(x, y, color) {
+        for(let i=0; i<8; i++) {
+            particles.push({
+                x, y, 
+                vx: (Math.random()-0.5)*8, 
+                vy: (Math.random()-0.5)*8,
+                life: 1.0,
+                color
+            });
+        }
+    }
+
+    canvas.addEventListener('mousedown', handleStart);
+    canvas.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleEnd);
+    canvas.addEventListener('touchstart', handleStart);
+    canvas.addEventListener('touchmove', handleMove);
+    canvas.addEventListener('touchend', handleEnd);
+    document.getElementById('help-btn').onclick = toggleHelp;
+
+    function loop(now) {
+        if(!gameActive) return;
+        
+        if(now - lastSpawn > spawnRate) {
+            spawnRow();
+            lastSpawn = now;
+        }
+
+        ctx.clearRect(0,0,canvas.width, canvas.height);
+        
+        // Draw Grid BG
+        ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+        for(let i=1; i<COLS; i++) {
+            ctx.beginPath(); ctx.moveTo(i*canvas.width/COLS, 0); ctx.lineTo(i*canvas.width/COLS, canvas.height); ctx.stroke();
+        }
+        for(let i=1; i<ROWS; i++) {
+            ctx.beginPath(); ctx.moveTo(0, i*canvas.height/ROWS); ctx.lineTo(canvas.width, i*canvas.height/ROWS); ctx.stroke();
+        }
+
+        const cellW = canvas.width/COLS;
+        const cellH = canvas.height/ROWS;
+
+        // Draw Selection Path
+        if(selection.length > 0) {
+            ctx.beginPath();
+            ctx.strokeStyle = selection[0].color;
+            ctx.lineWidth = 6;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            selection.forEach((s, idx) => {
+                const x = s.c * cellW + cellW/2;
+                const y = s.r * cellH + cellH/2;
+                if(idx === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+        }
+
+        // Draw Stars
+        for(let r=0; r<ROWS; r++) {
+            for(let c=0; c<COLS; c++) {
+                if(!grid[r][c]) continue;
+                const item = grid[r][c];
+                if(item.scale < 1) item.scale += 0.05;
+                
+                const x = c * cellW + cellW/2;
+                const y = r * cellH + cellH/2;
+                const size = 15 * item.scale;
+                
+                // Glow
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = item.color;
+                
+                // Star Shape
+                ctx.fillStyle = item.color;
+                if(selection.find(s => s.r === r && s.c === c)) {
+                    ctx.fillStyle = '#fff';
+                    ctx.shadowBlur = 20;
+                }
+
+                ctx.beginPath();
+                for(let i=0; i<5; i++) {
+                    ctx.lineTo(x + size * Math.cos(i*Math.PI*0.8 - Math.PI/2), y + size * Math.sin(i*Math.PI*0.8 - Math.PI/2));
+                }
+                ctx.closePath();
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        // Draw Particles
+        for(let i = particles.length-1; i>=0; i--) {
+            const p = particles[i];
+            p.x += p.vx; p.y += p.vy; p.life -= 0.02;
+            if(p.life <= 0) { particles.splice(i, 1); continue; }
+            ctx.fillStyle = p.color;
+            ctx.globalAlpha = p.life;
+            ctx.fillRect(p.x, p.y, 4, 4);
+        }
+        ctx.globalAlpha = 1.0;
+
+        requestAnimationFrame(loop);
+    }
+</script>
+</body>
+</html>

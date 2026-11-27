@@ -1030,5 +1030,13 @@
     "category": "Physics",
     "accent": "#E85D04",
     "addedAt": "2026-11-27T20:48:56Z"
+  },
+  {
+    "slug": "nebula-link-burst",
+    "title": "Nebula Link Burst",
+    "description": "Drag to link matching color stars. Chain 3+ to trigger explosive ripples that clear the grid before it fills up!",
+    "category": "Puzzle",
+    "accent": "#F59E0B",
+    "addedAt": "2026-11-27T21:49:03Z"
   }
 ]
