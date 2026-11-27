@@ -966,5 +966,13 @@
     "category": "Puzzle",
     "accent": "#0EA5E9",
     "addedAt": "2026-11-27T11:51:24Z"
+  },
+  {
+    "slug": "plasma-perimeter-dash",
+    "title": "Plasma Perimeter Dash",
+    "description": "Stay on the rotating energy perimeter while dodging lethal sparks and collecting nodes to expand your safe zone!",
+    "category": "Reflex",
+    "accent": "#EF4444",
+    "addedAt": "2026-11-27T13:01:19Z"
   }
 ]
