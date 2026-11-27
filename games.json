@@ -910,5 +910,13 @@
     "category": "Strategy",
     "accent": "#EF4444",
     "addedAt": "2026-11-27T01:00:11Z"
+  },
+  {
+    "slug": "hex-grid-spark",
+    "title": "Hex Grid Spark",
+    "description": "Rotate hexagonal tiles to conduct electricity from the power core to all inactive nodes before the energy cells deplete!",
+    "category": "Puzzle",
+    "accent": "#F59E0B",
+    "addedAt": "2026-11-27T03:53:25Z"
   }
 ]

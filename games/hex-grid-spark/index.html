@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Hex Grid Spark</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --accent: #F59E0B;
+            --bg: #0f172a;
+            --text: #f8fafc;
+        }
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Orbitron', sans-serif;
+            overflow: hidden;
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+        }
+        #ui-layer {
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(0,0,0,0.3);
+            z-index: 10;
+        }
+        .back-btn {
+            color: var(--text);
+            text-decoration: none;
+            font-size: 0.8rem;
+            border: 1px solid var(--accent);
+            padding: 4px 12px;
+            border-radius: 4px;
+        }
+        .stats {
+            text-align: center;
+            font-size: 0.9rem;
+        }
+        .stats span {
+            color: var(--accent);
+            font-weight: bold;
+        }
+        #game-container {
+            flex: 1;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
+        }
+        canvas {
+            max-width: 100%;
+            max-height: 100%;
+            cursor: pointer;
+        }
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.95);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 20px;
+            z-index: 20;
+        }
+        .hidden { display: none !important; }
+        h1 { color: var(--accent); margin: 0 0 10px 0; font-size: 2.5rem; text-shadow: 0 0 15px rgba(245, 158, 11, 0.5); }
+        p { max-width: 400px; line-height: 1.6; margin-bottom: 25px; }
+        button {
+            background: var(--accent);
+            border: none;
+            color: #000;
+            padding: 12px 30px;
+            font-family: 'Orbitron', sans-serif;
+            font-weight: bold;
+            font-size: 1.1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        button:active { transform: scale(0.95); }
+        #help-toggle { background: transparent; border: 1px solid var(--text); color: var(--text); padding: 5px 12px; font-size: 1.2rem; }
+        .timer-bar {
+            position: absolute;
+            bottom: 0; left: 0; height: 4px;
+            background: var(--accent);
+            box-shadow: 0 0 10px var(--accent);
+            transition: width 0.1s linear;
+        }
+    </style>
+</head>
+<body>
+    <div id="ui-layer">
+        <a href="../../" class="back-btn">Back</a>
+        <div class="stats">LVL <span id="level-val">1</span> | BEST <span id="best-val">0</span></div>
+        <button id="help-toggle">?</button>
+    </div>
+
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        <div class="timer-bar" id="timer-bar"></div>
+
+        <!-- Start Screen -->
+        <div id="start-screen" class="overlay">
+            <h1>HEX GRID SPARK</h1>
+            <p>Rotate hexagonal wire tiles to connect the central energy core to all terminal nodes. Complete circuits to advance before the power runs out!</p>
+            <button id="start-btn">INITIALIZE</button>
+        </div>
+
+        <!-- Game Over Screen -->
+        <div id="gameover-screen" class="overlay hidden">
+            <h1 style="color: #ef4444;">SYSTEM CRITICAL</h1>
+            <p>Energy depleted. Your grid was shut down.</p>
+            <div style="font-size: 1.5rem; margin-bottom: 20px;">Final Level: <span id="final-score" style="color: var(--accent)">0</span></div>
+            <button id="restart-btn">RETRY</button>
+        </div>
+
+        <!-- Help Overlay -->
+        <div id="help-overlay" class="overlay hidden">
+            <h2>HOW TO PLAY</h2>
+            <p>• Click or tap tiles to rotate them 60 degrees clockwise.<br>• Blue nodes need power from the central orange core.<br>• Connect every node to advance.<br>• Speed is key—your energy depletes every second!</p>
+            <button id="close-help">GOT IT</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const slug = 'hex-grid-spark';
+        const timerBar = document.getElementById('timer-bar');
+
+        let gameState = 'START';
+        let level = 1;
+        let bestScore = localStorage.getItem('fun_arcade_highscore_' + slug) || 0;
+        let energy = 100;
+        let grid = [];
+        let hexRadius = 45;
+        let nodes = [];
+        let corePos = { q: 0, r: 0 };
+        let particles = [];
+
+        // Hex math constants
+        const SQRT3 = Math.sqrt(3);
+
+        function init() {
+            document.getElementById('best-val').innerText = bestScore;
+            resize();
+            window.addEventListener('resize', resize);
+            canvas.addEventListener('mousedown', handlePointer);
+            canvas.addEventListener('touchstart', (e) => { e.preventDefault(); handlePointer(e.touches[0]); });
+            
+            document.getElementById('start-btn').onclick = startGame;
+            document.getElementById('restart-btn').onclick = startGame;
+            document.getElementById('help-toggle').onclick = () => document.getElementById('help-overlay').classList.remove('hidden');
+            document.getElementById('close-help').onclick = () => document.getElementById('help-overlay').classList.add('hidden');
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function startGame() {
+            level = 1;
+            energy = 100;
+            gameState = 'PLAYING';
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('gameover-screen').classList.add('hidden');
+            generateLevel();
+        }
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight - document.getElementById('ui-layer').offsetHeight;
+            hexRadius = Math.min(canvas.width, canvas.height) / (5 + (level * 0.2));
+            if (hexRadius > 60) hexRadius = 60;
+            if (hexRadius < 30) hexRadius = 30;
+        }
+
+        function generateLevel() {
+            document.getElementById('level-val').innerText = level;
+            grid = [];
+            nodes = [];
+            energy = Math.min(100, energy + 20);
+            
+            const range = Math.min(3, 1 + Math.floor(level / 3));
+            for (let q = -range; q <= range; q++) {
+                for (let r = Math.max(-range, -q - range); r <= Math.min(range, -q + range); r++) {
+                    const isCore = q === 0 && r === 0;
+                    const isNode = !isCore && (Math.abs(q) === range || Math.abs(r) === range || Math.abs(-q-r) === range);
+                    
+                    let connections = [];
+                    // Random tile types
+                    if (isCore) {
+                        connections = [0, 1, 2, 3, 4, 5];
+                    } else {
+                        const count = Math.random() > 0.5 ? 2 : 3;
+                        for(let i=0; i<count; i++) connections.push(Math.floor(Math.random() * 6));
+                        connections = [...new Set(connections)];
+                    }
+
+                    grid.push({
+                        q, r,
+                        connections,
+                        rotation: Math.floor(Math.random() * 6),
+                        isCore,
+                        isNode,
+                        powered: false
+                    });
+
+                    if (isNode) nodes.push({q, r});
+                }
+            }
+            updatePower();
+        }
+
+        function updatePower() {
+            grid.forEach(t => t.powered = false);
+            const core = grid.find(t => t.isCore);
+            const stack = [core];
+            core.powered = true;
+
+            while (stack.length > 0) {
+                const current = stack.pop();
+                const neighbors = getNeighbors(current.q, current.r);
+                
+                neighbors.forEach(n => {
+                    if (n.cell && !n.cell.powered) {
+                        const dirToN = n.dir;
+                        const dirFromN = (dirToN + 3) % 6;
+                        
+                        const currentHasOut = current.connections.some(c => (c + current.rotation) % 6 === dirToN);
+                        const neighborHasIn = n.cell.connections.some(c => (c + n.cell.rotation) % 6 === dirFromN);
+
+                        if (currentHasOut && neighborHasIn) {
+                            n.cell.powered = true;
+                            stack.push(n.cell);
+                        }
+                    }
+                });
+            }
+
+            const allNodesPowered = grid.filter(t => t.isNode).every(t => t.powered);
+            if (allNodesPowered) {
+                level++;
+                createParticles(canvas.width/2, canvas.height/2, '#F59E0B');
+                setTimeout(generateLevel, 300);
+            }
+        }
+
+        function getNeighbors(q, r) {
+            const dirs = [
+                {q: 1, r: 0}, {q: 0, r: 1}, {q: -1, r: 1},
+                {q: -1, r: 0}, {q: 0, r: -1}, {q: 1, r: -1}
+            ];
+            return dirs.map((d, i) => ({
+                dir: i,
+                cell: grid.find(t => t.q === q + d.q && t.r === r + d.r)
+            }));
+        }
+
+        function hexToPixel(q, r) {
+            const x = hexRadius * (3/2 * q) + canvas.width/2;
+            const y = hexRadius * (SQRT3/2 * q + SQRT3 * r) + canvas.height/2;
+            return { x, y };
+        }
+
+        function handlePointer(e) {
+            if (gameState !== 'PLAYING') return;
+            const rect = canvas.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+
+            let closest = null;
+            let minDist = Infinity;
+
+            grid.forEach(cell => {
+                if (cell.isCore) return;
+                const pos = hexToPixel(cell.q, cell.r);
+                const d = Math.hypot(pos.x - mx, pos.y - my);
+                if (d < hexRadius && d < minDist) {
+                    minDist = d;
+                    closest = cell;
+                }
+            });
+
+            if (closest) {
+                closest.rotation = (closest.rotation + 1) % 6;
+                updatePower();
+                createParticles(mx, my, '#94a3b8');
+            }
+        }
+
+        function createParticles(x, y, color) {
+            for(let i=0; i<8; i++) {
+                particles.push({
+                    x, y,
+                    vx: (Math.random() - 0.5) * 10,
+                    vy: (Math.random() - 0.5) * 10,
+                    life: 1.0,
+                    color
+                });
+            }
+        }
+
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            if (gameState === 'PLAYING') {
+                energy -= 0.05 + (level * 0.01);
+                timerBar.style.width = energy + '%';
+                if (energy <= 0) {
+                    gameState = 'GAMEOVER';
+                    document.getElementById('gameover-screen').classList.remove('hidden');
+                    document.getElementById('final-score').innerText = level;
+                    if (level > bestScore) {
+                        bestScore = level;
+                        localStorage.setItem('fun_arcade_highscore_' + slug, bestScore);
+                        document.getElementById('best-val').innerText = bestScore;
+                    }
+                }
+            }
+
+            // Draw Connections
+            grid.forEach(cell => {
+                const pos = hexToPixel(cell.q, cell.r);
+                
+                // Draw Hex Base
+                ctx.beginPath();
+                for (let i = 0; i < 6; i++) {
+                    const angle = i * Math.PI / 3;
+                    const px = pos.x + hexRadius * 0.95 * Math.cos(angle);
+                    const py = pos.y + hexRadius * 0.95 * Math.sin(angle);
+                    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+                }
+                ctx.closePath();
+                ctx.strokeStyle = cell.isCore ? '#F59E0B' : (cell.isNode ? '#38bdf8' : '#1e293b');
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                if (cell.isCore) {
+                    ctx.fillStyle = 'rgba(245, 158, 11, 0.1)';
+                    ctx.fill();
+                }
+
+                // Draw Wires
+                ctx.beginPath();
+                cell.connections.forEach(conn => {
+                    const angle = (conn + cell.rotation) * Math.PI / 3;
+                    ctx.moveTo(pos.x, pos.y);
+                    ctx.lineTo(
+                        pos.x + hexRadius * 0.8 * Math.cos(angle),
+                        pos.y + hexRadius * 0.8 * Math.sin(angle)
+                    );
+                });
+                ctx.strokeStyle = cell.powered ? '#F59E0B' : '#475569';
+                ctx.lineWidth = cell.powered ? 5 : 3;
+                ctx.lineCap = 'round';
+                ctx.stroke();
+
+                // Glow Effect
+                if (cell.powered) {
+                    ctx.shadowBlur = 10;
+                    ctx.shadowColor = '#F59E0B';
+                    ctx.stroke();
+                    ctx.shadowBlur = 0;
+                }
+
+                if (cell.isNode) {
+                    ctx.beginPath();
+                    ctx.arc(pos.x, pos.y, 8, 0, Math.PI*2);
+                    ctx.fillStyle = cell.powered ? '#F59E0B' : '#0ea5e9';
+                    ctx.fill();
+                }
+            });
+
+            // Particles
+            particles.forEach((p, i) => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.02;
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.fillRect(p.x, p.y, 3, 3);
+                if (p.life <= 0) particles.splice(i, 1);
+            });
+            ctx.globalAlpha = 1.0;
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        init();
+    </script>
+</body>
+</html>
