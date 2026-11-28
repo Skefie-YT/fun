@@ -1054,5 +1054,13 @@
     "category": "Puzzle",
     "accent": "#EF4444",
     "addedAt": "2026-11-27T23:44:44Z"
+  },
+  {
+    "slug": "tidal-stack",
+    "title": "Tidal Stack",
+    "description": "Drop glowing blocks onto a wave-tossed barge. Balance the center of mass and stack as high as you can!",
+    "category": "Physics",
+    "accent": "#14B8A6",
+    "addedAt": "2026-11-28T02:12:56Z"
   }
 ]
