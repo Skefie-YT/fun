@@ -1070,5 +1070,13 @@
     "category": "Arcade",
     "accent": "#F59E0B",
     "addedAt": "2026-11-28T03:48:49Z"
+  },
+  {
+    "slug": "crimson-cadence",
+    "title": "Crimson Cadence",
+    "description": "Tap or press Space the exact instant the sweeping needle crosses each beat node to ride the rhythm and build massive combos!",
+    "category": "Arcade",
+    "accent": "#EF4444",
+    "addedAt": "2026-11-28T04:53:02Z"
   }
 ]
