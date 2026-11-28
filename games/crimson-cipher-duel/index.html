@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Crimson Cipher Duel</title>
+<style>
+  :root {
+    --accent: #EF4444;
+    --accent-glow: rgba(239, 68, 68, 0.5);
+    --bg: #09090b;
+    --surface: #18181b;
+    --surface-2: #27272a;
+    --text: #fafafa;
+    --muted: #a1a1aa;
+    --cyan: #06b6d4;
+    --amber: #f59e0b;
+    --emerald: #10b981;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; user-select: none; }
+  html, body {
+    width: 100%; height: 100dvh; overflow: hidden;
+    background: var(--bg); color: var(--text);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    display: flex; flex-direction: column;
+  }
+  /* Top Bar */
+  .topbar {
+    height: 52px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 14px;
+    background: rgba(24, 24, 27, 0.9);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    z-index: 20;
+  }
+  .back-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    color: var(--text); text-decoration: none; font-size: 13px; font-weight: 600;
+    padding: 6px 12px; border-radius: 8px;
+    background: var(--surface-2); border: 1px solid rgba(255,255,255,0.1);
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .back-btn:hover { background: #3f3f46; border-color: var(--accent); }
+  .hud-group {
+    display: flex; align-items: center; gap: 14px;
+  }
+  .hud-item {
+    display: flex; flex-direction: column; align-items: center; line-height: 1.1;
+  }
+  .hud-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+  .hud-val { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .hud-val.accent { color: var(--accent); }
+  .icon-btn {
+    width: 34px; height: 34px; border-radius: 8px;
+    background: var(--surface-2); border: 1px solid rgba(255,255,255,0.1);
+    color: var(--text); font-size: 15px; font-weight: 700;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .icon-btn:hover { background: #3f3f46; border-color: var(--accent); }
+
+  /* Main Arena */
+  .arena {
+    flex: 1; position: relative; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; padding: 12px;
+    overflow: hidden;
+  }
+  .arena.shake { animation: shake 0.28s cubic-bezier(.36,.07,.19,.97) both; }
+  @keyframes shake {
+    10%, 90% { transform: translate3d(-3px, 0, 0); }
+    20%, 80% { transform: translate3d(5px, 0, 0); }
+    30%, 50%, 70% { transform: translate3d(-6px, 0, 0); }
+    40%, 60% { transform: translate3d(6px, 0, 0); }
+  }
+
+  /* Duel Status Header */
+  .duel-status {
+    width: 100%; max-width: 400px; margin-bottom: 12px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .status-row {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 13px; font-weight: 600;
+  }
+  .phase-badge {
+    padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    background: rgba(239, 68, 68, 0.15); color: var(--accent);
+    border: 1px solid rgba(239, 68, 68, 0.35);
+  }
+  .phase-badge.decode { background: rgba(16, 185, 129, 0.15); color: var(--emerald); border-color: rgba(16, 185, 129, 0.35); }
+  .phase-badge.reverse { background: rgba(245, 158, 11, 0.15); color: var(--amber); border-color: rgba(245, 158, 11, 0.35); }
+  .shields {
+    display: flex; gap: 5px; align-items: center;
+  }
+  .shield-pip {
+    width: 14px; height: 14px; border-radius: 3px;
+    background: var(--accent); box-shadow: 0 0 8px var(--accent-glow);
+    transition: transform 0.2s, opacity 0.2s, background 0.2s;
+  }
+  .shield-pip.lost { background: #3f3f46; box-shadow: none; opacity: 0.4; transform: scale(0.8); }
+
+  /* Timer Bar */
+  .timer-wrap {
+    width: 100%; height: 8px; background: var(--surface-2); border-radius: 999px;
+    overflow: hidden; border: 1px solid rgba(255,255,255,0.06);
+  }
+  .timer-fill {
+    height: 100%; width: 100%; background: linear-gradient(90deg, var(--accent), #f97316);
+    border-radius: 999px; transition: width 0.05s linear;
+  }
+
+  /* 4x4 Cyber Grid */
+  .grid-wrap {
+    position: relative; width: 100%; max-width: 380px; aspect-ratio: 1 / 1;
+    background: var(--surface); border-radius: 16px; padding: 12px;
+    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.6), inset 0 0 30px rgba(239, 68, 68, 0.05);
+    display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(4, 1fr);
+    gap: 10px;
+  }
+  .node {
+    position: relative; border-radius: 12px;
+    background: var(--surface-2); border: 1px solid rgba(255,255,255,0.08);
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: transform 0.1s, background 0.15s, border-color 0.15s, box-shadow 0.15s;
+    overflow: hidden;
+  }
+  .node:active { transform: scale(0.94); }
+  .node-dot {
+    width: 28%; height: 28%; border-radius: 50%;
+    background: rgba(255,255,255,0.12); transition: all 0.15s;
+  }
+  .node.lit {
+    background: rgba(239, 68, 68, 0.25);
+    border-color: var(--accent);
+    box-shadow: 0 0 22px var(--accent-glow), inset 0 0 12px var(--accent-glow);
+    transform: scale(1.03);
+  }
+  .node.lit .node-dot {
+    background: #fff; box-shadow: 0 0 12px #fff; transform: scale(1.3);
+  }
+  .node.correct {
+    background: rgba(16, 185, 129, 0.25);
+    border-color: var(--emerald);
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.5);
+  }
+  .node.correct .node-dot { background: var(--emerald); box-shadow: 0 0 10px var(--emerald); transform: scale(1.25); }
+  .node.wrong {
+    background: rgba(239, 68, 68, 0.45);
+    border-color: #ef4444;
+    box-shadow: 0 0 24px rgba(239, 68, 68, 0.8);
+  }
+
+  /* Combo & Step Indicator */
+  .sub-info {
+    margin-top: 12px; width: 100%; max-width: 380px;
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 13px; color: var(--muted);
+  }
+  .combo-pill {
+    font-weight: 700; color: var(--amber); opacity: 0; transition: opacity 0.2s, transform 0.2s;
+  }
+  .combo-pill.active { opacity: 1; transform: scale(1.05); }
+
+  /* Particle Canvas */
+  #fxCanvas {
+    position: absolute; inset: 0; pointer-events: none; z-index: 15;
+  }
+
+  /* Overlays */
+  .overlay {
+    position: absolute; inset: 0; z-index: 30;
+    background: rgba(9, 9, 11, 0.88); backdrop-filter: blur(8px);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 24px; text-align: center;
+    transition: opacity 0.25s;
+  }
+  .overlay.hidden { opacity: 0; pointer-events: none; }
+  .overlay-card {
+    width: 100%; max-width: 360px; background: var(--surface);
+    border: 1px solid rgba(255,255,255,0.1); border-radius: 20px;
+    padding: 28px 22px; box-shadow: 0 20px 50px rgba(0,0,0,0.7);
+  }
+  .game-title {
+    font-size: 26px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 8px;
+    background: linear-gradient(135deg, #fff, var(--accent));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .game-desc {
+    font-size: 14px; color: var(--muted); line-height: 1.5; margin-bottom: 22px;
+  }
+  .primary-btn {
+    width: 100%; padding: 14px; border-radius: 12px; border: none;
+    background: var(--accent); color: #fff; font-size: 16px; font-weight: 700;
+    cursor: pointer; box-shadow: 0 6px 20px var(--accent-glow);
+    transition: transform 0.12s, filter 0.15s;
+  }
+  .primary-btn:hover { filter: brightness(1.1); }
+  .primary-btn:active { transform: scale(0.97); }
+
+  .stats-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px;
+  }
+  .stat-box {
+    background: var(--surface-2); padding: 12px; border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+  .stat-box .lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; }
+  .stat-box .val { font-size: 20px; font-weight: 800; margin-top: 2px; }
+
+  .controls-hint {
+    position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+    font-size: 12px; color: var(--muted); white-space: nowrap;
+  }
+
+  .rules-list {
+    text-align: left; font-size: 13px; color: var(--muted); line-height: 1.55;
+    margin-bottom: 20px; display: flex; flex-direction: column; gap: 8px;
+  }
+  .rules-list b { color: var(--text); }
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a href="../../" class="back-btn">← Back</a>
+    <div class="hud-group">
+      <div class="hud-item">
+        <span class="hud-label">Round</span>
+        <span class="hud-val" id="hudRound">1</span>
+      </div>
+      <div class="hud-item">
+        <span class="hud-label">Score</span>
+        <span class="hud-val accent" id="hudScore">0</span>
+      </div>
+      <div class="hud-item">
+        <span class="hud-label">Best</span>
+        <span class="hud-val" id="hudBest">0</span>
+      </div>
+    </div>
+    <div style="display:flex; gap:8px;">
+      <button class="icon-btn" id="muteBtn" title="Toggle Sound">🔊</button>
+      <button class="icon-btn" id="helpBtn" title="How to Play">?</button>
+    </div>
+  </header>
+
+  <main class="arena" id="arena">
+    <canvas id="fxCanvas"></canvas>
+
+    <div class="duel-status">
+      <div class="status-row">
+        <span class="phase-badge" id="phaseBadge">STANDBY</span>
+        <div class="shields" id="shieldsWrap">
+          <div class="shield-pip"></div>
+          <div class="shield-pip"></div>
+          <div class="shield-pip"></div>
+        </div>
+      </div>
+      <div class="timer-wrap">
+        <div class="timer-fill" id="timerFill"></div>
+      </div>
+    </div>
+
+    <div class="grid-wrap" id="grid"></div>
+
+    <div class="sub-info">
+      <span id="stepInfo">Sequence: 0 / 0</span>
+      <span class="combo-pill" id="comboPill">COMBO x1</span>
+    </div>
+
+    <!-- Start Overlay -->
+    <div class="overlay" id="startOverlay">
+      <div class="overlay-card">
+        <h1 class="game-title">Crimson Cipher Duel</h1>
+        <p class="game-desc">Watch the AI's glowing sequence, then decode it faster than the rival timer. Beware of Reverse Rounds!</p>
+        <button class="primary-btn" id="startBtn">Start Duel</button>
+      </div>
+      <div class="controls-hint">Tap or click nodes • Press Space to start • M to mute</div>
+    </div>
+
+    <!-- Game Over Overlay -->
+    <div class="overlay hidden" id="gameOverOverlay">
+      <div class="overlay-card">
+        <h1 class="game-title" id="goTitle">Firewall Breached</h1>
+        <p class="game-desc" id="goDesc">The AI outpaced your neural link.</p>
+        <div class="stats-grid">
+          <div class="stat-box">
+            <div class="lbl">Score</div>
+            <div class="val" id="finalScore">0</div>
+          </div>
+          <div class="stat-box">
+            <div class="lbl">Best</div>
+            <div class="val" id="finalBest" style="color:var(--accent)">0</div>
+          </div>
+        </div>
+        <button class="primary-btn" id="restartBtn">Play Again</button>
+      </div>
+    </div>
+
+    <!-- How to Play Overlay -->
+    <div class="overlay hidden" id="helpOverlay">
+      <div class="overlay-card">
+        <h1 class="game-title">How to Play</h1>
+        <div class="rules-list">
+          <div><b>1. Watch (Encode):</b> The AI flashes a sequence of nodes on the 4×4 grid.</div>
+          <div><b>2. Decode (Duel):</b> Tap the nodes in the exact same order before the timer bar runs out.</div>
+          <div><b>3. Reverse Rounds:</b> Every few rounds, a <b>REVERSE</b> alert appears—input the sequence backwards!</div>
+          <div><b>4. Shields:</b> You have 3 shields. Wrong taps cost 1 shield. Speed earns bonus points!</div>
+        </div>
+        <button class="primary-btn" id="closeHelpBtn">Got It</button>
+      </div>
+    </div>
+  </main>
+
+<script>
+(() => {
+  const SLUG = 'crimson-cipher-duel';
+  const HS_KEY = 'fun_arcade_highscore_' + SLUG;
+
+  // DOM Elements
+  const arena = document.getElementById('arena');
+  const gridEl = document.getElementById('grid');
+  const hudRound = document.getElementById('hudRound');
+  const hudScore = document.getElementById('hudScore');
+  const hudBest = document.getElementById('hudBest');
+  const phaseBadge = document.getElementById('phaseBadge');
+  const timerFill = document.getElementById('timerFill');
+  const shieldsWrap = document.getElementById('shieldsWrap');
+  const stepInfo = document.getElementById('stepInfo');
+  const comboPill = document.getElementById('comboPill');
+
+  const startOverlay = document.getElementById('startOverlay');
+  const gameOverOverlay = document.getElementById('gameOverOverlay');
+  const helpOverlay = document.getElementById('helpOverlay');
+  const startBtn = document.getElementById('startBtn');
+  const restartBtn = document.getElementById('restartBtn');
+  const helpBtn = document.getElementById('helpBtn');
+  const closeHelpBtn = document.getElementById('closeHelpBtn');
+  const muteBtn = document.getElementById('muteBtn');
+  const finalScoreEl = document.getElementById('finalScore');
+  const finalBestEl = document.getElementById('finalBest');
+
+  // Canvas FX
+  const canvas = document.getElementById('fxCanvas');
+  const ctx = canvas.getContext('2d');
+  let particles = [];
+
+  function resizeCanvas() {
+    canvas.width = arena.clientWidth;
+    canvas.height = arena.clientHeight;
+  }
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+
+  // Web Audio Synth
+  let audioCtx = null;
+  let muted = false;
+  function initAudio() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  }
+  function playTone(freq, type = 'sine', dur = 0.12, vol = 0.12) {
+    if (muted || !audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + dur);
+  }
+  const nodeNotes = [261.6, 293.7, 329.6, 349.2, 392.0, 440.0, 493.9, 523.3, 587.3, 659.3, 698.5, 784.0, 880.0, 987.8, 1046.5, 1174.7];
+
+  // Game State
+  let nodes = [];
+  let sequence = [];
+  let targetSequence = [];
+  let playerIndex = 0;
+  let round = 1;
+  let score = 0;
+  let bestScore = parseInt(localStorage.getItem(HS_KEY) || '0', 10);
+  let shields = 3;
+  let combo = 1;
+  let isReverse = false;
+  let state = 'IDLE'; // IDLE, ENCODE, DECODE, GAMEOVER
+  let timerMax = 5000;
+  let timerLeft = 5000;
+  let lastTime = 0;
+  let rafId = null;
+
+  hudBest.textContent = bestScore;
+
+  // Build 4x4 Grid
+  for (let i = 0; i < 16; i++) {
+    const btn = document.createElement('button');
+    btn.className = 'node';
+    btn.dataset.idx = i;
+    const dot = document.createElement('div');
+    dot.className = 'node-dot';
+    btn.appendChild(dot);
+    btn.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      handleNodeTap(i);
+    });
+    gridEl.appendChild(btn);
+    nodes.push(btn);
+  }
+
+  function spawnParticles(el, color, count = 12) {
+    const rect = el.getBoundingClientRect();
+    const aRect = arena.getBoundingClientRect();
+    const cx = rect.left - aRect.left + rect.width / 2;
+    const cy = rect.top - aRect.top + rect.height / 2;
+    for (let i = 0; i < count; i++) {
+      const angle = (Math.PI * 2 * i) / count + Math.random() * 0.4;
+      const speed = 2 + Math.random() * 4;
+      particles.push({
+        x: cx, y: cy,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 1, color, size: 3 + Math.random() * 3
+      });
+    }
+  }
+
+  function updateParticles() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx; p.y += p.vy;
+      p.life -= 0.035;
+      if (p.life <= 0) { particles.splice(i, 1); continue; }
+      ctx.globalAlpha = p.life;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function updateShields() {
+    const pips = shieldsWrap.children;
+    for (let i = 0; i < 3; i++) {
+      pips[i].classList.toggle('lost', i >= shields);
+    }
+  }
+
+  function startGame() {
+    initAudio();
+    round = 1;
+    score = 0;
+    shields = 3;
+    combo = 1;
+    hudRound.textContent = round;
+    hudScore.textContent = score;
+    updateShields();
+    comboPill.classList.remove('active');
+    startOverlay.classList.add('hidden');
+    gameOverOverlay.classList.add('hidden');
+    startRound();
+    if (!rafId) { lastTime = performance.now(); rafId = requestAnimationFrame(loop); }
+  }
+
+  function startRound() {
+    state = 'ENCODE';
+    playerIndex = 0;
+    isReverse = round >= 3 && round % 3 === 0;
+    const seqLen = Math.min(3 + Math.floor((round - 1) * 0.7), 10);
+    sequence = [];
+    for (let i = 0; i < seqLen; i++) {
+      sequence.push(Math.floor(Math.random() * 16));
+    }
+    targetSequence = isReverse ? [...sequence].reverse() : [...sequence];
+
+    phaseBadge.textContent = isReverse ? 'WATCH (REVERSE NEXT!)' : 'AI ENCODING...';
+    phaseBadge.className = 'phase-badge' + (isReverse ? ' reverse' : '');
+    stepInfo.textContent = `Sequence: 0 / ${seqLen}`;
+    timerFill.style.width = '100%';
+
+    const flashSpeed = Math.max(220, 520 - round * 22);
+    const gapSpeed = Math.max(90, 180 - round * 8);
+
+    let step = 0;
+    function playNext() {
+      if (state !== 'ENCODE') return;
+      if (step >= sequence.length) {
+        setTimeout(beginDecode, 260);
+        return;
+      }
+      const idx = sequence[step];
+      nodes[idx].classList.add('lit');
+      playTone(nodeNotes[idx], 'triangle', 0.16, 0.14);
+      setTimeout(() => {
+        nodes[idx].classList.remove('lit');
+        step++;
+        setTimeout(playNext, gapSpeed);
+      }, flashSpeed);
+    }
+    setTimeout(playNext, 450);
+  }
+
+  function beginDecode() {
+    if (state !== 'ENCODE') return;
+    state = 'DECODE';
+    phaseBadge.textContent = isReverse ? 'DECODE IN REVERSE!' : 'DECODE NOW!';
+    phaseBadge.className = 'phase-badge ' + (isReverse ? 'reverse' : 'decode');
+    timerMax = Math.max(3200, 4200 + targetSequence.length * 650 - round * 90);
+    timerLeft = timerMax;
+  }
+
+  function handleNodeTap(idx) {
+    if (state !== 'DECODE') return;
+    initAudio();
+    const expected = targetSequence[playerIndex];
+    const el = nodes[idx];
+
+    if (idx === expected) {
+      el.classList.add('correct');
+      playTone(nodeNotes[idx], 'sine', 0.14, 0.15);
+      spawnParticles(el, '#10b981', 10);
+      setTimeout(() => el.classList.remove('correct'), 200);
+
+      playerIndex++;
+      stepInfo.textContent = `Sequence: ${playerIndex} / ${targetSequence.length}`;
+
+      if (playerIndex >= targetSequence.length) {
+        // Round Won!
+        const speedRatio = timerLeft / timerMax;
+        const roundPts = Math.round((100 + round * 25 + speedRatio * 150) * combo);
+        score += roundPts;
+        combo = Math.min(combo + 1, 8);
+        hudScore.textContent = score;
+        comboPill.textContent = `COMBO x${combo}`;
+        comboPill.classList.toggle('active', combo > 1);
+
+        if (score > bestScore) {
+          bestScore = score;
+          hudBest.textContent = bestScore;
+          localStorage.setItem(HS_KEY, bestScore);
+        }
+
+        playTone(880, 'triangle', 0.25, 0.14);
+        round++;
+        hudRound.textContent = round;
+        state = 'ENCODE';
+        setTimeout(startRound, 550);
+      }
+    } else {
+      // Wrong tap
+      el.classList.add('wrong');
+      setTimeout(() => el.classList.remove('wrong'), 260);
+      playTone(130, 'sawtooth', 0.25, 0.18);
+      arena.classList.remove('shake');
+      void arena.offsetWidth;
+      arena.classList.add('shake');
+
+      shields--;
+      combo = 1;
+      comboPill.classList.remove('active');
+      updateShields();
+
+      if (shields <= 0) {
+        triggerGameOver('Firewall Breached', 'Your shields shattered under the AI assault.');
+      }
+    }
+  }
+
+  function triggerGameOver(title, desc) {
+    state = 'GAMEOVER';
+    document.getElementById('goTitle').textContent = title;
+    document.getElementById('goDesc').textContent = desc;
+    finalScoreEl.textContent = score;
+    finalBestEl.textContent = bestScore;
+    gameOverOverlay.classList.remove('hidden');
+    playTone(110, 'sawtooth', 0.4, 0.16);
+  }
+
+  function loop(now) {
+    const dt = now - lastTime;
+    lastTime = now;
+
+    if (state === 'DECODE') {
+      timerLeft -= dt;
+      const pct = Math.max(0, (timerLeft / timerMax) * 100);
+      timerFill.style.width = pct + '%';
+      if (timerLeft <= 0) {
+        triggerGameOver('Time Expired', 'The AI decoded the sector before you.');
+      }
+    }
+
+    updateParticles();
+    rafId = requestAnimationFrame(loop);
+  }
+
+  // Controls
+  startBtn.addEventListener('click', startGame);
+  restartBtn.addEventListener('click', startGame);
+  helpBtn.addEventListener('click', () => helpOverlay.classList.remove('hidden'));
+  closeHelpBtn.addEventListener('click', () => helpOverlay.classList.add('hidden'));
+  muteBtn.addEventListener('click', () => {
+    muted = !muted;
+    muteBtn.textContent = muted ? '🔇' : '🔊';
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' && (state === 'IDLE' || state === 'GAMEOVER')) {
+      e.preventDefault();
+      startGame();
+    } else if (e.key === 'm' || e.key === 'M') {
+      muted = !muted;
+      muteBtn.textContent = muted ? '🔇' : '🔊';
+    }
+  });
+})();
+</script>
+</body>
+</html>

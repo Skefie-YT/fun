@@ -1094,5 +1094,13 @@
     "category": "Reflex",
     "accent": "#EF4444",
     "addedAt": "2026-11-28T08:12:53Z"
+  },
+  {
+    "slug": "crimson-cipher-duel",
+    "title": "Crimson Cipher Duel",
+    "description": "Memorize the AI's glowing grid sequence and decode it faster than the rival timer to shatter its firewall!",
+    "category": "Puzzle",
+    "accent": "#EF4444",
+    "addedAt": "2026-11-28T09:44:50Z"
   }
 ]
