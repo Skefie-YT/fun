@@ -1062,5 +1062,13 @@
     "category": "Physics",
     "accent": "#14B8A6",
     "addedAt": "2026-11-28T02:12:56Z"
+  },
+  {
+    "slug": "solar-synth",
+    "title": "Solar Synth",
+    "description": "Tap the 3 resonator pads in sync with incoming beat orbs to play harmonies, build combos, and ignite Solar Flare!",
+    "category": "Arcade",
+    "accent": "#F59E0B",
+    "addedAt": "2026-11-28T03:48:49Z"
   }
 ]

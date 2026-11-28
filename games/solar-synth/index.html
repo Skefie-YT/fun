@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Solar Synth — Fun Arcade</title>
+<style>
+  :root {
+    --bg: #090b14;
+    --panel: rgba(16, 20, 36, 0.88);
+    --border: rgba(245, 158, 11, 0.25);
+    --accent: #F59E0B;
+    --accent-glow: rgba(245, 158, 11, 0.45);
+    --cyan: #38BDF8;
+    --pink: #FB7185;
+    --text: #F8FAFC;
+    --muted: #94A3B8;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; user-select: none; }
+  html, body {
+    width: 100%; height: 100dvh; overflow: hidden;
+    background: radial-gradient(circle at 50% 35%, #17152b 0%, #090b14 75%);
+    color: var(--text);
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    display: flex; flex-direction: column;
+  }
+  header {
+    height: 54px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 14px;
+    background: rgba(9, 11, 20, 0.8);
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(8px);
+    z-index: 20;
+  }
+  .left-nav { display: flex; align-items: center; gap: 10px; }
+  .back-btn {
+    text-decoration: none; color: var(--text); font-size: 13px; font-weight: 600;
+    padding: 6px 12px; border-radius: 8px;
+    background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12);
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .back-btn:hover { background: rgba(245, 158, 11, 0.18); border-color: var(--accent); }
+  .hud {
+    display: flex; align-items: center; gap: 16px; font-variant-numeric: tabular-nums;
+  }
+  .hud-item { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.1; }
+  .hud-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+  .hud-val { font-size: 16px; font-weight: 700; color: var(--text); }
+  .hud-val.accent { color: var(--accent); }
+  .icon-btn {
+    width: 34px; height: 34px; border-radius: 8px;
+    background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12);
+    color: var(--text); font-size: 15px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .icon-btn:hover { background: rgba(245, 158, 11, 0.2); border-color: var(--accent); }
+  .right-nav { display: flex; align-items: center; gap: 8px; }
+
+  main {
+    position: relative; flex: 1; width: 100%; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+  }
+  canvas {
+    display: block; width: 100%; height: 100%; touch-action: none;
+  }
+
+  .overlay {
+    position: absolute; inset: 0; z-index: 30;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: rgba(9, 11, 20, 0.78); backdrop-filter: blur(10px);
+    padding: 24px; text-align: center;
+    transition: opacity 0.22s ease;
+  }
+  .overlay.hidden { opacity: 0; pointer-events: none; }
+  .card {
+    max-width: 400px; width: 100%;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 20px; padding: 28px 24px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.6), 0 0 35px rgba(245,158,11,0.12);
+  }
+  .badge {
+    display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--accent);
+    background: rgba(245, 158, 11, 0.14); border: 1px solid rgba(245, 158, 11, 0.35);
+    padding: 4px 10px; border-radius: 999px; margin-bottom: 12px;
+  }
+  h1 {
+    font-size: 32px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 10px;
+    background: linear-gradient(135deg, #FFF 20%, #F59E0B 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .desc { font-size: 14px; line-height: 1.55; color: var(--muted); margin-bottom: 22px; }
+  .btn-primary {
+    width: 100%; padding: 14px 20px; border: none; border-radius: 12px;
+    background: linear-gradient(135deg, #F59E0B, #D97706);
+    color: #090b14; font-size: 16px; font-weight: 800; letter-spacing: 0.02em;
+    cursor: pointer; box-shadow: 0 6px 22px var(--accent-glow);
+    transition: transform 0.12s, filter 0.12s;
+  }
+  .btn-primary:hover { filter: brightness(1.08); transform: translateY(-1px); }
+  .btn-primary:active { transform: translateY(1px); }
+
+  .stats-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px;
+  }
+  .stat-box {
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px; padding: 12px;
+  }
+  .stat-box .lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; }
+  .stat-box .val { font-size: 22px; font-weight: 800; color: var(--text); margin-top: 2px; }
+  .stat-box .val.gold { color: var(--accent); }
+
+  .controls-hint {
+    position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+    font-size: 12px; color: var(--muted); white-space: nowrap;
+    background: rgba(9, 11, 20, 0.7); padding: 6px 14px; border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .help-list { text-align: left; font-size: 13px; color: var(--muted); line-height: 1.6; margin-bottom: 20px; }
+  .help-list li { margin-bottom: 8px; margin-left: 16px; }
+  .help-list strong { color: var(--text); }
+</style>
+</head>
+<body>
+<header>
+  <div class="left-nav">
+    <a href="../../" class="back-btn">Back</a>
+    <div class="hud">
+      <div class="hud-item">
+        <span class="hud-label">Score</span>
+        <span class="hud-val accent" id="scoreVal">0</span>
+      </div>
+      <div class="hud-item">
+        <span class="hud-label">Best</span>
+        <span class="hud-val" id="bestVal">0</span>
+      </div>
+    </div>
+  </div>
+  <div class="right-nav">
+    <button class="icon-btn" id="muteBtn" title="Toggle Sound">🔊</button>
+    <button class="icon-btn" id="helpBtn" title="How to Play">?</button>
+  </div>
+</header>
+
+<main>
+  <canvas id="gameCanvas"></canvas>
+
+  <div class="overlay" id="startOverlay">
+    <div class="card">
+      <div class="badge">Rhythm Arcade</div>
+      <h1>Solar Synth</h1>
+      <p class="desc">Strike the 3 resonator pads in sync with incoming beat orbs to play harmonies, build your combo, and ignite <strong>Solar Flare</strong>!</p>
+      <button class="btn-primary" id="startBtn">Start Jamming</button>
+    </div>
+    <div class="controls-hint">Keys: A / S / D or ← / ↓ / → &nbsp;•&nbsp; Tap Pads on Mobile</div>
+  </div>
+
+  <div class="overlay hidden" id="gameOverOverlay">
+    <div class="card">
+      <div class="badge">Session Complete</div>
+      <h1>Core Depleted</h1>
+      <div class="stats-grid">
+        <div class="stat-box">
+          <div class="lbl">Final Score</div>
+          <div class="val gold" id="finalScore">0</div>
+        </div>
+        <div class="stat-box">
+          <div class="lbl">Max Combo</div>
+          <div class="val" id="finalCombo">0</div>
+        </div>
+      </div>
+      <button class="btn-primary" id="restartBtn">Play Again</button>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="helpOverlay">
+    <div class="card">
+      <div class="badge">How to Play</div>
+      <h1>Solar Synth</h1>
+      <ul class="help-list">
+        <li><strong>Goal:</strong> Hit incoming beat orbs right as they cross the glowing resonator rings.</li>
+        <li><strong>Controls:</strong> Press <strong>A / S / D</strong>, <strong>← / ↓ / →</strong>, or tap/click the 3 pads directly.</li>
+        <li><strong>Solar Flare:</strong> Accurate hits charge your Flare meter. At 100%, Solar Flare activates automatically for <strong>2x Score</strong>!</li>
+        <li><strong>Stability:</strong> Missing orbs drains Core Stability. Perfect hits restore a little stability.</li>
+      </ul>
+      <button class="btn-primary" id="closeHelpBtn">Got It</button>
+    </div>
+  </div>
+</main>
+
+<script>
+(() => {
+  const SLUG = 'solar-synth';
+  const STORAGE_KEY = 'fun_arcade_highscore_' + SLUG;
+
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+  const scoreEl = document.getElementById('scoreVal');
+  const bestEl = document.getElementById('bestVal');
+  const startOverlay = document.getElementById('startOverlay');
+  const gameOverOverlay = document.getElementById('gameOverOverlay');
+  const helpOverlay = document.getElementById('helpOverlay');
+  const finalScoreEl = document.getElementById('finalScore');
+  const finalComboEl = document.getElementById('finalCombo');
+  const muteBtn = document.getElementById('muteBtn');
+
+  let bestScore = parseInt(localStorage.getItem(STORAGE_KEY) || '0', 10) || 0;
+  bestEl.textContent = bestScore;
+
+  // Audio Synth
+  let audioCtx = null;
+  let muted = false;
+  const LANE_FREQS = [261.63, 329.63, 392.00]; // C4, E4, G4
+  const FLARE_FREQS = [523.25, 659.25, 783.99]; // C5, E5, G5
+
+  function initAudio() {
+    if (!audioCtx) {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (AudioContext) audioCtx = new AudioContext();
+    }
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+  }
+
+  function playTone(freq, type = 'triangle', duration = 0.16, vol = 0.18) {
+    if (muted || !audioCtx) return;
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, now);
+    gain.gain.setValueAtTime(vol, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + duration);
+  }
+
+  function playMiss() {
+    if (muted || !audioCtx) return;
+    playTone(110, 'sawtooth', 0.18, 0.12);
+  }
+
+  muteBtn.addEventListener('click', () => {
+    muted = !muted;
+    muteBtn.textContent = muted ? '🔇' : '🔊';
+  });
+
+  // Game State
+  const LANE_COLORS = ['#38BDF8', '#F59E0B', '#FB7185'];
+  const LANE_LABELS = ['A', 'S', 'D'];
+  let width = 0, height = 0, dpr = 1;
+  let state = 'start'; // start, playing, gameover
+  let score = 0, combo = 0, maxCombo = 0;
+  let stability = 100;
+  let flare = 0;
+  let flareActive = false;
+  let flareTimer = 0;
+  let bpm = 108;
+  let beatTimer = 0;
+  let beatCount = 0;
+  let orbs = [];
+  let particles = [];
+  let popups = [];
+  let padFlash = [0, 0, 0];
+  let shake = 0;
+  let lastTime = 0;
+
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const rect = canvas.parentElement.getBoundingClientRect();
+    width = rect.width;
+    height = rect.height;
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function getLayout() {
+    const cx = width / 2;
+    const coreY = Math.max(85, height * 0.16);
+    const hitY = height - Math.max(90, height * 0.16);
+    const spread = Math.min(width * 0.32, 170);
+    const padX = [cx - spread, cx, cx + spread];
+    const padRadius = Math.min(34, Math.max(24, width * 0.065));
+    return { cx, coreY, hitY, spread, padX, padRadius };
+  }
+
+  function startGame() {
+    initAudio();
+    state = 'playing';
+    score = 0; combo = 0; maxCombo = 0;
+    stability = 100; flare = 0;
+    flareActive = false; flareTimer = 0;
+    bpm = 108; beatTimer = 0; beatCount = 0;
+    orbs = []; particles = []; popups = [];
+    padFlash = [0, 0, 0]; shake = 0;
+    scoreEl.textContent = '0';
+    startOverlay.classList.add('hidden');
+    gameOverOverlay.classList.add('hidden');
+    helpOverlay.classList.add('hidden');
+    lastTime = performance.now();
+  }
+
+  function endGame() {
+    state = 'gameover';
+    if (score > bestScore) {
+      bestScore = score;
+      localStorage.setItem(STORAGE_KEY, String(bestScore));
+      bestEl.textContent = bestScore;
+    }
+    finalScoreEl.textContent = score;
+    finalComboEl.textContent = maxCombo;
+    gameOverOverlay.classList.remove('hidden');
+  }
+
+  function spawnOrb(lane) {
+    orbs.push({ lane, progress: 0, hit: false, missed: false });
+  }
+
+  function addParticles(x, y, color, count = 14) {
+    for (let i = 0; i < count; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 70 + Math.random() * 180;
+      particles.push({
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 1,
+        decay: 1.8 + Math.random() * 1.2,
+        size: 2.5 + Math.random() * 3.5,
+        color
+      });
+    }
+  }
+
+  function addPopup(x, y, text, color) {
+    popups.push({ x, y, text, color, life: 1 });
+  }
+
+  function triggerLane(lane) {
+    if (state !== 'playing') return;
+    initAudio();
+    padFlash[lane] = 1;
+    const { padX, hitY } = getLayout();
+
+    // Find closest unhit orb in this lane near hit zone (progress ~ 1.0)
+    let bestOrb = null;
+    let bestDist = Infinity;
+    for (const orb of orbs) {
+      if (orb.lane === lane && !orb.hit && !orb.missed) {
+        const dist = Math.abs(orb.progress - 1.0);
+        if (dist < 0.22 && dist < bestDist) {
+          bestDist = dist;
+          bestOrb = orb;
+        }
+      }
+    }
+
+    if (bestOrb) {
+      bestOrb.hit = true;
+      let pts = 0;
+      let label = '';
+      if (bestDist < 0.065) {
+        pts = 100;
+        label = 'PERFECT';
+        stability = Math.min(100, stability + 2.5);
+        flare = Math.min(100, flare + 10);
+      } else if (bestDist < 0.13) {
+        pts = 60;
+        label = 'GREAT';
+        stability = Math.min(100, stability + 1);
+        flare = Math.min(100, flare + 6);
+      } else {
+        pts = 30;
+        label = 'GOOD';
+        flare = Math.min(100, flare + 3);
+      }
+
+      combo++;
+      if (combo > maxCombo) maxCombo = combo;
+      const mult = (1 + Math.floor(combo / 10) * 0.25) * (flareActive ? 2 : 1);
+      score += Math.round(pts * mult);
+      scoreEl.textContent = score;
+
+      if (!flareActive && flare >= 100) {
+        flareActive = true;
+        flareTimer = 6.5;
+        addPopup(width / 2, hitY - 90, 'SOLAR FLARE 2X!', '#F59E0B');
+        shake = 6;
+      }
+
+      const freq = flareActive ? FLARE_FREQS[lane] : LANE_FREQS[lane];
+      playTone(freq, 'triangle', 0.18, 0.2);
+      addParticles(padX[lane], hitY, LANE_COLORS[lane], flareActive ? 20 : 12);
+      addPopup(padX[lane], hitY - 36, label, LANE_COLORS[lane]);
+    } else {
+      // Empty tap penalty
+      combo = 0;
+      stability = Math.max(0, stability - 4);
+      playMiss();
+      if (stability <= 0) endGame();
+    }
+  }
+
+  // Keyboard Controls
+  window.addEventListener('keydown', (e) => {
+    if (e.repeat) return;
+    const k = e.key.toLowerCase();
+    if (k === 'a' || k === 'arrowleft') triggerLane(0);
+    else if (k === 's' || k === 'arrowdown' || k === ' ') triggerLane(1);
+    else if (k === 'd' || k === 'arrowright') triggerLane(2);
+  });
+
+  // Pointer / Touch Controls
+  canvas.addEventListener('pointerdown', (e) => {
+    if (state !== 'playing') return;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const { padX } = getLayout();
+    let closest = 0;
+    let minDist = Infinity;
+    for (let i = 0; i < 3; i++) {
+      const d = Math.abs(x - padX[i]);
+      if (d < minDist) { minDist = d; closest = i; }
+    }
+    triggerLane(closest);
+  });
+
+  // UI Buttons
+  document.getElementById('startBtn').addEventListener('click', startGame);
+  document.getElementById('restartBtn').addEventListener('click', startGame);
+  document.getElementById('helpBtn').addEventListener('click', () => {
+    helpOverlay.classList.remove('hidden');
+  });
+  document.getElementById('closeHelpBtn').addEventListener('click', () => {
+    helpOverlay.classList.add('hidden');
+  });
+
+  function update(dt) {
+    if (state !== 'playing') return;
+
+    // Gradually ramp BPM
+    bpm = Math.min(168, 108 + Math.floor(score / 600) * 3);
+    const beatInterval = 60 / bpm;
+    beatTimer += dt;
+
+    if (beatTimer >= beatInterval) {
+      beatTimer -= beatInterval;
+      beatCount++;
+      const lane = Math.floor(Math.random() * 3);
+      spawnOrb(lane);
+      // Occasional chord at higher scores
+      if (score > 1200 && beatCount % 4 === 0 && Math.random() < 0.45) {
+        const lane2 = (lane + 1 + Math.floor(Math.random() * 2)) % 3;
+        spawnOrb(lane2);
+      }
+      // Subtle bass pulse
+      playTone(65.41, 'sine', 0.1, 0.08);
+    }
+
+    if (flareActive) {
+      flareTimer -= dt;
+      flare = Math.max(0, (flareTimer / 6.5) * 100);
+      if (flareTimer <= 0) { flareActive = false; flare = 0; }
+    }
+
+    const travelSpeed = 0.62 + (bpm - 108) * 0.004;
+    const { padX, hitY } = getLayout();
+
+    for (const orb of orbs) {
+      if (orb.hit) continue;
+      orb.progress += travelSpeed * dt;
+      if (orb.progress > 1.22 && !orb.missed) {
+        orb.missed = true;
+        combo = 0;
+        stability = Math.max(0, stability - 12);
+        shake = 5;
+        playMiss();
+        addPopup(padX[orb.lane], hitY - 24, 'MISS', '#EF4444');
+        if (stability <= 0) { endGame(); return; }
+      }
+    }
+    orbs = orbs.filter(o => !o.hit && o.progress <= 1.35);
+
+    for (let i = 0; i < 3; i++) {
+      padFlash[i] = Math.max(0, padFlash[i] - dt * 5);
+    }
+    shake = Math.max(0, shake - dt * 25);
+
+    for (const p of particles) {
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      p.life -= p.decay * dt;
+    }
+    particles = particles.filter(p => p.life > 0);
+
+    for (const pop of popups) {
+      pop.y -= 38 * dt;
+      pop.life -= 1.6 * dt;
+    }
+    popups = popups.filter(p => p.life > 0);
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, width, height);
+    const { cx, coreY, hitY, padX, padRadius } = getLayout();
+
+    ctx.save();
+    if (shake > 0) {
+      ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
+    }
+
+    // Draw 3 curved/angled synth tracks
+    for (let i = 0; i < 3; i++) {
+      const grad = ctx.createLinearGradient(cx, coreY, padX[i], hitY);
+      grad.addColorStop(0, 'rgba(255,255,255,0.04)');
+      grad.addColorStop(1, flareActive ? 'rgba(245,158,11,0.35)' : 'rgba(255,255,255,0.14)');
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(cx, coreY);
+      ctx.lineTo(padX[i], hitY);
+      ctx.stroke();
+    }
+
+    // Central Sun Core
+    const pulse = 1 + Math.sin(performance.now() * 0.008) * 0.06;
+    const coreR = 26 * pulse;
+    const coreGrad = ctx.createRadialGradient(cx, coreY, 4, cx, coreY, coreR * 1.8);
+    coreGrad.addColorStop(0, '#FFFBEB');
+    coreGrad.addColorStop(0.4, flareActive ? '#F59E0B' : '#D97706');
+    coreGrad.addColorStop(1, 'rgba(245, 158, 11, 0)');
+    ctx.fillStyle = coreGrad;
+    ctx.beginPath();
+    ctx.arc(cx, coreY, coreR * 1.8, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Stability & Flare Bars
+    const barW = Math.min(260, width * 0.65);
+    const barX = cx - barW / 2;
+    const barY = coreY - 46;
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.fillRect(barX, barY, barW, 6);
+    ctx.fillStyle = stability > 35 ? '#38BDF8' : '#EF4444';
+    ctx.fillRect(barX, barY, barW * (stability / 100), 6);
+
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.fillRect(barX, barY + 10, barW, 4);
+    ctx.fillStyle = '#F59E0B';
+    ctx.fillRect(barX, barY + 10, barW * (flare / 100), 4);
+
+    // Combo Display
+    if (combo > 1 && state === 'playing') {
+      ctx.fillStyle = flareActive ? '#F59E0B' : 'rgba(248,250,252,0.85)';
+      ctx.font = '800 18px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${combo}x COMBO`, cx, coreY + 54);
+    }
+
+    // Resonator Pads
+    for (let i = 0; i < 3; i++) {
+      const x = padX[i];
+      const color = LANE_COLORS[i];
+      const flash = padFlash[i];
+
+      ctx.beginPath();
+      ctx.arc(x, hitY, padRadius + flash * 6, 0, Math.PI * 2);
+      ctx.fillStyle = flash > 0 ? color : 'rgba(16, 20, 36, 0.85)';
+      ctx.globalAlpha = flash > 0 ? 0.35 + flash * 0.45 : 1;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = color;
+      ctx.stroke();
+
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.font = '700 13px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(LANE_LABELS[i], x, hitY);
+    }
+
+    // Incoming Beat Orbs
+    for (const orb of orbs) {
+      const x = cx + (padX[orb.lane] - cx) * orb.progress;
+      const y = coreY + (hitY - coreY) * orb.progress;
+      const r = 8 + orb.progress * 10;
+      const color = flareActive ? '#F59E0B' : LANE_COLORS[orb.lane];
+
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 14;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      ctx.beginPath();
+      ctx.arc(x, y, r * 0.45, 0, Math.PI * 2);
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fill();
+    }
+
+    // Particles
+    for (const p of particles) {
+      ctx.globalAlpha = Math.max(0, p.life);
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // Popups
+    for (const pop of popups) {
+      ctx.globalAlpha = Math.max(0, pop.life);
+      ctx.fillStyle = pop.color;
+      ctx.font = '800 15px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(pop.text, pop.x, pop.y);
+    }
+    ctx.globalAlpha = 1;
+
+    ctx.restore();
+  }
+
+  function loop(now) {
+    const dt = Math.min(0.05, (now - lastTime) / 1000);
+    lastTime = now;
+    update(dt);
+    draw();
+    requestAnimationFrame(loop);
+  }
+  lastTime = performance.now();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
