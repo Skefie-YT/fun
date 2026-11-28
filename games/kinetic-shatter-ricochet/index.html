@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Kinetic Shatter</title>
+    <style>
+        :root { --accent: #EF4444; --bg: #0f172a; --text: #f8fafc; }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100dvh; background: var(--bg); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; overflow: hidden; color: var(--text); }
+        
+        #game-container { position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; }
+        
+        .hud { position: absolute; top: 0; left: 0; width: 100%; height: 60px; padding: 0 1rem; display: flex; align-items: center; justify-content: space-between; background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(4px); z-index: 10; }
+        .back-btn { color: var(--text); text-decoration: none; font-weight: bold; border: 1px solid rgba(255,255,255,0.2); padding: 4px 12px; border-radius: 4px; font-size: 14px; }
+        .stats { display: flex; flex-direction: column; align-items: center; }
+        .score-val { font-size: 20px; font-weight: 800; color: var(--accent); }
+        .best-val { font-size: 10px; opacity: 0.7; text-transform: uppercase; letter-spacing: 1px; }
+        .btn-help { background: none; border: 1px solid rgba(255,255,255,0.2); color: white; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; }
+
+        canvas { flex: 1; width: 100%; height: 100%; touch-action: none; background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%); }
+
+        .overlay { position: absolute; inset: 0; background: rgba(15, 23, 42, 0.9); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem; text-align: center; z-index: 20; }
+        .overlay.hidden { display: none; }
+        h1 { margin: 0 0 0.5rem 0; color: var(--accent); font-size: 2.5rem; text-transform: uppercase; font-style: italic; }
+        .desc { margin-bottom: 2rem; opacity: 0.9; max-width: 300px; line-height: 1.4; }
+        .btn-main { background: var(--accent); color: white; border: none; padding: 12px 32px; font-size: 1.2rem; font-weight: bold; border-radius: 8px; cursor: pointer; transition: transform 0.1s; }
+        .btn-main:active { transform: scale(0.95); }
+        
+        .controls-hint { position: absolute; bottom: 20px; width: 100%; text-align: center; font-size: 12px; opacity: 0.5; pointer-events: none; }
+        
+        #help-modal { z-index: 30; }
+        .close-help { margin-top: 2rem; color: var(--accent); cursor: pointer; text-decoration: underline; }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div class="hud">
+        <a href="../../" class="back-btn">Back</a>
+        <div class="stats">
+            <div class="best-val">Best: <span id="best-score">0</span></div>
+            <div class="score-val" id="current-score">0</div>
+        </div>
+        <button class="btn-help" onclick="toggleHelp()">?</button>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <div id="start-screen" class="overlay">
+        <h1>Kinetic Shatter</h1>
+        <p class="desc">Drag and release to sling your kinetic orb. Clear all targets using bounces. Don't run out of shots!</p>
+        <button class="btn-main" onclick="startGame()">PLAY</button>
+        <div class="controls-hint">DRAG TO AIM & RELEASE TO FIRE</div>
+    </div>
+
+    <div id="game-over" class="overlay hidden">
+        <h1 id="game-over-title">OUT OF ENERGY</h1>
+        <p class="desc" id="game-over-msg">You cleared 0 targets this round.</p>
+        <button class="btn-main" onclick="startGame()">RETRY</button>
+    </div>
+
+    <div id="help-modal" class="overlay hidden">
+        <h1>How to Play</h1>
+        <p class="desc">
+            1. Drag back to aim the pulse orb.<br>
+            2. Release to launch.<br>
+            3. Hit targets to restore energy.<br>
+            4. Use walls to reach tricky spots.<br>
+            5. Game ends when shots run out.
+        </p>
+        <div class="close-help" onclick="toggleHelp()">GOT IT</div>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('current-score');
+    const bestEl = document.getElementById('best-score');
+    const startScreen = document.getElementById('start-screen');
+    const gameOverScreen = document.getElementById('game-over');
+    const helpModal = document.getElementById('help-modal');
+
+    const SLUG = 'kinetic-shatter-ricochet';
+    let score = 0;
+    let shots = 5;
+    let isPlaying = false;
+    let ball = { x: 0, y: 0, vx: 0, vy: 0, radius: 10, active: false };
+    let targets = [];
+    let particles = [];
+    let dragStart = null;
+    let mousePos = { x: 0, y: 0 };
+    
+    // Audio context for procedural SFX
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playTone(freq, type, duration, vol) {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+    }
+
+    function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight - 60;
+        if (!ball.active) resetBall();
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function resetBall() {
+        ball.active = false;
+        ball.vx = 0;
+        ball.vy = 0;
+        ball.x = canvas.width / 2;
+        ball.y = canvas.height - 80;
+    }
+
+    function spawnTargets() {
+        targets = [];
+        const count = 5 + Math.floor(score / 5);
+        for (let i = 0; i < count; i++) {
+            targets.push({
+                x: 50 + Math.random() * (canvas.width - 100),
+                y: 100 + Math.random() * (canvas.height - 300),
+                radius: 15 + Math.random() * 10,
+                color: `hsl(${Math.random() * 60 + 340}, 80%, 60%)`
+            });
+        }
+    }
+
+    function startGame() {
+        score = 0;
+        shots = 5;
+        isPlaying = true;
+        scoreEl.innerText = score;
+        bestEl.innerText = localStorage.getItem('fun_arcade_highscore_' + SLUG) || 0;
+        startScreen.classList.add('hidden');
+        gameOverScreen.classList.add('hidden');
+        spawnTargets();
+        resetBall();
+        requestAnimationFrame(update);
+    }
+
+    function toggleHelp() {
+        helpModal.classList.toggle('hidden');
+    }
+
+    function handleStart(e) {
+        if (!isPlaying || ball.active) return;
+        const t = e.touches ? e.touches[0] : e;
+        dragStart = { x: t.clientX, y: t.clientY - 60 };
+    }
+
+    function handleMove(e) {
+        const t = e.touches ? e.touches[0] : e;
+        mousePos = { x: t.clientX, y: t.clientY - 60 };
+    }
+
+    function handleEnd() {
+        if (!dragStart) return;
+        const dx = dragStart.x - mousePos.x;
+        const dy = dragStart.y - mousePos.y;
+        const dist = Math.hypot(dx, dy);
+        
+        if (dist > 10) {
+            const power = Math.min(dist * 0.15, 15);
+            const angle = Math.atan2(dy, dx);
+            ball.vx = Math.cos(angle) * power;
+            ball.vy = Math.sin(angle) * power;
+            ball.active = true;
+            shots--;
+            playTone(200, 'sine', 0.1, 0.3);
+        }
+        dragStart = null;
+    }
+
+    canvas.addEventListener('mousedown', handleStart);
+    canvas.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleEnd);
+    canvas.addEventListener('touchstart', handleStart);
+    canvas.addEventListener('touchmove', handleMove);
+    window.addEventListener('touchend', handleEnd);
+
+    function createParticles(x, y, color) {
+        for (let i = 0; i < 10; i++) {
+            particles.push({
+                x, y, 
+                vx: (Math.random() - 0.5) * 6,
+                vy: (Math.random() - 0.5) * 6,
+                radius: Math.random() * 3 + 1,
+                life: 1.0,
+                color
+            });
+        }
+    }
+
+    function update() {
+        if (!isPlaying) return;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Draw targets
+        targets.forEach((t, index) => {
+            ctx.beginPath();
+            ctx.arc(t.x, t.y, t.radius, 0, Math.PI * 2);
+            ctx.fillStyle = t.color;
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = t.color;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // Collision check
+            if (ball.active) {
+                const dist = Math.hypot(ball.x - t.x, ball.y - t.y);
+                if (dist < ball.radius + t.radius) {
+                    createParticles(t.x, t.y, t.color);
+                    targets.splice(index, 1);
+                    score++;
+                    scoreEl.innerText = score;
+                    playTone(400 + (score * 20), 'square', 0.1, 0.2);
+                    
+                    // Slight speed boost and energy refund
+                    ball.vx *= 1.05;
+                    ball.vy *= 1.05;
+                    
+                    if (targets.length === 0) {
+                        shots += 2;
+                        spawnTargets();
+                    }
+                }
+            }
+        });
+
+        // Ball Logic
+        if (ball.active) {
+            ball.x += ball.vx;
+            ball.y += ball.vy;
+
+            // Wall Bounce
+            if (ball.x < ball.radius || ball.x > canvas.width - ball.radius) {
+                ball.vx *= -1;
+                ball.x = ball.x < ball.radius ? ball.radius : canvas.width - ball.radius;
+                playTone(150, 'sine', 0.05, 0.1);
+            }
+            if (ball.y < ball.radius) {
+                ball.vy *= -1;
+                ball.y = ball.radius;
+                playTone(150, 'sine', 0.05, 0.1);
+            }
+
+            // Check if off screen (bottom)
+            if (ball.y > canvas.height + 50) {
+                resetBall();
+                if (shots <= 0) endGame();
+            }
+
+            // Draw ball trail effect
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+            ctx.fillStyle = '#fff';
+            ctx.fill();
+        } else if (dragStart && isPlaying) {
+            // Draw aiming line
+            const dx = dragStart.x - mousePos.x;
+            const dy = dragStart.y - mousePos.y;
+            const dist = Math.hypot(dx, dy);
+            const power = Math.min(dist * 0.15, 15);
+            const angle = Math.atan2(dy, dx);
+
+            ctx.beginPath();
+            ctx.setLineDash([5, 5]);
+            ctx.moveTo(ball.x, ball.y);
+            ctx.lineTo(ball.x + Math.cos(angle) * power * 10, ball.y + Math.sin(angle) * power * 10);
+            ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+            ctx.stroke();
+            ctx.setLineDash([]);
+            
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255,255,255,0.3)';
+            ctx.fill();
+        }
+
+        // UI Energy Indicators
+        for(let i=0; i<shots; i++) {
+            ctx.beginPath();
+            ctx.arc(30 + (i * 20), canvas.height - 30, 6, 0, Math.PI * 2);
+            ctx.fillStyle = '#EF4444';
+            ctx.fill();
+        }
+
+        // Particles
+        particles.forEach((p, i) => {
+            p.x += p.vx;
+            p.y += p.vy;
+            p.life -= 0.02;
+            if (p.life <= 0) particles.splice(i, 1);
+            ctx.globalAlpha = p.life;
+            ctx.fillStyle = p.color;
+            ctx.fillRect(p.x, p.y, p.radius, p.radius);
+            ctx.globalAlpha = 1;
+        });
+
+        requestAnimationFrame(update);
+    }
+
+    function endGame() {
+        isPlaying = false;
+        const best = localStorage.getItem('fun_arcade_highscore_' + SLUG) || 0;
+        if (score > best) {
+            localStorage.setItem('fun_arcade_highscore_' + SLUG, score);
+        }
+        document.getElementById('game-over-msg').innerText = `You shattered ${score} nodes.`;
+        gameOverScreen.classList.remove('hidden');
+        playTone(100, 'sawtooth', 0.5, 0.2);
+    }
+
+    bestEl.innerText = localStorage.getItem('fun_arcade_highscore_' + SLUG) || 0;
+</script>
+</body>
+</html>
