@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Ion Vortex</title>
+    <style>
+        :root {
+            --accent: #EF4444;
+            --bg: #0f172a;
+            --text: #f8fafc;
+        }
+        * {
+            box-sizing: border-box;
+            margin: 0; padding: 0;
+            user-select: none;
+            touch-action: none;
+        }
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            overflow: hidden;
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+        }
+        #ui-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 20px;
+            background: rgba(0,0,0,0.3);
+            z-index: 10;
+        }
+        .back-btn {
+            color: var(--text);
+            text-decoration: none;
+            font-weight: bold;
+            font-size: 14px;
+            border: 1px solid var(--text);
+            padding: 4px 10px;
+            border-radius: 4px;
+        }
+        .hud-item {
+            font-size: 18px;
+            font-weight: 900;
+            letter-spacing: 1px;
+        }
+        #game-container {
+            flex-grow: 1;
+            position: relative;
+            overflow: hidden;
+        }
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 20px;
+            z-index: 20;
+        }
+        .hidden { display: none !important; }
+        h1 { font-size: 3rem; margin-bottom: 10px; color: var(--accent); text-transform: uppercase; }
+        p { margin-bottom: 20px; max-width: 400px; line-height: 1.5; }
+        button {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+        button:active { transform: scale(0.95); }
+        .help-btn {
+            background: none;
+            border: 1px solid #ffffff55;
+            border-radius: 50%;
+            width: 30px; height: 30px;
+            padding: 0; font-size: 16px;
+        }
+        .controls-hint {
+            position: absolute;
+            bottom: 20px;
+            opacity: 0.6;
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+    <div id="ui-bar">
+        <a href="../../" class="back-btn">Back</a>
+        <div class="hud-item">SCORE: <span id="score-val">0</span></div>
+        <div class="hud-item">BEST: <span id="best-val">0</span></div>
+        <button class="help-btn" onclick="toggleHelp()">?</button>
+    </div>
+
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+
+        <div id="start-screen" class="overlay">
+            <h1>ION VORTEX</h1>
+            <p>Dodge the incoming ion streams. Tap or press Space to flip your rotation direction. Match your player color with the central orb pulse to survive the overload!</p>
+            <button onclick="startGame()">START MISSION</button>
+            <div class="controls-hint">Tap or Space to Flip Rotation</div>
+        </div>
+
+        <div id="game-over-screen" class="overlay hidden">
+            <h1 id="over-title">SYSTEM COLLAPSE</h1>
+            <p>Your score: <span id="final-score">0</span></p>
+            <button onclick="startGame()">REBOOT</button>
+        </div>
+
+        <div id="help-screen" class="overlay hidden" onclick="toggleHelp()">
+            <h1>HOW TO PLAY</h1>
+            <p>1. You orbit the center automatically.<br>2. Tap to flip your direction.<br>3. Don't touch the flying red ions.<br>4. Collecting green cores gives points.<br>5. Speed increases over time!</p>
+            <button>BACK</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreVal = document.getElementById('score-val');
+        const bestVal = document.getElementById('best-val');
+        const finalScore = document.getElementById('final-score');
+        const slug = 'ion-vortex-dodger';
+
+        let gameState = 'START';
+        let score = 0;
+        let best = localStorage.getItem('fun_arcade_highscore_' + slug) || 0;
+        bestVal.textContent = best;
+
+        let player = { angle: 0, radius: 80, size: 8, dir: 1, speed: 0.05 };
+        let particles = [];
+        let enemies = [];
+        let collectibles = [];
+        let lastTime = 0;
+        let spawnTimer = 0;
+        let difficulty = 1;
+
+        function resize() {
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        function toggleHelp() {
+            document.getElementById('help-screen').classList.toggle('hidden');
+        }
+
+        function startGame() {
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('game-over-screen').classList.add('hidden');
+            score = 0;
+            scoreVal.textContent = "0";
+            difficulty = 1;
+            player.angle = 0;
+            player.dir = 1;
+            player.speed = 0.05;
+            enemies = [];
+            collectibles = [];
+            particles = [];
+            gameState = 'PLAYING';
+            requestAnimationFrame(gameLoop);
+        }
+
+        function gameOver() {
+            gameState = 'GAMEOVER';
+            document.getElementById('game-over-screen').classList.remove('hidden');
+            finalScore.textContent = Math.floor(score);
+            if (score > best) {
+                best = Math.floor(score);
+                localStorage.setItem('fun_arcade_highscore_' + slug, best);
+                bestVal.textContent = best;
+            }
+        }
+
+        function spawnEnemy() {
+            const side = Math.floor(Math.random() * 4);
+            let x, y;
+            if(side === 0) { x = -20; y = Math.random() * canvas.height; }
+            else if(side === 1) { x = canvas.width + 20; y = Math.random() * canvas.height; }
+            else if(side === 2) { x = Math.random() * canvas.width; y = -20; }
+            else { x = Math.random() * canvas.width; y = canvas.height + 20; }
+
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const angle = Math.atan2(centerY - y, centerX - x);
+            const speed = (2 + Math.random() * 2) * (1 + (difficulty * 0.1));
+
+            enemies.push({
+                x, y, 
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed,
+                size: 6 + Math.random() * 4
+            });
+        }
+
+        function spawnCollectible() {
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 80;
+            collectibles.push({
+                x: canvas.width/2 + Math.cos(angle) * dist,
+                y: canvas.height/2 + Math.sin(angle) * dist,
+                t: 0
+            });
+        }
+
+        function createExplosion(x, y, color) {
+            for(let i=0; i<10; i++) {
+                particles.push({
+                    x, y,
+                    vx: (Math.random() - 0.5) * 10,
+                    vy: (Math.random() - 0.5) * 10,
+                    life: 1.0,
+                    color: color
+                });
+            }
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if(e.code === 'Space' && gameState === 'PLAYING') player.dir *= -1;
+        });
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if(gameState === 'PLAYING') player.dir *= -1;
+        });
+        canvas.addEventListener('mousedown', (e) => {
+            if(gameState === 'PLAYING') player.dir *= -1;
+        });
+
+        function gameLoop(timestamp) {
+            if (gameState !== 'PLAYING') return;
+            const dt = (timestamp - lastTime) / 16.67;
+            lastTime = timestamp;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const cx = canvas.width / 2;
+            const cy = canvas.height / 2;
+
+            // Difficulty ramp
+            difficulty += 0.0005 * dt;
+            player.speed = 0.05 + (difficulty * 0.005);
+
+            // Update Player
+            player.angle += player.dir * player.speed * dt;
+            const px = cx + Math.cos(player.angle) * player.radius;
+            const py = cy + Math.sin(player.angle) * player.radius;
+
+            // Spawn logic
+            spawnTimer += dt;
+            if(spawnTimer > Math.max(10, 40 - difficulty * 2)) {
+                spawnEnemy();
+                if(Math.random() > 0.8) spawnCollectible();
+                spawnTimer = 0;
+            }
+
+            // Draw Center
+            ctx.beginPath();
+            ctx.arc(cx, cy, 15, 0, Math.PI * 2);
+            ctx.fillStyle = '#1e293b';
+            ctx.fill();
+            ctx.strokeStyle = '#38bdf8';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Orbit Line
+            ctx.beginPath();
+            ctx.arc(cx, cy, player.radius, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+            ctx.setLineDash([5, 5]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Particles
+            for(let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.02 * dt;
+                if(p.life <= 0) particles.splice(i, 1);
+                else {
+                    ctx.globalAlpha = p.life;
+                    ctx.fillStyle = p.color;
+                    ctx.fillRect(p.x, p.y, 3, 3);
+                }
+            }
+            ctx.globalAlpha = 1;
+
+            // Enemies
+            for(let i = enemies.length - 1; i >= 0; i--) {
+                const e = enemies[i];
+                e.x += e.vx * dt;
+                e.y += e.vy * dt;
+                
+                ctx.beginPath();
+                ctx.arc(e.x, e.y, e.size, 0, Math.PI * 2);
+                ctx.fillStyle = '#EF4444';
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = '#EF4444';
+                ctx.fill();
+                ctx.shadowBlur = 0;
+
+                // Collision
+                const dx = px - e.x;
+                const dy = py - e.y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+                if(dist < player.size + e.size) {
+                    createExplosion(px, py, '#EF4444');
+                    gameOver();
+                }
+
+                if(e.x < -50 || e.x > canvas.width + 50 || e.y < -50 || e.y > canvas.height + 50) {
+                    enemies.splice(i, 1);
+                }
+            }
+
+            // Collectibles
+            for(let i = collectibles.length - 1; i >= 0; i--) {
+                const c = collectibles[i];
+                c.t += 0.1 * dt;
+                const pulse = Math.sin(c.t) * 3;
+                
+                ctx.beginPath();
+                ctx.arc(c.x, c.y, 6 + pulse, 0, Math.PI * 2);
+                ctx.fillStyle = '#22c55e';
+                ctx.fill();
+
+                const dx = px - c.x;
+                const dy = py - c.y;
+                if(Math.sqrt(dx*dx + dy*dy) < player.size + 10) {
+                    score += 50;
+                    scoreVal.textContent = Math.floor(score);
+                    createExplosion(c.x, c.y, '#22c55e');
+                    collectibles.splice(i, 1);
+                }
+                if(c.t > 100) collectibles.splice(i, 1);
+            }
+
+            // Draw Player
+            ctx.beginPath();
+            ctx.arc(px, py, player.size, 0, Math.PI * 2);
+            ctx.fillStyle = '#38bdf8';
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#38bdf8';
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            
+            // Little trail effect
+            ctx.beginPath();
+            ctx.moveTo(px, py);
+            const tx = cx + Math.cos(player.angle - (player.dir * 0.3)) * player.radius;
+            const ty = cy + Math.sin(player.angle - (player.dir * 0.3)) * player.radius;
+            ctx.lineTo(tx, ty);
+            ctx.strokeStyle = '#38bdf8';
+            ctx.lineWidth = 4;
+            ctx.lineCap = 'round';
+            ctx.stroke();
+
+            score += 0.1 * dt;
+            scoreVal.textContent = Math.floor(score);
+
+            requestAnimationFrame(gameLoop);
+        }
+    </script>
+</body>
+</html>

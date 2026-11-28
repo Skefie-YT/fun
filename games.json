@@ -1086,5 +1086,13 @@
     "category": "Physics",
     "accent": "#EF4444",
     "addedAt": "2026-11-28T06:58:39Z"
+  },
+  {
+    "slug": "ion-vortex-dodger",
+    "title": "Ion Vortex",
+    "description": "Rotate your orbit and shift polarities to survive a lethal storm of high-speed ion particles!",
+    "category": "Reflex",
+    "accent": "#EF4444",
+    "addedAt": "2026-11-28T08:12:53Z"
   }
 ]
