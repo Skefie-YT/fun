@@ -1102,5 +1102,13 @@
     "category": "Puzzle",
     "accent": "#EF4444",
     "addedAt": "2026-11-28T09:44:50Z"
+  },
+  {
+    "slug": "spectra-spark-chain",
+    "title": "Spectra Spark",
+    "description": "Tap tiles to increase their energy; at peak charge, they burst into a 4-way spark chain reaction to clear the board!",
+    "category": "Puzzle",
+    "accent": "#14B8A6",
+    "addedAt": "2026-11-28T10:46:25Z"
   }
 ]
